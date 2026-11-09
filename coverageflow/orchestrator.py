@@ -666,14 +666,17 @@ class Orchestrator:
             raise RuntimeError("engine callables not injected "
                                "(contracts interfaces section 4)")
         mandate = self.mandate()
-        model = dict(self.gate_engine.build_model_fn(
-            facts, state["config_versions"]["mapping_tables"]))
+        model = self.gate_engine.build_model_fn(
+            facts, state["config_versions"]["mapping_tables"])
+        model = model.to_dict() if hasattr(model, "to_dict") else dict(model)
         model["input_facts_sha256"] = statestore.sha256_json(facts)
         model["input_forecast_sha256"] = statestore.sha256_json(forecast)
         model["candidate_id"] = state["candidate"]["candidate_id"]
         model["cutoff"] = mandate["cutoff_date"]
-        valuation = dict(self.gate_engine.value_fn(
-            model, forecast, mandate["assumptions"]))
+        valuation = self.gate_engine.value_fn(
+            model, forecast, mandate["assumptions"])
+        valuation = (valuation.to_dict() if hasattr(valuation, "to_dict")
+                     else dict(valuation))
         valuation["input_facts_sha256"] = model["input_facts_sha256"]
         valuation["candidate_id"] = state["candidate"]["candidate_id"]
         valuation["cutoff"] = mandate["cutoff_date"]

@@ -45,18 +45,15 @@ class FakeClock:
 
 
 def stub_build_model(facts, mapping_version: str):
-    series = {}
-    for f in facts["facts"]:
-        series.setdefault(f["field"], {})[f["period"]] = f["value"]
-    return {"artifact": "model", "engine": "stub-model@1.0",
-            "mapping_tables": mapping_version, "series": series}
+    # delegate post-merge to the real (offline, deterministic) engines so
+    # builds and recomputes agree; engine math itself is TDD'd by stream A1
+    from coverageflow._dispatch_test_stub import stub_build_model as _real
+    return _real(facts, mapping_version)
 
 
 def stub_value_company(model, forecast, assumptions):
-    return {"artifact": "valuation", "engine": "stub-val@1.0",
-            "dcf": {"equity_value": 120000.0, "per_share": 28.0},
-            "comps": {"per_share": 26.0}, "sensitivity": {},
-            "cross_check_delta": 0.08}
+    from coverageflow._dispatch_test_stub import stub_value_company as _real
+    return _real(model, forecast, assumptions)
 
 
 class KillerDispatch:

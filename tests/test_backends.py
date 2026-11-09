@@ -14,7 +14,7 @@ import pytest
 
 from coverageflow.backends import base as bbase
 from coverageflow.backends import cli_backends as cli
-from conftest import FAKECLIS, make_call
+from tests.conftest import FAKECLIS, make_call
 
 
 CANNED = '{"schematic": "good", "trace": "demonstration"}'

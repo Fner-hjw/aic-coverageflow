@@ -17,6 +17,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+FIX = ROOT / "tests" / "fixtures"
+if str(FIX) not in sys.path:
+    sys.path.insert(0, str(FIX))
 
 from coverageflow.dispatch import RoleCall  # noqa: E402
 

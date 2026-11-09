@@ -238,7 +238,7 @@ def cmd_approve(args, ws: Path) -> int:
     if not args.case:
         raise SystemExit("approve requires --case <id>")
     orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
-                        gate_engine=load_gate_engine(stub_engines=True,
+                        gate_engine=load_gate_engine(stub_engines=False,
                                                       workspace=ws))
     out = orch.record_approval(decision=args.decision, by=args.by,
                                reasoning=args.reason or "")
@@ -249,7 +249,7 @@ def cmd_approve(args, ws: Path) -> int:
 def cmd_gates(args, ws: Path) -> int:
     case_dir = _find_case(ws, args.case)
     orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
-                        gate_engine=load_gate_engine(stub_engines=True,
+                        gate_engine=load_gate_engine(stub_engines=False,
                                                      workspace=ws))
     report = orch.gates_report()
     _print(report)
@@ -290,7 +290,7 @@ def cmd_demo(args, ws: Path) -> int:
         # cutoff/no-leakage check: gates must be deterministic re-runs and
         # every manifest document must be filed <= cutoff
         orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
-                            gate_engine=load_gate_engine(stub_engines=True,
+                            gate_engine=load_gate_engine(stub_engines=False,
                                                           workspace=ws))
         r1 = orch.gates_report()
         r2 = orch.gates_report()

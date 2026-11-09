@@ -87,29 +87,108 @@ def _default_ingest(payload: dict) -> dict:
 
 
 def _default_facts(payload: dict) -> dict:
+    """Scripted extractor payload: mini quarterly set + FY annuals.
+
+    Values mirror the hand-computed mini-10q fixture in tests/ so the REAL
+    model and valuation engines can run end-to-end in offline stub mode.
+    """
     doc_id = _doc_id_from_payload(payload)
-    return {
-        "role": "extractor",
-        "facts": [
-            {"field": "income_statement.revenue", "period": "2026-Q3", "value": 13500.0,
-             "unit": "USDmm", "confidence": 0.98,
-             "citation": {"doc_id": doc_id, "slice_id": f"{doc_id}/IS",
-                          "anchor": "Consolidated Statements of Operations",
-                          "locator": "line 14"}},
-            {"field": "income_statement.gross_margin", "period": "2026-Q3",
-             "value": 0.42, "unit": "ratio", "confidence": 0.95,
-             "citation": {"doc_id": doc_id, "slice_id": f"{doc_id}/IS",
-                          "anchor": "Consolidated Statements of Operations",
-                          "locator": "line 19"}},
-        ],
-        "missing": [],
-        "notes": [],
-        "conformance": "schema 1.0",
-        "prompt_version": "1.0",
-    }
+
+    def fact(field, period, value, idx):
+        return {"field": field, "period": period, "value": value,
+                "unit": "USDmm",
+                "confidence": 0.98,
+                "citation": {"doc_id": doc_id,
+                             "slice_id": f"{doc_id}/IS",
+                             "anchor": "Consolidated Statements of Operations",
+                             "locator": f"line {idx}"}}
+
+    IS_Q = {"revenue": (13500.0, 12500.0), "cost_of_revenue": (8325.0, 8125.0),
+            "gross_profit": (5175.0, 4375.0),
+            "research_and_development": (3150.0, 3050.0),
+            "selling_general_and_administrative": (1200.0, 1150.0),
+            "operating_expenses": (4350.0, 4200.0),
+            "operating_income": (825.0, 175.0),
+            "depreciation_and_amortization": (500.0, 450.0),
+            "net_income": (700.0, 150.0), "diluted_eps": (0.16, 0.03),
+            "diluted_shares_outstanding": (4375.0, 5000.0)}
+    BS_Q = {"cash_and_equivalents": (25000.0, 21000.0),
+            "short_term_debt": (2000.0, 2000.0),
+            "long_term_debt": (50000.0, 48000.0),
+            "total_assets": (145000.0, 140000.0),
+            "total_stockholders_equity": (66000.0, 64000.0)}
+    CF_Q = {"operating_cash_flow": (3200.0, 1800.0),
+            "capital_expenditure": (2500.0, 1700.0)}
+    FY = {"income_statement": {
+              "revenue": 52000.0, "cost_of_revenue": 33800.0,
+              "gross_profit": 18200.0, "operating_income": 2080.0,
+              "depreciation_and_amortization": 1200.0, "net_income": 1040.0,
+              "diluted_eps": 0.20, "diluted_shares_outstanding": 5200.0},
+          "cash_flow": {"operating_cash_flow": 4160.0,
+                        "capital_expenditure": 3120.0},
+          "balance_sheet": {"total_assets": 140000.0,
+                            "total_stockholders_equity": 64000.0}}
+    SEGS = {"ccg": (24000.0, 1500.0), "dcai": (12000.0, 600.0),
+            "nex": (6000.0, 150.0), "foundry": (6000.0, -200.0),
+            "altera": (6000.0, 150.0), "mobileye": (4000.0, 100.0),
+            "all_other": (-6000.0, -220.0)}
+
+    facts, i = [], 0
+    for group, table in (("income_statement", IS_Q), ("balance_sheet", BS_Q),
+                         ("cash_flow", CF_Q)):
+        for fld, vals in table.items():
+            for p, v in zip(("2026-Q3", "2025-Q3"), vals):
+                facts.append(fact(f"{group}.{fld}", p, v, i)); i += 1
+    SEGS_Q = {"Client Computing Group": ((6000.0, 700.0), (5800.0, 500.0)),
+              "Data Center and AI": ((4500.0, 300.0), (4000.0, 150.0)),
+              "Network and Edge": ((2000.0, 150.0), (1700.0, 100.0)),
+              "Intel Foundry": ((1000.0, -650.0), (1000.0, -700.0)),
+              "Altera": ((800.0, 250.0), (750.0, 200.0)),
+              "Mobileye": ((500.0, 100.0), (450.0, 50.0)),
+              "All Other": ((-1300.0, -25.0), (-1200.0, -25.0))}
+    for name, ((r26, o26), (r25, o25)) in SEGS_Q.items():
+        facts.append(fact(f"segments.{name}.revenue", "2026-Q3", r26, i)); i += 1
+        facts.append(fact(f"segments.{name}.revenue", "2025-Q3", r25, i)); i += 1
+        facts.append(fact(f"segments.{name}.operating_income", "2026-Q3", o26, i)); i += 1
+        facts.append(fact(f"segments.{name}.operating_income", "2025-Q3", o25, i)); i += 1
+    for group, table in FY.items():
+        for fld, v in table.items():
+            facts.append(fact(f"{group}.{fld}", "FY2025", v, i)); i += 1
+    for seg, (rev, oi) in SEGS.items():
+        if seg == "all_other":
+            facts.append(fact("segments.all_other_revenue", "FY2025", rev, i)); i += 1
+            facts.append(fact("segments.all_other_operating_income", "FY2025", oi, i)); i += 1
+        else:
+            facts.append(fact(f"segments.{seg}.revenue", "FY2025", rev, i)); i += 1
+            facts.append(fact(f"segments.{seg}.operating_income", "FY2025", oi, i)); i += 1
+
+    return {"role": "extractor", "facts": facts, "missing": [], "notes": [],
+            "conformance": "schema 1.0", "prompt_version": "1.0"}
 
 
 def _default_forecast(payload: dict) -> dict:
+    return {
+        "role": "model",
+        "horizon_years": 5,
+        "segments": [
+            {"segment": "CCG", "growth": [0.08, 0.08, 0.08, 0.08, 0.08],
+             "drivers": [{"text": "Q3 segment table", "citation": {}}]},
+            {"segment": "DCAI", "growth": [0.16, 0.15, 0.14, 0.13, 0.12],
+             "drivers": [{"text": "Q3 segment table", "citation": {}}]},
+            {"segment": "NEX", "growth": [0.05, 0.05, 0.05, 0.05, 0.05],
+             "drivers": [{"text": "Q3 segment table", "citation": {}}]},
+            {"segment": "Foundry", "growth": [0.05, 0.05, 0.05, 0.05, 0.05],
+             "drivers": [{"text": "Q3 segment table", "citation": {}}]},
+            {"segment": "Altera", "growth": [0.05, 0.05, 0.05, 0.05, 0.05],
+             "drivers": [{"text": "Q3 segment table", "citation": {}}]},
+            {"segment": "Mobileye", "growth": [0.12, 0.11, 0.10, 0.09, 0.08],
+             "drivers": [{"text": "Q3 segment table", "citation": {}}]},
+        ],
+        "margin_glide": {"gross": [0.36, 0.37, 0.38, 0.39, 0.40]},
+        "terminal_basis": "mandate",
+        "conformance": "schema 1.0",
+        "prompt_version": "1.0",
+    }
     return {
         "role": "model",
         "horizon_years": 5,
@@ -128,18 +207,18 @@ def _default_forecast(payload: dict) -> dict:
 
 DEFAULT_REPORT_MD = (
     "## Summary\n"
-    "Revenue rose to 13,500 [EV:income_statement.revenue] with gross margin "
-    "of 0.42 [EV:income_statement.gross_margin].\n"
-    "The DCF yields 28.0 [EV:dcf.per_share] per share; comps imply 26.0 "
-    "[EV:comps.per_share].\n"
+    "Revenue rose to 13,500 [EV:income_statement.revenue] with gross profit "
+    "of 5,175 [EV:income_statement.gross_profit].\n"
+    "The DCF yields 28.0 [EV:dcf.per_diluted_share] per share; comps imply 26.0 "
+    "[EV:comps.comps_price].\n"
 )
 
 ALT_REPORT_MD = (
     "## Summary\n"
-    "Revenue improved to 13,500 [EV:income_statement.revenue] with gross margin "
-    "of 0.42 [EV:income_statement.gross_margin] and operating discipline.\n"
-    "The DCF yields 28.0 [EV:dcf.per_share] per share; comps imply 26.0 "
-    "[EV:comps.per_share].\n"
+    "Revenue improved to 13,500 [EV:income_statement.revenue] with gross profit "
+    "of 5,175 [EV:income_statement.gross_profit] and operating discipline.\n"
+    "The DCF yields 28.0 [EV:dcf.per_diluted_share] per share; comps imply 26.0 "
+    "[EV:comps.comps_price].\n"
     "Operating expense discipline supports the margin glide in the out years.\n"
 )
 
@@ -376,17 +455,30 @@ class StubDispatch:
 # ---------------------------------------------------------------------------
 
 def stub_build_model(facts, mapping_version: str):
-    """Stub double of model_engine.build_model (deterministic, no I/O)."""
-    series = {}
-    for f in facts.get("facts", []):
-        series.setdefault(f["field"], {})[f["period"]] = f["value"]
-    return {"artifact": "model", "engine": "stub-model@1.0",
-            "mapping_tables": mapping_version, "series": series}
+    """Offline engine double. Post-integration: delegates to the real, also
+    offline model engine so builds and recomputes agree exactly.
+
+    Falls back to the legacy naive stub only if the engine package is
+    somehow unimportable (kept for forensics; not used in-repo)."""
+    try:
+        from coverageflow.model_engine import build_model
+        return build_model(facts, mapping_version).to_dict()
+    except ImportError:
+        series = {}
+        for f in facts.get("facts", []):
+            series.setdefault(f["field"], {})[f["period"]] = f["value"]
+        return {"artifact": "model", "engine": "stub-model@1.0",
+                "mapping_tables": mapping_version, "series": series}
 
 
 def stub_value_company(model, forecast, assumptions):
-    """Stub double of valuation_engine.value_company (deterministic)."""
-    return {"artifact": "valuation", "engine": "stub-val@1.0",
-            "dcf": {"equity_value": 120000.0, "per_share": 28.0},
-            "comps": {"per_share": 26.0}, "sensitivity": {},
-            "cross_check_delta": 0.08}
+    """Offline engine double. Post-integration: delegates to the real,
+    deterministic valuation engine (same inputs -> same payload)."""
+    try:
+        from coverageflow.valuation_engine import value_company
+        return value_company(model, forecast, assumptions).payload
+    except ImportError:
+        return {"artifact": "valuation", "engine": "stub-val@1.0",
+                "dcf": {"equity_value": 120000.0, "per_diluted_share": 28.0},
+                "comps": {"comps_price": 26.0}, "sensitivity": {},
+                "cross_check_delta": 0.08}

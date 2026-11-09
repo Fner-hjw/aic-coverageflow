@@ -470,6 +470,7 @@ class GateEngine:
                     ["valuation.json"], required_evidence="a runnable valuation engine"))
                 val = None
             if val is not None:
+                val = val.get("payload", val) if not hasattr(val, "payload") else val.payload
                 for section, keys in (("dcf", ("equity_value", "per_share")),):
                     for k in keys:
                         rec_v = (val.get(section) or {}).get(k)
