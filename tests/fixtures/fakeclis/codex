@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Fake `codex` CLI for offline backend tests (stream A3).
+
+Accepts: codex exec PROMPT --json   (prints NDJSON event lines)
+Same env-var behavior protocol as the fake claude (FAKE_BEHAVIOR etc.).
+"""
+import json
+import os
+import sys
+import time
+
+argv_log = os.environ.get("FAKE_ARGV_LOG")
+if argv_log:
+    with open(argv_log, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(sys.argv) + "\n")
+
+behavior = os.environ.get("FAKE_BEHAVIOR", "ok")
+
+stdout_file = os.environ.get("FAKE_STDOUT_FILE")
+if stdout_file:
+    with open(stdout_file, "r", encoding="utf-8") as fh:
+        sys.stdout.write(fh.read())
+    sys.exit(0)
+
+prompt = ""
+if "exec" in sys.argv and sys.argv.index("exec") + 1 < len(sys.argv):
+    prompt = sys.argv[sys.argv.index("exec") + 1]
+
+if behavior == "sleep":
+    time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
+if behavior == "fail":
+    sys.stderr.write("error: authentication required\n")
+    sys.exit(2)
+if behavior == "garbage":
+    print("streaming human prose; JSON not found")
+    sys.exit(0)
+if behavior == "stderr":
+    sys.stderr.write("warn: experimental json mode\n")
+
+result_text = os.environ.get(
+    "FAKE_RESULT_TEXT", '{"schematic": "good", "trace": "demonstration"}'
+)
+if behavior == "error_result":
+    print(json.dumps({"type": "error", "message": "upstream refused"}))
+    sys.exit(0)
+
+print(json.dumps({"type": "thread.started", "thread_id": "th_foo"}))
+print(json.dumps({"type": "turn.started"}))
+print(
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {"item_type": "agent_message", "text": result_text},
+        }
+    )
+)
+print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 11, "output_tokens": 7}}))
