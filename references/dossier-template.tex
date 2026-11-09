@@ -1,0 +1,119 @@
+%% references/dossier-template.tex — CoverageFlow research-note dossier template
+%% (owner: stream A5). GS/MS-style institutional equity research note.
+%%
+%% Packages: article, booktabs, geometry ONLY (TeX Live 2026, pdflatex).
+%% The renderer (coverageflow/export_dossier.py) fills every
+%% TOKEN written in double braces from the case's verified
+%% artifacts (report.md + model/valuation JSON + case metadata).
+%% Nothing is hand-typed: all numbers come from the evidence
+%% record, so the dossier cannot drift from the verified case.
+
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[a4paper,top=0.8in,bottom=0.8in,left=0.9in,right=0.9in]{geometry}
+\usepackage{booktabs}
+
+\newcommand{\rulefull}{\noindent\rule{\textwidth}{0.7pt}}
+\newcommand{\sect}[1]{\vspace{6pt}\noindent{\normalsize\scshape #1}\vspace{2pt}\\ \rulefull \vspace{2pt}}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+\pagestyle{empty}
+
+\begin{document}
+
+% --------------------------------------------------------------- masthead
+\rulefull
+\begin{center}
+{\large\scshape {{COMPANY}} ({{TICKER}})}\\[1pt]
+{\small Equity Research --- Coverage Update \quad | \quad Sector: Semiconductors}\\[1pt]
+{\small Information cutoff: {{CUTOFF}} \quad | \quad Report version: {{REPORT_VERSION}} \quad | \quad Candidate: {{CANDIDATE_ID8}}}
+\end{center}
+
+\begin{tabular}{@{}p{0.32\textwidth}p{0.30\textwidth}p{0.30\textwidth}@{}}
+\textbf{Rating} & \textbf{Target price (DCF)} & \textbf{Analyst} \\
+{{RATING}} & {{PT_EXIT}}/sh (exit mult.) \quad {{PT_GORDON}}/sh (Gordon) & {{ANALYST}} \\
+\textbf{Published} & \textbf{Case} & \textbf{Backend evidence} \\
+{{PUBLISHED_TS}} & {{CASE_ID}} & {{ENGINE_NOTE}} \\
+\end{tabular}
+
+\vspace{2pt}
+\rulefull
+
+% -------------------------------------------------------------- key data
+\sect{Key data (USDmm unless noted; from the verified model artifact)}
+{{KEY_DATA_TABLE}}
+
+% -------------------------------------------------------------- summary
+\sect{Summary}
+{{SUMMARY}}
+
+\sect{Results}
+{{RESULTS}}
+
+\sect{Segment detail}
+{{SEGMENT_BODY}}
+\vspace{2pt}
+{{SEGMENT_TABLE}}
+
+% -------------------------------------------------------------- outlook
+\sect{Outlook}
+{{OUTLOOK}}
+
+% -------------------------------------------------------------- valuation
+\sect{Valuation}
+{{VALUATION_BODY}}
+\vspace{4pt}
+
+\noindent\textbf{DCF (from the valuation artifact; \$ per diluted share)}\\
+{{DCF_TABLE}}
+
+\noindent\textbf{Relative valuation (mandate peer block, as-of {{PEER_AS_OF}})}\\
+{{COMPS_TABLE}}
+
+\noindent\textbf{Sensitivity: DCF value per diluted share, WACC $\times$ terminal growth}\\
+{{SENSITIVITY_TABLE}}
+
+% -------------------------------------------------------------- risks
+\sect{Risks}
+{{RISKS}}
+
+% -------------------------------------------------------------- evidence
+\sect{Methodology \& evidence appendix}
+
+\noindent All figures above are rendered from the case's verified artifacts
+(\texttt{model.json}, \texttt{valuation.json} produced by the deterministic
+engines; \texttt{report.md} produced by the writer role from the evidence
+ledger). Every artifact carries the candidate ID, the information cutoff and
+the input manifest reference. Acceptance: all numerical gates passed; two
+consecutive clean full critic reviews of the same candidate; findings
+closed only on critic-verified repairs; human approval recorded before
+publication.
+
+\vspace{3pt}
+\noindent\textbf{Input documents (frozen, SHA-256-hashed EDGAR bundle)}\\
+{{INPUTS_TABLE}}
+
+\noindent\textbf{Candidate artifacts}\\
+{{ARTIFACTS_TABLE}}
+
+\noindent\textbf{Approval record}\\
+{{APPROVAL_LINE}}
+
+% -------------------------------------------------------------- disclosures
+\sect{Disclosures}
+This dossier is a machine-rendered research note produced by CoverageFlow, a
+university-course project workflow (AI Coding in Finance, Fall 2026), from a
+frozen, hashed snapshot of SEC filings with information cutoff {{CUTOFF}}. It
+is not investment advice, is not a product of a licensed research department,
+and must not be relied upon for investment decisions. Numbers are rendered
+verbatim from the verified evidence artifacts cited above.
+
+\vspace{2pt}
+\rulefull
+\begin{center}
+{\small CoverageFlow evidence dossier \quad | \quad case {{CASE_ID}} \quad | \quad version {{REPORT_VERSION}} \quad | \quad cutoff {{CUTOFF}}}
+\end{center}
+
+\end{document}
