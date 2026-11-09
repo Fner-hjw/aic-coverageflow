@@ -139,8 +139,10 @@ repair-packet path with a scripted raising critic is unit-tested in
   `findings.json` (append-only ledger), `state.json`, `trace.jsonl`,
   `approvals/`, `report/`, `history/`.
 - **Triggers.** (1) new dated document arrival → new case, cutoff = filing
-  date; (2) scheduled staleness check (note older than N days vs. newest
-  document); (3) human action (approve / reject / rollback / evolve).
+  date — exercised by all five evidence runs; (2) scheduled staleness check
+  (note older than N days vs. newest document — designed trigger, the
+  scheduled scanner itself is not implemented in v1); (3) human action
+  (approve / reject / rollback / evolve) — exercised in run5.
 - **Checkpoints & resume.** One checkpoint per verified transition. On
   startup the orchestrator inspects identity + hashes, **discards unverified
   partial output** (moved to `discarded/`), **re-dispatches the pending role

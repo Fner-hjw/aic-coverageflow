@@ -150,8 +150,8 @@ Role dispatches (per fresh call) use one backend, selected per case:
   fixtures).
 - **OpenAI-compatible API** — set `COVERAGEFLOW_BASE_URL`,
   `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (optionally
-  `COVERAGEFLOW_CONFIG` for a JSON config file; `COVERAGEFLOW_BACKEND`
-  selects the backend).
+  `COVERAGEFLOW_CONFIG` for a JSON config file). Backend selection is the
+  `--backend` flag on `run` / UI selection / auto-detection.
 - **Replay** — recorded responses matched by role + prompt hash; the whole
   test suite and the five evidence runs use the offline stub/replay
   dispatch ("scripted rehearsal" — real engines, scripted role responses).
