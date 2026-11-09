@@ -156,3 +156,68 @@ class TestAssemblyErrors:
         path = card(tree)
         with pytest.raises(pa.AssemblyError):
             pa.assemble_prompt(path, ["not", "a", "dict"], root=str(tree))
+
+
+class TestRepoCards:
+    """The shipped repo cards + references are valid, versioned, and assemble."""
+
+    EXPECTED_CARDS = {
+        "ingest": "ingest-report.json",
+        "extractor": "facts.json",
+        "model": "forecast_assumptions.json",
+        "writer": "report.md",
+        "generator_lead": "candidate-manifest.json",
+        "critic_lead": "merged-findings.json",
+        "critic_c1": "critic-report.json",
+        "critic_c2": "critic-report.json",
+        "critic_c3": "critic-report.json",
+        "critic_c4": "critic-report.json",
+    }
+
+    def test_all_cards_present_valid_and_v1(self):
+        root = pa.default_root()
+        cards = sorted(p.name for p in (root / "prompts").glob("*.md"))
+        assert cards == sorted(f"{r}.md" for r in self.EXPECTED_CARDS)
+        for role, produces in self.EXPECTED_CARDS.items():
+            meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
+            assert meta["version"] == "1.0", role
+            assert meta["role"] == role
+            assert meta["produces"] == produces
+
+    def test_critic_cards_pin_the_locked_rubric_and_only_it(self):
+        root = pa.default_root()
+        for role in ("critic_lead", "critic_c1", "critic_c2", "critic_c3", "critic_c4"):
+            meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
+            assert "critic-rubric.md" in meta["references"], role
+
+    def test_every_card_assembles_with_repo_references(self):
+        root = pa.default_root()
+        for role in self.EXPECTED_CARDS:
+            prompt = pa.assemble_prompt(
+                root / "prompts" / f"{role}.md",
+                {"request_id": "req-smoke", "role": role, "payload": {"smoke": True}},
+                root=root,
+            )
+            assert pa.REQUEST_MARK in prompt
+            # deterministic twice in a row against the real repo content
+            again = pa.assemble_prompt(
+                root / "prompts" / f"{role}.md",
+                {"request_id": "req-smoke", "role": role, "payload": {"smoke": True}},
+                root=root,
+            )
+            assert prompt == again
+
+    def test_references_present_and_locked_rubric_marked(self):
+        root = pa.default_root()
+        rubric = (root / "references" / "critic-rubric.md").read_text()
+        assert "LOCKED" in rubric
+        assert "1.0" in rubric
+        for ref in ("harness-preamble.md", "accounting-definitions.md",
+                    "critic-rubric.md", "report-styleguide.md"):
+            assert (root / "references" / ref).is_file()
+
+    def test_cards_under_roughly_600_words(self):
+        root = pa.default_root()
+        for role in self.EXPECTED_CARDS:
+            words = len((root / "prompts" / f"{role}.md").read_text().split())
+            assert words < 600, f"{role}.md has {words} words"
