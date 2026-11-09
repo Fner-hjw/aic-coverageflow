@@ -174,15 +174,25 @@ class TestRepoCards:
         "critic_c4": "critic-report.json",
     }
 
-    def test_all_cards_present_valid_and_v1(self):
+    def test_all_cards_present_valid_and_versioned(self):
         root = pa.default_root()
         cards = sorted(p.name for p in (root / "prompts").glob("*.md"))
         assert cards == sorted(f"{r}.md" for r in self.EXPECTED_CARDS)
         for role, produces in self.EXPECTED_CARDS.items():
             meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
-            assert meta["version"] == "1.0", role
+            # 1.0 baseline; edited cards (integration: extractor id
+            # examples aligned to model-schema.json) bump to 1.1
+            assert meta["version"] in ("1.0", "1.1"), role
             assert meta["role"] == role
             assert meta["produces"] == produces
+
+    def test_extractor_card_examples_use_schema_canonical_ids(self):
+        """v1.1: no short-form ids drift from references/model-schema.json."""
+        root = pa.default_root()
+        text = (root / "prompts" / "extractor.md").read_text("utf-8")
+        for stale in ("cash_flow.ppe_additions", "segment.DCAI.revenue",
+                      "income_statement.restructuring_charges"):
+            assert stale not in text, f"stale id {stale} still cited"
 
     def test_critic_cards_pin_the_locked_rubric_and_only_it(self):
         root = pa.default_root()
