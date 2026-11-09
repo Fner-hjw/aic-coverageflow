@@ -75,6 +75,7 @@ FY2025 = {
         "net_income": 1040.0, "diluted_eps": 0.20, "diluted_shares_outstanding": 5200.0,
     },
     "cash_flow": {"operating_cash_flow": 4160.0, "capital_expenditure": 3120.0},
+    "balance_sheet": {"total_assets": 140000.0, "total_stockholders_equity": 64000.0},
     # canonical segment facts; revenue weights sum 58,000, residual -6,000
     "segments": {
         "ccg": (24000.0, 1500.0), "dcai": (12_000.0, 600.0), "nex": (6000.0, 150.0),
@@ -88,7 +89,8 @@ def valuation_payload() -> dict:
     payload = mini_facts_payload()
     facts = payload["facts"]
     for group, table in (("income_statement", FY2025["income_statement"]),
-                        ("cash_flow", FY2025["cash_flow"])):
+                        ("cash_flow", FY2025["cash_flow"]),
+                        ("balance_sheet", FY2025.get("balance_sheet", {}))):
         for fld, v in table.items():
             facts.append(fh.fact(f"{group}.{fld}", "FY2025", v))
     for seg, (rev, oi) in FY2025["segments"].items():
