@@ -1,0 +1,7 @@
+{
+  "evidence_case": "examples/run1-clean/cases/intc-fy2026q3-20261030",
+  "tex": "examples/run1-clean/cases/intc-fy2026q3-20261030/export/dossier.tex",
+  "pdf": "examples/run1-clean/cases/intc-fy2026q3-20261030/export/dossier.pdf",
+  "compiled": true,
+  "report_version": "v1-cand-43f"
+}
