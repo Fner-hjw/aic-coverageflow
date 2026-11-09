@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "owner": "A1 runtime",
+  "company": "Intel Corporation (canonical template applies to any coverage company)",
+  "units": "USDmm (per-share fields in USD; share counts in millions)",
+  "period_types": ["FY", "Q"],
+  "period_labels": {"FY": "FY2024", "Q": "2026-Q3"},
+  "line_naming": "Follows the supplied reference workbooks (Complete Quantitative Analysis, Statements Model, Stock Analysis Tool).",
+  "statements": {
+    "income_statement": {
+      "display": "Income Statement",
+      "fields": [
+        {"id": "income_statement.revenue", "label": "Revenue", "kind": "absolute"},
+        {"id": "income_statement.cost_of_revenue", "label": "Cost of Revenue", "kind": "absolute"},
+        {"id": "income_statement.gross_profit", "label": "Gross Profit", "kind": "absolute", "derives": "revenue - cost_of_revenue"},
+        {"id": "income_statement.research_and_development", "label": "Research And Development Expenses", "kind": "absolute"},
+        {"id": "income_statement.selling_general_and_administrative", "label": "Selling General And Administrative Expenses", "kind": "absolute"},
+        {"id": "income_statement.other_operating_income_expenses", "label": "Other Operating Income (Expenses)", "kind": "absolute"},
+        {"id": "income_statement.operating_expenses", "label": "Operating Expenses", "kind": "absolute", "derives": "research_and_development + selling_general_and_administrative + other_operating_income_expenses"},
+        {"id": "income_statement.ebitda", "label": "EBITDA", "kind": "absolute", "derives": "operating_income + depreciation_and_amortization"},
+        {"id": "income_statement.operating_income", "label": "Operating Income", "kind": "absolute"},
+        {"id": "income_statement.depreciation_and_amortization", "label": "Depreciation And Amortization", "kind": "absolute"},
+        {"id": "income_statement.interest_expense", "label": "Interest Expense", "kind": "absolute"},
+        {"id": "income_statement.other_non_operating_income", "label": "Other Non-Operating Income (Expense), Net", "kind": "absolute"},
+        {"id": "income_statement.income_before_tax", "label": "Pretax Income", "kind": "absolute"},
+        {"id": "income_statement.income_tax_expense", "label": "Income Tax Expense", "kind": "absolute"},
+        {"id": "income_statement.net_income", "label": "Net Income", "kind": "absolute"},
+        {"id": "income_statement.basic_eps", "label": "Basic EPS", "kind": "per_share"},
+        {"id": "income_statement.diluted_eps", "label": "Diluted EPS", "kind": "per_share"},
+        {"id": "income_statement.diluted_shares_outstanding", "label": "Weighted Average Diluted Shares", "kind": "shares_mm"}
+      ]
+    },
+    "balance_sheet": {
+      "display": "Balance Sheet",
+      "fields": [
+        {"id": "balance_sheet.cash_and_equivalents", "label": "Cash And Cash Equivalents", "kind": "absolute"},
+        {"id": "balance_sheet.short_term_investments", "label": "Short-Term Investments", "kind": "absolute"},
+        {"id": "balance_sheet.accounts_receivable", "label": "Accounts Receivable, Net", "kind": "absolute"},
+        {"id": "balance_sheet.inventories", "label": "Inventories", "kind": "absolute"},
+        {"id": "balance_sheet.total_current_assets", "label": "Total Current Assets", "kind": "absolute"},
+        {"id": "balance_sheet.property_plant_equipment_net", "label": "Property Plant And Equipment, Net", "kind": "absolute"},
+        {"id": "balance_sheet.goodwill", "label": "Goodwill", "kind": "absolute"},
+        {"id": "balance_sheet.intangible_assets_net", "label": "Intangible Assets, Net", "kind": "absolute"},
+        {"id": "balance_sheet.deferred_tax_assets", "label": "Deferred Tax Assets", "kind": "absolute"},
+        {"id": "balance_sheet.total_assets", "label": "Total Assets", "kind": "absolute"},
+        {"id": "balance_sheet.accounts_payable", "label": "Accounts Payable", "kind": "absolute"},
+        {"id": "balance_sheet.accrued_liabilities", "label": "Accrued Liabilities", "kind": "absolute"},
+        {"id": "balance_sheet.short_term_debt", "label": "Short-Term Debt", "kind": "absolute"},
+        {"id": "balance_sheet.total_current_liabilities", "label": "Total Current Liabilities", "kind": "absolute"},
+        {"id": "balance_sheet.long_term_debt", "label": "Long-Term Debt", "kind": "absolute"},
+        {"id": "balance_sheet.total_liabilities", "label": "Total Liabilities", "kind": "absolute"},
+        {"id": "balance_sheet.common_stock", "label": "Common Stock", "kind": "absolute"},
+        {"id": "balance_sheet.additional_paid_in_capital", "label": "Additional Paid-In Capital", "kind": "absolute"},
+        {"id": "balance_sheet.treasury_stock", "label": "Treasury Stock", "kind": "absolute"},
+        {"id": "balance_sheet.retained_earnings", "label": "Retained Earnings", "kind": "absolute"},
+        {"id": "balance_sheet.accumulated_other_comprehensive_income", "label": "Accumulated Other Comprehensive Income", "kind": "absolute"},
+        {"id": "balance_sheet.total_stockholders_equity", "label": "Total Stockholders' Equity", "kind": "absolute"}
+      ]
+    },
+    "cash_flow": {
+      "display": "Cash Flow Statement",
+      "fields": [
+        {"id": "cash_flow.net_income", "label": "Net Income", "kind": "absolute"},
+        {"id": "cash_flow.depreciation_amortization", "label": "Depreciation And Amortization", "kind": "absolute"},
+        {"id": "cash_flow.stock_based_compensation", "label": "Stock-Based Compensation", "kind": "absolute"},
+        {"id": "cash_flow.deferred_taxes", "label": "Deferred Taxes", "kind": "absolute"},
+        {"id": "cash_flow.working_capital_changes", "label": "Change In Working Capital", "kind": "absolute"},
+        {"id": "cash_flow.operating_activities_other", "label": "Other Operating Activities", "kind": "absolute"},
+        {"id": "cash_flow.operating_cash_flow", "label": "Operating Cash Flow", "kind": "absolute"},
+        {"id": "cash_flow.capital_expenditure", "label": "Capital Expenditure", "kind": "absolute", "sign_convention": "positive value = cash spent"},
+        {"id": "cash_flow.investing_activities_other", "label": "Other Investing Activities", "kind": "absolute"},
+        {"id": "cash_flow.investing_cash_flow", "label": "Investing Cash Flow", "kind": "absolute"},
+        {"id": "cash_flow.dividend_paid", "label": "Dividend Paid", "kind": "absolute", "sign_convention": "positive value = cash paid"},
+        {"id": "cash_flow.share_issuance_repurchase", "label": "Share Issuance And Repurchase, Net", "kind": "absolute"},
+        {"id": "cash_flow.debt_issuance_repayment", "label": "Debt Issuance And Repayment, Net", "kind": "absolute"},
+        {"id": "cash_flow.financing_activities_other", "label": "Other Financing Activities", "kind": "absolute"},
+        {"id": "cash_flow.financing_cash_flow", "label": "Financing Cash Flow", "kind": "absolute"},
+        {"id": "cash_flow.cash_at_end_of_period", "label": "Cash At End Of Period", "kind": "absolute"}
+      ]
+    },
+    "segments": {
+      "display": "Segments",
+      "note": "Six Intel operating segments per design-decisions section 4; versioned mapping tables translate as-reported presentations onto this series (see segment-mapping-v1.json).",
+      "segments": ["CCG", "DCAI", "NEX", "Foundry", "Altera", "Mobileye"],
+      "per_segment_fields": [
+        {"suffix": "revenue", "label": "Revenue", "kind": "absolute"},
+        {"suffix": "operating_income", "label": "Operating Income", "kind": "absolute"},
+        {"suffix": "operating_margin", "label": "Operating Margin", "kind": "ratio", "derives": "operating_income / revenue"},
+        {"suffix": "revenue_share_of_total", "label": "Share of Total Revenue", "kind": "ratio", "derives": "revenue / income_statement.revenue"}
+      ],
+      "residuals": [
+        {"id": "segments.all_other_revenue", "label": "All Other Revenue (residual)", "kind": "absolute", "optional": true},
+        {"id": "segments.all_other_operating_income", "label": "All Other Operating Income (residual)", "kind": "absolute", "optional": true}
+      ]
+    }
+  },
+  "derived_metrics": [
+    {"id": "derived.gross_margin", "label": "Gross Margin", "expr": "income_statement.gross_profit / income_statement.revenue"},
+    {"id": "derived.operating_margin", "label": "Operating Margin", "expr": "income_statement.operating_income / income_statement.revenue"},
+    {"id": "derived.ebitda_margin", "label": "EBITDA Margin", "expr": "income_statement.ebitda / income_statement.revenue"},
+    {"id": "derived.net_margin", "label": "Net Margin", "expr": "income_statement.net_income / income_statement.revenue"},
+    {"id": "derived.fcf", "label": "Free Cash Flow", "expr": "cash_flow.operating_cash_flow - cash_flow.capital_expenditure"},
+    {"id": "derived.net_debt", "label": "Net Debt", "expr": "balance_sheet.short_term_debt + balance_sheet.long_term_debt - balance_sheet.cash_and_equivalents"},
+    {"id": "derived.revenue_yoy", "label": "Revenue Growth YoY", "expr": "yoy(income_statement.revenue)"},
+    {"id": "derived.revenue_qoq", "label": "Revenue Growth QoQ", "expr": "qoq(income_statement.revenue)"},
+    {"id": "derived.diluted_eps_yoy", "label": "Diluted EPS Growth YoY", "expr": "yoy(income_statement.diluted_eps)"},
+    {"id": "derived.net_income_yoy", "label": "Net Income Growth YoY", "expr": "yoy(income_statement.net_income)"}
+  ],
+  "field_count_note": "income_statement 18 + balance_sheet 22 + cash_flow 16 + segments 6x4 = 24, total 80 primary fields, plus optional segment residuals and derived metrics."
+}

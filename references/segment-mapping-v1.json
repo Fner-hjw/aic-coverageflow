@@ -1,0 +1,129 @@
+{
+  "mapping_version": "1.0",
+  "owner": "A1 runtime (data-only; the model engine interprets this table, it is evolvable via the evolution loop)",
+  "company": "Intel Corporation",
+  "cik": "0000050863",
+  "canonical_series": {
+    "segments": ["CCG", "DCAI", "NEX", "Foundry", "Altera", "Mobileye"],
+    "measures": ["revenue", "operating_income"],
+    "coherence": "segments.revenue + optional residual (all_other/eliminations) should reconcile to income_statement.revenue when the residual facts exist"
+  },
+  "source_documents": {
+    "FY2024": "intc-10k-fy2024 (10-K filed 2025-01-31)",
+    "FY2025": "intc-10k-fy2025 (10-K filed 2026-01-23)",
+    "2025-Q1": "intc-10q-2025q1", "2025-Q2": "intc-10q-2025q2", "2025-Q3": "intc-10q-2025q3",
+    "2026-Q1": "intc-10q-2026q1", "2026-Q2": "intc-10q-2026q2", "2026-Q3": "intc-10q-2026q3",
+    "2024-08-01 8-K": "intc-8k-2024-08-01 (restructuring/dividend)",
+    "2025-09-15 8-K": "intc-8k-2025-09-15 (item 2.01 disposition - Altera majority-stake sale)"
+  },
+  "periods": {
+    "FY2024": {
+      "doc_id": "intc-10k-fy2024",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "All Other"],
+      "notes": "FY2024 10-K presentation: CCG, DCAI and NEX under Intel Products; Intel Foundry reported separately from Q1'24; Altera and Mobileye results presented within 'All Other'.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "All Other", "op": "split", "canonical": ["altera", "mobileye"], "note": "Altera and Mobileye are not separately quantified in this presentation; quarterly Altera/Mobileye disclosures exist in their respective 10-Qs/10-Ks and supersede this where extracted", "fallback_op": "residual", "fallback_canonical": "segments.all_other_revenue"}
+      ]
+    },
+    "FY2025": {
+      "doc_id": "intc-10k-fy2025",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "Altera", "Mobileye", "All Other"],
+      "notes": "FY2025 10-K presentation: Intel Foundry continues as a separately reported segment; Altera presented as a separate reportable segment ahead of the September 2025 majority-stake sale to Silver Lake (see intc-8k-2025-09-15); Mobileye separately reported.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "Altera", "canonical": "altera"},
+        {"as_reported": "Mobileye", "canonical": "mobileye"}
+      ]
+    },
+    "2025-Q1": {
+      "doc_id": "intc-10q-2025q1",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "All Other"],
+      "notes": "Q1'25 transition presentation mirrors FY2024; separate Altera/Mobileye quantification appears in the segment note footnotes.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "All Other", "op": "split", "canonical": ["altera", "mobileye"], "fallback_op": "residual", "fallback_canonical": "segments.all_other_revenue", "note": "extractor may quantify Altera/Mobileye from note disclosures; otherwise series points are absent"}
+      ]
+    },
+    "2025-Q2": {
+      "doc_id": "intc-10q-2025q2",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "Altera", "Mobileye", "All Other"],
+      "notes": "From Q2'25 Intel reported Altera as a separate operating segment.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "Altera", "canonical": "altera"},
+        {"as_reported": "Mobileye", "canonical": "mobileye"}
+      ]
+    },
+    "2025-Q3": {
+      "doc_id": "intc-10q-2025q3",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "Altera", "Mobileye", "All Other"],
+      "notes": "Q3'25 quarter; the 8-K dated 2025-09-15 (item 2.01) closed the Altera majority-stake sale during this quarter - post-close Altera is accounted under the equity method and drops out of consolidated segment revenue from the disposition date.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "Altera", "canonical": "altera"},
+        {"as_reported": "Mobileye", "canonical": "mobileye"}
+      ]
+    },
+    "2026-Q1": {
+      "doc_id": "intc-10q-2026q1",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "Altera", "Mobileye", "All Other"],
+      "notes": "Continues FY2025 presentation; Altera consolidated only through the Q3'25 disposition date - partial-quarter figures map with a mapping note, the engine leaves absent points missing rather than interpolating.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "Altera", "canonical": "altera", "treatment": "equity-method post 2025-09-12; absent if not quantified"},
+        {"as_reported": "Mobileye", "canonical": "mobileye"}
+      ]
+    },
+    "2026-Q2": {
+      "doc_id": "intc-10q-2026q2",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "Mobileye", "All Other"],
+      "notes": "Altera deconsolidated since Q3'25; series continues from equity-method/prior-period disclosures only where present.",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "Mobileye", "canonical": "mobileye"},
+        {"as_reported": "All Other", "op": "unavailable", "canonical": ["altera"], "note": "no longer quantified as a consolidated segment"}
+      ]
+    },
+    "2026-Q3": {
+      "doc_id": "intc-10q-2026q3",
+      "as_reported_segments": ["Client Computing Group", "Data Center and AI", "Network and Edge", "Intel Foundry", "Mobileye", "All Other"],
+      "notes": "Current quarter per the FY2026 Q3 10-Q (filed 2026-10-30) and Q3'26 earnings 8-K (intc-8k-2026-10-29).",
+      "rules": [
+        {"as_reported": "Client Computing Group", "canonical": "ccg"},
+        {"as_reported": "Data Center and AI", "canonical": "dcai"},
+        {"as_reported": "Network and Edge", "canonical": "nex"},
+        {"as_reported": "Intel Foundry", "canonical": "foundry"},
+        {"as_reported": "Mobileye", "canonical": "mobileye"},
+        {"as_reported": "All Other", "op": "unavailable", "canonical": ["altera"], "note": "no longer quantified as a consolidated segment"}
+      ]
+    }
+  },
+  "engine_interpretation": {
+    "op:direct": "as-reported fact field maps 1:1 to segments.<canonical>.<measure>",
+    "op:split": "reported aggregate covers multiple canonical segments; if the extractor supplied child facts use them, else apply fallback_op",
+    "op:residual": "store the undistributed remainder in segments.all_other_revenue / segments.all_other_operating_income",
+    "op:unavailable": "canonical series point is absent for this period (no interpolation, no carry-forward)"
+  }
+}
