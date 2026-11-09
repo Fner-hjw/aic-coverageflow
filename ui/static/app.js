@@ -1143,3 +1143,681 @@ async function renderCaseApproval(body, c) {
 }
 
 function case_id_title(id) { return id.split("-").slice(0, 2).join(" ").toUpperCase(); }
+
+
+/* --------------------------------------------------- new-case wizard ---- */
+
+Views.newCase = async function newCase(view) {
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "New case — CoverageFlow";
+  const bundles = await guard(() => Api.get("/api/bundles"));
+
+  const W = {
+    ticker: h("input", { type: "text", placeholder: "INTC", value: "INTC" }),
+    period: h("input", { type: "text", placeholder: "fy2027q1", value: "fy2027q1" }),
+    cik: h("input", { type: "text", placeholder: "0000050863", value: "0000050863" }),
+    cutoff: h("input", { type: "date", value: "2026-10-30" }),
+    bundle: h("select"),
+    trigger: h("select"),
+    docsBox: h("div"),
+    noteType: h("input", { type: "text", value: "quarterly_update" }),
+    wordsMin: h("input", { type: "number", value: "800", class: "num" }),
+    wordsMax: h("input", { type: "number", value: "1600", class: "num" }),
+    wacc: h("input", { type: "number", step: "0.001", value: "0.104", class: "num" }),
+    tg: h("input", { type: "number", step: "0.001", value: "0.025", class: "num" }),
+    exit: h("input", { type: "number", step: "0.1", value: "14.0", class: "num" }),
+    tax: h("input", { type: "number", step: "0.01", value: "0.15", class: "num" }),
+    mfloor: h("input", { type: "number", step: "0.01", value: "0.30", class: "num" }),
+    mceil: h("input", { type: "number", step: "0.01", value: "0.55", class: "num" }),
+  };
+  const SECTIONS = ["Summary", "Results", "Segment detail", "Outlook", "Valuation", "Risks"];
+  const sectionState = new Map(SECTIONS.map(s => [s, true]));
+
+  const rawBox = h("textarea", { class: "code", rows: "22", readonly: "readonly" });
+  const errorsBox = h("div");
+  const okBox = h("div");
+
+  if (bundles.ok) {
+    for (const b of bundles.data.bundles)
+      W.bundle.append(h("option", { value: b.bundle_id },
+        `${b.bundle_id} · ${b.documents.length} docs · cutoff ${b.as_of_cutoff}`));
+  }
+
+  const segRows = h("tbody");
+  const peersRows = h("tbody");
+  const segModel = () => ({ name: "Segment", min: -0.05, max: 0.15 });
+  const peerModel = () => ({ ticker: "AMD", pe: "", evebitda: "", ps: "", growth: "" });
+
+  function segAdd(v = segModel()) {
+    const name = h("input", { type: "text", value: v.name });
+    const min = h("input", { type: "number", step: "0.01", value: String(v.min), class: "num" });
+    const max = h("input", { type: "number", step: "0.01", value: String(v.max), class: "num" });
+    const del = h("button", { class: "btn small danger", onclick: () => tr.remove() }, "✕");
+    const tr = h("tr", null, h("td", null, name), h("td", null, min),
+      h("td", null, max), h("td", null, del));
+    [name, min, max].forEach(el => el.addEventListener("input", sync));
+    segRows.append(tr);
+  }
+
+  function peerAdd(v = peerModel()) {
+    const cells = {};
+    for (const key of ["ticker", "pe", "evebitda", "ps", "growth"]) {
+      cells[key] = h("input", { type: "text", value: String(v[key === "pe" ? "pe" : key] || ""),
+        class: key === "ticker" ? "" : "num" });
+      cells[key].addEventListener("input", sync);
+    }
+    const del = h("button", { class: "btn small danger", onclick: () => tr.remove() }, "✕");
+    const tr = h("tr", null,
+      ...["ticker", "pe", "evebitda", "ps", "growth"].map(k => h("td", null, cells[k])),
+      h("td", null, del));
+    tr.dataset.cells = "1";
+    tr._cells = cells;
+    peersRows.append(tr);
+  }
+
+  segAdd({ name: "CCG", min: -0.10, max: 0.12 });
+  segAdd({ name: "DCAI", min: -0.05, max: 0.25 });
+  segAdd({ name: "NEX", min: -0.05, max: 0.20 });
+  peerAdd({ ticker: "AMD", pe: "48.2", evebitda: "27.6", ps: "8.1", growth: "0.22" });
+  peerAdd({ ticker: "NVDA", pe: "52.4", evebitda: "33.1", ps: "24.4", growth: "0.55" });
+
+  function num(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
+
+  function payload() {
+    const segs = {};
+    for (const tr of segRows.children) {
+      const [name, min, max] = tr.querySelectorAll("input");
+      if (name.value.trim()) segs[name.value.trim()] = [num(min.value), num(max.value)];
+    }
+    const peers = [...peersRows.children].map(tr => {
+      const c = tr._cells;
+      return { ticker: c.ticker.value.trim() || null, p_e_ttm: num(c.pe.value),
+        ev_ebitda: num(c.evebitda.value), p_s: num(c.ps.value),
+        rev_growth_yoy: num(c.growth.value),
+        notional_note: "filled at mandate creation" };
+    }).filter(p => p.ticker);
+    return {
+      ticker: W.ticker.value, cik: W.cik.value, period: W.period.value,
+      bundle_id: W.bundle.value, cutoff_date: W.cutoff.value,
+      trigger_document: W.trigger.value,
+      report_policy: {
+        note_type: W.noteType.value,
+        length_words: [num(W.wordsMin.value), num(W.wordsMax.value)],
+        sections: SECTIONS.filter(s => sectionState.get(s)),
+      },
+      assumptions: {
+        wacc: num(W.wacc.value), terminal_growth: num(W.tg.value),
+        exit_multiple_ebitda: num(W.exit.value), tax_rate: num(W.tax.value),
+        forecast_bounds: {
+          segments: segs,
+          margin_floor_gross: num(W.mfloor.value),
+          margin_ceiling_gross: num(W.mceil.value) },
+        peer_block: { as_of: W.cutoff.value, peers },
+        dcf_comps_tolerance: 0.25,
+      },
+    };
+  }
+
+  function sync() {
+    rawBox.value = JSON.stringify(payload(), null, 2);
+  }
+
+  function paintDocs() {
+    const b = (bundles.data ? bundles.data.bundles : [])
+      .find(x => x.bundle_id === W.bundle.value);
+    W.docsBox.replaceChildren();
+    if (!b) return;
+    const cutoff = W.cutoff.value;
+    for (const d of b.documents) {
+      const vis = d.filed <= cutoff;
+      W.docsBox.append(h("div", { class: "row", style: vis ? "" : "opacity:.45" },
+        h("span", { class: "chip " + (vis ? "ok" : "major") }, d.form),
+        h("span", { class: "mono small grow" }, d.doc_id),
+        h("span", { class: "mono small muted" }, d.filed),
+        vis ? null : h("span", { class: "chip major" }, "post-cutoff")));
+    }
+    const trig = W.trigger;
+    trig.replaceChildren(...b.documents.filter(d => d.filed <= cutoff)
+      .map(d => h("option", { value: d.doc_id }, `${d.form} · ${d.doc_id}`)));
+    sync();
+  }
+
+  W.bundle.addEventListener("change", paintDocs);
+  W.cutoff.addEventListener("change", paintDocs);
+  for (const el of [W.ticker, W.cik, W.period, W.noteType, W.wordsMin, W.wordsMax,
+    W.wacc, W.tg, W.exit, W.tax, W.mfloor, W.mceil])
+    el.addEventListener("input", sync);
+
+  async function submit() {
+    errorsBox.replaceChildren();
+    okBox.replaceChildren();
+    const body = payload();
+    const r = await guard(() => Api.post("/api/cases", body), "case not created");
+    if (!r.ok) {
+      const errs = r.err.detail && r.err.detail.errors;
+      errorsBox.replaceChildren(h("div", { class: "err-box" },
+        h("b", null, "mandate validation failed"), errs ? h("ul", null,
+          ...errs.map(e => h("li", null, e))) : ""));
+      return;
+    }
+    toast("case created", `${r.data.case_id} · ${r.data.mandate_id}`);
+    Route.nav(`#/case/${r.data.case_id}`);
+    render();
+  }
+
+  const secChips = h("div", { class: "row wrap" },
+    ...SECTIONS.map(s => {
+      const chip = h("span", { class: "chip accent", style: "cursor:pointer" }, s);
+      chip.addEventListener("click", () => {
+        sectionState.set(s, !sectionState.get(s));
+        chip.classList.toggle("accent", sectionState.get(s));
+        chip.style.opacity = sectionState.get(s) ? "" : ".45";
+        sync();
+      });
+      return chip;
+    }));
+
+  const formPane = h("div", null,
+    errorsBox, okBox,
+    h("fieldset", null, h("legend", null, "ident · bundle · cutoff"),
+      h("div", { class: "form-grid" },
+        label("ticker", W.ticker), label("period label", W.period),
+        label("cik", W.cik), label("cutoff date", W.cutoff),
+        label("frozen bundle", W.bundle), label("trigger document", W.trigger)),
+      h("label", { class: "label mt2" }, "documents visible at this cutoff"),
+      W.docsBox),
+    h("fieldset", null, h("legend", null, "report policy"),
+      h("div", { class: "form-grid" },
+        label("note type", W.noteType),
+        label("min words", W.wordsMin), label("max words", W.wordsMax)),
+      h("label", { class: "label mt2" }, "sections (click to toggle)"), secChips),
+    h("fieldset", null, h("legend", null, "valuation assumptions — human-owned"),
+      h("div", { class: "form-grid" },
+        label("WACC", W.wacc), label("terminal growth", W.tg),
+        label("exit multiple (EBITDA)", W.exit), label("tax rate", W.tax),
+        label("gross margin floor", W.mfloor), label("gross margin ceiling", W.mceil)),
+      h("label", { class: "label mt3" }, "forecast bounds per segment (growth min–max)"),
+      h("table", { class: "grid editor" },
+        h("thead", null, h("tr", null, h("th", null, "segment"),
+          h("th", { class: "num" }, "min"), h("th", { class: "num" }, "max"),
+          h("th", null, ""))), segRows),
+      h("button", { class: "btn small mt2", onclick: () => segAdd() }, "＋ add segment"),
+      h("label", { class: "label mt3" }, "peer multiple block (dated ≤ cutoff, hashed input)"),
+      h("table", { class: "grid editor" },
+        h("thead", null, h("tr", null,
+          h("th", null, "ticker"), h("th", { class: "num" }, "P/E ttm"),
+          h("th", { class: "num" }, "EV/EBITDA"), h("th", { class: "num" }, "P/S"),
+          h("th", { class: "num" }, "rev growth yoy"), h("th", null, ""))), peersRows),
+      h("button", { class: "btn small mt2", onclick: () => peerAdd() }, "＋ add peer")),
+    h("div", { class: "actions" },
+      h("button", { class: "btn primary", onclick: submit }, "Create case"),
+      h("span", { class: "hint" }, "validation runs through the service boundary (the same rules the controller gate applies)")));
+
+  const rawPane = h("div", null,
+    labeledPanel("raw mandate.json — live",
+      h("p", { class: "hint" }, "kept exactly in sync with the form; what you see is what the case freezes."),
+      rawBox));
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "New coverage case"),
+      h("span", { class: "sub" }, "mandate editor — inputs restricted to the frozen bundle and the dated assumptions file")),
+    h("div", { class: "wizard" }, formPane, rawPane));
+
+  paintDocs();
+
+  function label(text, el) {
+    return h("label", { class: "f" }, h("span", null, text), el);
+  }
+};
+
+/* ----------------------------------------------- bundle builder ---------- */
+
+Views.bundles = async function bundles(view) {
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "Bundle builder — CoverageFlow";
+  view.replaceChildren(loadingRow("EDGAR index"));
+  const list = await guard(() => Api.get("/api/bundles"), null);
+
+  const tickerIn = h("input", { type: "text", value: "INTC" });
+  const formsIn = h("input", { type: "text", placeholder: "10-K, 10-Q, 8-K (blank = all)" });
+  const winIn = h("input", { type: "text", placeholder: "2025-01-01:2026-12-31" });
+  const nameIn = h("input", { type: "text", placeholder: "intc-2026-10 frozen snapshot" });
+  const results = h("div", { class: "mt2" });
+  const note = h("div");
+  const chosen = new Map();   // doc_id -> row
+  let cikVal = null;
+  const chosenBox = h("div", { class: "panel inset mt2" });
+
+  function paintChosen() {
+    chosenBox.replaceChildren(
+      h("label", { class: "label" }, `selected for snapshot (${chosen.size})`),
+      chosen.size ? h("table", { class: "grid" },
+        h("thead", null, h("tr", null, h("th", null, "form"), h("th", null, "doc id"),
+          h("th", { class: "num" }, "filed"), h("th", null, ""))),
+        h("tbody", null, ...[...chosen.entries()].map(([docId, d]) =>
+          h("tr", null, h("td", null, d.form), h("td", { class: "id" }, docId),
+            h("td", { class: "num" }, d.filed),
+            h("td", null, h("button", { class: "btn small danger",
+              onclick: () => { chosen.delete(docId); paintChosen(); } }, "✕"))))))
+        : emptyState("no documents selected", "search a ticker and add filings to the snapshot."));
+  }
+
+  async function search() {
+    results.replaceChildren(loadingRow("filings"));
+    const q = new URLSearchParams({ ticker: tickerIn.value });
+    if (formsIn.value) q.set("forms", formsIn.value);
+    if (winIn.value) q.set("window", winIn.value);
+    const r = await guard(() => Api.get(`/api/edgar/search?${q}`), "search failed");
+    if (!r.ok) { results.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+    cikVal = r.data.cik;
+    if (r.data.cik) W_cik().value = r.data.cik;
+    note.replaceChildren(h("p", { class: "hint" }, r.data.note));
+    results.replaceChildren(
+      r.data.filings.length ? h("table", { class: "grid" },
+        h("thead", null, h("tr", null, h("th", null, "form"), h("th", null, "title"),
+          h("th", { class: "num" }, "filed"), h("th", { class: "num" }, "size"),
+          h("th", null, ""))),
+        h("tbody", null, ...r.data.filings.map(d => h("tr", null,
+          h("td", null, h("span", { class: "chip" }, d.form)),
+          h("td", null, h("a", { href: d.source_url }, d.doc_id), h("div", { class: "hint" }, d.title)),
+          h("td", { class: "num" }, d.filed),
+          h("td", { class: "num" }, fmt.mb(d.bytes)),
+          h("td", null, chosen.has(d.doc_id)
+            ? h("span", { class: "chip ok" }, "selected")
+            : h("button", { class: "btn small", onclick: () => { chosen.set(d.doc_id, d); paintChosen(); } }, "select"))))))
+        : emptyState(`no ${tickerIn.value} filings in index`, "try another ticker or widen the window; the demo index covers Intel and AMD."));
+  }
+
+  function W_cik() { return view.querySelector("#cik-in"); }
+  const cikIn = h("input", { type: "text", id: "cik-in", placeholder: "0000050863", value: "0000050863" });
+
+  async function snapshot() {
+    const r = await guard(() => Api.post("/api/bundles", {
+      cik: cikIn.value, docs: [...chosen.keys()], name: nameIn.value || undefined,
+    }), "snapshot failed");
+    if (!r.ok) return;
+    toast("bundle frozen", `${r.data.bundle_id} · ${r.data.documents.length} documents · ${r.data.bundle_sha256.slice(0, 18)}…`);
+    chosen.clear(); paintChosen();
+    Views.bundles(view);
+  }
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "Bundle builder"),
+      h("span", { class: "sub" }, "EDGAR search → frozen, hashed document snapshot — the only permitted case inputs")),
+    h("div", { class: "two-col" },
+      h("div", null,
+        labeledPanel("1 · search EDGAR by ticker",
+          h("div", { class: "form-grid" },
+            h("label", { class: "f" }, h("span", null, "ticker"), tickerIn),
+            h("label", { class: "f" }, h("span", null, "forms"), formsIn),
+            h("label", { class: "f" }, h("span", null, "filed window"), winIn)),
+          h("div", { class: "actions" },
+            h("button", { class: "btn primary", onclick: search }, "Search filings")),
+          note, results),
+        labeledPanel("2 · snapshot selection",
+          chosenBox,
+          h("div", { class: "form-grid mt2" },
+            h("label", { class: "f" }, h("span", null, "cik"), cikIn),
+            h("label", { class: "f" }, h("span", null, "bundle name"), nameIn)),
+          h("div", { class: "actions" },
+            h("button", { class: "btn primary", onclick: snapshot }, "Freeze bundle →")))),
+      labeledPanel("3 · frozen bundles on disk",
+        list.ok ? h("table", { class: "grid" },
+          h("thead", null, h("tr", null, h("th", null, "bundle"), h("th", null, "sha256"),
+            h("th", { class: "num" }, "docs"), h("th", null, "cutoff"))),
+          h("tbody", null, ...list.data.bundles.map(b => h("tr", null,
+            h("td", { class: "id" }, b.bundle_id),
+            h("td", { class: "id muted" }, (b.bundle_sha256 || "").slice(0, 18) + "…"),
+            h("td", { class: "num" }, String(b.documents.length)),
+            h("td", { class: "num" }, b.as_of_cutoff)))))
+          : emptyState("no bundles", "snapshot one from the search results"))));
+  paintChosen();
+};
+
+
+/* ------------------------------------------------------- evolution ------ */
+
+Views.evolution = async function evolution(view) {
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "Evolution — CoverageFlow";
+  const r = await guard(() => Api.get("/api/versions"), null);
+  const reg = r.ok ? r.data : null;
+
+  const SCOPES = [
+    { id: "prompt card ingest", ok: true },
+    { id: "prompt card extractor", ok: true },
+    { id: "prompt card writer", ok: true },
+    { id: "mapping tables v2", ok: true },
+    { id: "engine code (deterministic)", ok: true },
+    { id: "report template", ok: true },
+    { id: "controller", ok: false, why: "Orchestrator control logic is locked — a proposal cannot weaken the controller." },
+    { id: "gates", ok: false, why: "Gate thresholds are locked — a proposal cannot weaken its own acceptance standard." },
+    { id: "rubric", ok: false, why: "The critic rubric is a locked acceptance standard." },
+    { id: "acceptance rules", ok: false, why: "Acceptance rules (2 clean reviews, budgets) are locked." },
+  ];
+  const scopeSel = h("select");
+  for (const s of SCOPES) {
+    scopeSel.append(h("option", { value: s.id, disabled: s.ok ? null : "" },
+      (s.ok ? "  " : "✕ ") + s.id));
+  }
+  const scopeWhy = h("p", { class: "hint" });
+  scopeSel.addEventListener("change", () => {
+    const s = SCOPES.find(x => x.id === scopeSel.value);
+    scopeWhy.textContent = s ? (s.ok
+      ? "evolvable scope — regression must prove unchanged outputs on the bundle where declared"
+      : s.why) : "";
+  });
+  scopeWhy.textContent = SCOPES[0].ok ? "evolvable scope — regression must prove unchanged outputs on the bundle where declared" : "";
+  const descIn = h("textarea", { rows: "3", placeholder: "what failed, what changes, which evidence case linked" });
+  const linkedIn = h("input", { type: "text", placeholder: "linked case (e.g. intc-fy2026q4-20270129)" });
+  const prepResult = h("div");
+
+  async function prepare() {
+    prepResult.replaceChildren(loadingRow("proposal"));
+    const rr = await guard(() => Api.post("/api/evolution/prepare", {
+      scope: scopeSel.value, description: descIn.value, linked_case: linkedIn.value,
+    }), "prepare rejected");
+    if (!rr.ok) { prepResult.replaceChildren(); return; }
+    toast("proposal prepared", `${rr.data.version} · parent ${rr.data.parent}`);
+    Views.evolution(view);
+  }
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "Evolution management"),
+      h("span", { class: "sub" },
+        `versioned system changes, regression-tested on the frozen cases · active ${reg ? reg.active : "—"}`)),
+    labeledPanel("Version registry",
+      gridTable(
+        ["version", "parent", "scope", "tested cases", "regressions", "approval", "rollback"],
+        (reg ? reg.versions : []).map(v => [
+          v.version === reg.active
+            ? h("span", null, h("span", { class: "chip accent" }, v.version), " ",
+               h("span", { class: "chip ok" }, "active"))
+            : h("span", { class: "mono" }, v.version),
+          v.parent || "—",
+          v.scope,
+          (v.tested.cases || []).join(", ") || "—",
+          v.review ? (v.review.regressions_all_pass ? h("span", { class: "chip ok" }, "all pass") :
+            h("span", { class: "chip major" }, "fail")) :
+            h("span", { class: "chip" }, "not run"),
+          v.approval ? h("span", { class: "chip " + (v.approval.decision === "APPROVED" ? "ok" : "major") },
+            `${v.approval.decision} · ${v.approval.by}`) :
+            h("span", { class: "chip minor" }, "pending"),
+          v.rollback_to ? h("span", { class: "chip minor" }, `→ ${v.rollback_to}`) : "—",
+        ]),
+        { emptyWhat: "no versions", emptyNote: "the registry seeds from the pinned system" })),
+    h("div", { class: "two-col" },
+      h("div", null,
+        labeledPanel("Propose a change (prepare)",
+          h("label", { class: "f" }, h("span", null, "scope — locked scopes are greyed out"), scopeSel),
+          scopeWhy,
+          h("label", { class: "f" }, h("span", null, "description"), descIn),
+          h("label", { class: "f" }, h("span", null, "linked failure case"), linkedIn),
+          h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: prepare }, "Prepare proposal →")),
+          prepResult)),
+      h("div", null,
+        labeledPanel("Lifecycle: regress → approve → rollback",
+          h("p", { class: "hint" },
+            "regression runs offline on the replay backend against the dev corpus (never live tokens); approval swaps the active pointer; rollback restores a prior approved pointer and runs a verification case."),
+          evoLifecycle(reg, view)))));
+
+  function evoLifecycle(reg, view) {
+    const box = h("div");
+    const pending = (reg ? reg.versions : []).filter(v => !v.approval);
+    const approved = (reg ? reg.versions : []).filter(v => v.approval && v.approval.decision === "APPROVED");
+    if (pending.length) {
+      for (const p of pending) box.append(evoRow(p, approved, view));
+    } else {
+      box.append(emptyState("Nothing in flight",
+        "prepare a proposal on the left; after regression + fresh-critic review it lands here for the human gate."));
+    }
+    return box;
+  }
+
+  function evoRow(p, approved, view) {
+    const who = h("input", { type: "text", value: "Gaetano Marco Chiantia" });
+    const note = h("div", { class: "hint" });
+    const row = h("div", { class: "panel mt2" },
+      h("div", { class: "row wrap" },
+        h("span", { class: "chip accent" }, p.version),
+        h("span", { class: "chip" }, p.scope),
+        h("span", { class: "grow" })),
+      h("p", { class: "hint" }, (p.proposal && p.proposal.description) ||
+        "no description; parent " + (p.parent || "—")),
+      h("div", { class: "row wrap" },
+        h("button", { class: "btn", onclick: async () => {
+          note.textContent = "regression running (offline replay)…";
+          const rr = await guard(() => Api.post("/api/evolution/regress", { version: p.version }), "regression failed");
+          if (!rr.ok) { note.textContent = ""; return; }
+          toast("regression complete", rr.data.summary);
+          Views.evolution(view);
+        } }, "▶ run regression"),
+        h("span", { class: "grow" }),
+        h("span", { class: "small" }, who),
+        h("button", { class: "btn primary small", onclick: () => approve(p.version, "APPROVED", view) }, "approve"),
+        h("button", { class: "btn small", onclick: () => approve(p.version, "REJECTED", view) }, "reject"),
+        h("button", { class: "btn small", onclick: () => approve(p.version, "DEFERRED", view) }, "defer")),
+      note);
+
+    async function approve(version, decision, view) {
+      const rr = await guard(() => Api.post("/api/evolution/approve", {
+        version, decision, by: who.value,
+      }), `${decision} failed`);
+      if (!rr.ok) return;
+      toast(`decision recorded: ${decision}`, `active now ${rr.data.active}`);
+      Views.evolution(view);
+    }
+    return row;
+  }
+
+  // rollback pane
+  const rollbackSel = h("select");
+  for (const v of (reg ? reg.versions : [])) {
+    if (v.version !== reg.active && v.approval && v.approval.decision === "APPROVED")
+      rollbackSel.append(h("option", { value: v.version }, v.version));
+  }
+  const rollResult = h("div");
+  view.append(labeledPanel("Rollback (authorized) — restores a prior approved pointer",
+    h("span", { class: "hint" }, "rollback also stamps the rolled-over entry and runs a verification case on the restored configuration."),
+    h("div", { class: "row wrap" },
+      h("span", { class: "label", style: "margin:0" }, "to"),
+      rollbackSel,
+      h("button", { class: "btn danger", onclick: async () => {
+        if (!rollbackSel.value) return;
+        const rr = await guard(() => Api.post("/api/evolution/rollback", { to_version: rollbackSel.value }), "rollback failed");
+        if (!rr.ok) return;
+        rollResult.replaceChildren(h("div", { class: "ok-box mt2" },
+          `rolled back ${rr.data.from_version} → ${rr.data.to_version}`,
+          h("div", { class: "mono small mt2" },
+            `verification run: ${rr.data.verification.case} · outputs match history: ${rr.data.verification.outputs_match_history}`)));
+        toast("rollback verified", rr.data.verification.note);
+      } }, "Roll back")),
+    rollResult));
+};
+
+/* ------------------------------------------------------- demo panel ------ */
+
+Views.demo = async function demo(view) {
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "Demo panel — CoverageFlow";
+  const r = await guard(() => Api.get("/api/cases"), null);
+  const cases = r.ok ? r.data.cases : [];
+  const caseSel = h("select");
+  for (const c of cases) {
+    if (!["CLOSED", "APPROVED", "REJECTED"].includes(c.status))
+      caseSel.append(h("option", { value: c.case_id }, `${c.case_id} · ${c.status}`));
+  }
+  const stageSel = h("select", null,
+    ...["generator", "ingest", "extractor", "model", "writer", "critic", "approval"]
+      .map(s => h("option", { value: s }, s)));
+  const out = h("div");
+  const target = () => caseSel.value || (cases[0] && cases[0].case_id);
+
+  async function run(action, body) {
+    out.replaceChildren(loadingRow("scripted action"));
+    const rr = await guard(() => Api.post(`/api/cases/${target()}/demo/${action}`, body || {}),
+      `${action} failed`);
+    out.replaceChildren();
+    if (!rr.ok) return;
+    out.append(h("div", { class: "panel inset" },
+      h("label", { class: "label" }, "result"),
+      jsonTree(rr.data)));
+    toast(`${action} ok`, `case ${target()}`);
+  }
+
+  const demoCard = (title, body, btnLabel, action, payloadFn) => {
+    const el = h("fieldset", null, h("legend", null, title), body,
+      h("div", { class: "actions" },
+        h("button", { class: "btn", onclick: () => run(action, payloadFn && payloadFn()) }, btnLabel)));
+    return el;
+  };
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "Demo panel"),
+      h("span", { class: "chip minor" }, "scripted rehearsal"),
+      h("span", { class: "sub" },
+        "deterministic buttons mirroring the CLI demo verbs — used to drive the evidence runs, never real reviewers")),
+    h("fieldset", null, h("legend", null, "target case"),
+      h("label", { class: "f" }, h("span", null, "case"), caseSel)),
+    labeledPanel("Scripted rehearsal actions",
+      h("div", { class: "two-col" },
+        h("div", null,
+          demoCard("seed-finding  — evidence run 2",
+            h("p", { class: "hint" }, "injects a major finding into the ledger; the orchestrator issues a repair packet and the loop must close it with critic-verified evidence."),
+            "Seed a finding", "seed-finding"),
+          demoCard("perturb  — evidence run 4 (no-leakage)",
+            h("p", { class: "hint" }, "presents a post-cutoff document to the case and recomputes: outputs must stay hash-identical, proving cutoff discipline."),
+            "Run perturbation check", "perturb")),
+        h("div", null,
+          demoCard("kill-stage  — evidence run 3 (resume)",
+            h("p", { class: "hint" }, "kills the pending stage mid-run; verified checkpoints are kept and only the pending role is re-dispatched on resume."),
+            h("div", { class: "row" }, h("span", { class: "hint" }, "stage to kill"), stageSel,
+              h("button", { class: "btn small", onclick: () => Route.nav(`#/case/${target()}`) }, "inspect case")),
+            "Kill stage", "kill-stage", () => ({ stage: stageSel.value })),
+          demoCard("watch live",
+            h("p", { class: "hint" }, "after seeding, open the case trace: FINDING_OPENED lands at the round boundary and the repair packet appears on the wire."),
+            h("a", { class: "btn small", href: "#/case/intc-fy2026q4-20270129/trace" }, "trace of the running case →"),
+            null, "seed-finding"))),
+      out));
+};
+
+/* ----------------------------------------------------- replay viewer ------ */
+
+Views.replay = async function replay(view) {
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "Replay viewer — CoverageFlow";
+  const r = await guard(() => Api.get("/api/cases"), null);
+  const cases = r.ok ? r.data.cases : [];
+  const caseSel = h("select");
+  const steps = h("div", { class: "replay-steps" });
+  const stage = h("div", { id: "replay-stage" });
+
+  for (const c of cases) caseSel.append(h("option", { value: c.case_id }, c.case_id));
+  caseSel.addEventListener("change", load);
+
+  async function load() {
+    stage.replaceChildren(emptyState("Pick a recorded step",
+      "replay files come from the case replay/ directory — one per role call, recorded from live runs (contract §6)."));
+    const rr = await guard(() => Api.get(`/api/cases/${caseSel.value}/replay`), null);
+    steps.replaceChildren(h("label", { class: "label" }, "recorded steps"), );
+    if (!rr || !rr.ok || !rr.data.count) {
+      steps.append(h("div", { class: "empty" }, "no recordings for this case",
+        h("p", null, "runs recorded with -- --record write replay/<request_id>.json per dispatch.")));
+      return;
+    }
+    rr.data.replays.forEach((p, i) => {
+      const b = h("button", { class: "step" },
+        `${String(i + 1).padStart(2, "0")} · ${p.role}`);
+      b.addEventListener("click", () => show(p, b, i, rr.data.replays.length));
+      steps.append(b);
+    });
+    show(rr.data.replays[0], steps.querySelector("button.step"), 1, rr.data.count);
+  }
+
+  async function show(p, btn, i, n) {
+    $$(".replay-steps button.step").forEach(b => b.classList.remove("on"));
+    if (btn) btn.classList.add("on");
+    const rr = await guard(() => Api.get(
+      `/api/cases/${caseSel.value}/replay/${p.request_id}`), "step load failed");
+    if (!rr.ok) return;
+    const rec = rr.data.recording;
+    stage.replaceChildren(
+      labeledPanel(`Step ${i} of ${n} — dispatch → result`,
+        kv([
+          ["role", rec.role],
+          ["request", rec.request_id],
+          ["candidate", rec.candidate_id || "—"],
+          ["backend", rec.backend],
+          ["recorded at", fmt.datetime(rec.recorded_at)],
+          ["prompt path", rec.prompt_path],
+          ["prompt sha256", (rec.prompt_sha256 || "").slice(0, 24) + "…"],
+          ["assembled sha256", (rec.assembled_prompt_sha256 || "").slice(0, 24) + "…"],
+        ])),
+      labeledPanel("recorded response text",
+        h("pre", { class: "rawjson" }, rec.response_text),
+        h("p", { class: "hint" },
+          "ReplayBackend answers dispatches by role + prompt hash; a missing match is a hard error — never a silent replay of the wrong context.")),
+      h("div", { class: "actions" },
+        h("a", { class: "btn small", href: `#/case/${caseSel.value}/trace` }, "see where it fits in the trace →")));
+  }
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "Replay viewer"),
+      h("span", { class: "sub" }, "step through a recorded run: dispatch → result → gate → transition, file-per-request")),
+    labeledPanel("case",
+      h("div", { class: "row" }, h("span", { class: "label", style: "margin:0" }, "recorded case"), caseSel)),
+    h("div", { class: "replay-stage" }, steps, stage));
+  if (caseSel.value) load();
+};
+
+/* ----------------------------------------------------------- backends --- */
+
+Views.backends = async function backends(view) {
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "Backends — CoverageFlow";
+  const r = await guard(() => Api.get("/api/backends"), null);
+  if (!r.ok) { view.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+  const b = r.data;
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "Backend manager"),
+      h("span", { class: "sub" },
+        "headless CLI / OpenAI-compatible / replay adapters; selection is stored in config (auto-detect → ask → override)")),
+    labeledPanel("Detected backends",
+      gridTable(
+        ["backend", "kind", "detected", "api config", "health", "usage", ""],
+        b.backends.map(x => [
+          h("span", { class: "mono" }, x.name),
+          x.kind,
+          x.detected ? h("span", { class: "chip ok" }, "available") :
+            h("span", { class: "chip minor" }, "not installed"),
+          x.api_config ? "configured" : "—",
+          x.healthy === null ? "—" : x.healthy ? h("span", { class: "verified" }, "healthy") : "down",
+          h("span", { class: "hint" }, x.usage_note),
+          h("button", { class: "btn small", disabled: x.selected ? "" : null,
+            onclick: async () => {
+              const rr = await guard(() => Api.post("/api/backends/select", { backend: x.name }), null);
+              if (rr.ok) { toast(`backend selected: ${x.name}`); Views.backends(view); }
+            } }, x.selected ? "active" : "select"),
+        ]),
+        { emptyWhat: "no backends", emptyNote: "detection lists adapter status" })),
+    labeledPanel("Per-role token usage vs caps (live cases)",
+      h("table", { class: "grid" },
+        h("thead", null, h("tr", null,
+          h("th", null, "role"), h("th", { class: "num" }, "tokens used"),
+          h("th", { class: "num" }, "cap"), h("th", { class: "num" }, "meter"))),
+        h("tbody", null, ...Object.entries(b.usage_by_role).map(([role, used]) =>
+          h("tr", null,
+            h("td", { class: "id" }, role),
+            h("td", { class: "num" }, fmt.int(used)),
+            h("td", { class: "num" }, fmt.int(b.caps.role_tokens_max)),
+            h("td", { class: "num" }, meter(used, b.caps.role_tokens_max, "tokens")))))),
+      h("p", { class: "hint" },
+        "token caps are checked at every dispatch; a breach terminates the case EXHAUSTED with a precise record — never silently.")));
+};
