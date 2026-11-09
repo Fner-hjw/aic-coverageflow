@@ -23,7 +23,8 @@ def _fake_edgar() -> "callable":
     """
     submissions = {
         "cik": "9999",
-        "recent": {
+        "name": "FAKE CORP",
+        "filings": {"recent": {
             "accessionNumber": [
                 "0000000009-26-000001",
                 "0000000009-26-000002",
@@ -32,7 +33,7 @@ def _fake_edgar() -> "callable":
             "filingDate": ["2026-04-25", "2026-03-02"],
             "reportDate": ["2026-03-28", "2026-03-02"],
             "primaryDocument": ["fake-20260328.htm", "fake8k.htm"],
-        },
+        }},
     }
     docs = {
         "https://www.sec.gov/Archives/edgar/data/9999/000000000926000001/fake-20260328.htm": b"<html>10Q</html>",

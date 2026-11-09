@@ -149,21 +149,26 @@ class EdgarFetcher:
         self._last_request = 0.0
         self.urls: list[str] = []
 
-    def get(self, url: str) -> bytes:
+    def get(self, url: str, attempts: int = 4) -> bytes:
         parsed = url.split("/", 3)
         if len(parsed) < 3 or parsed[2] not in SEC_HOSTS:
             raise FetchError(f"refusing non-EDGAR url: {url}")
-        self.throttle()
         import urllib.request
 
-        req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = resp.read()
-        except Exception as exc:  # urllib raises several exception types
-            raise FetchError(f"GET {url} failed: {exc}") from exc
-        self.urls.append(url)
-        return data
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            self.throttle()
+            req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
+            try:
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    data = resp.read()
+                self.urls.append(url)
+                return data
+            except Exception as exc:  # urllib raises several exception types
+                last_exc = exc
+                if attempt < attempts - 1:
+                    time.sleep(2.0 * (attempt + 1))
+        raise FetchError(f"GET {url} failed after {attempts} attempts: {last_exc}") from last_exc
 
     def throttle(self) -> None:
         wait = self.min_interval - (time.monotonic() - self._last_request)
@@ -197,8 +202,12 @@ def fetch_submissions(cik: str, fetch: Fetch) -> dict:
 
 
 def _recent_index(submissions: dict) -> dict[str, dict]:
-    """Map accession number -> submissions record (recent filings window)."""
-    recent = submissions.get("recent", {})
+    """Map accession number -> submissions record (recent filings window).
+
+    The live EDGAR API nests the recent window under ``filings.recent``; the
+    flat top-level shape is also accepted (synthetic fixtures).
+    """
+    recent = submissions.get("filings", {}).get("recent") or submissions.get("recent", {})
     keys = recent.get("accessionNumber", [])
     idx: dict[str, dict] = {}
     for i, acc in enumerate(keys):

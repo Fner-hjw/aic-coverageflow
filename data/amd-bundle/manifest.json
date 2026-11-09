@@ -1,0 +1,107 @@
+{
+  "as_of_cutoff": "2026-11-04",
+  "documents": [
+    {
+      "doc_id": "amd-10k-fy2024",
+      "form": "10-K",
+      "filed": "2025-02-05",
+      "period": "2024-12-28",
+      "path": "inputs/amd-10k-fy2024.htm",
+      "sha256": "9f1e660458aa5b5bcb0ff39a836d17069d8a9daf72780444a5858429c8af0f4d",
+      "bytes": 2091282,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248825000012/amd-20241228.htm"
+    },
+    {
+      "doc_id": "amd-10k-fy2025",
+      "form": "10-K",
+      "filed": "2026-02-04",
+      "period": "2025-12-27",
+      "path": "inputs/amd-10k-fy2025.htm",
+      "sha256": "24724a71abca511899fd57692b51af159ff22667673dfd165611b0bff0fb4627",
+      "bytes": 2174700,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000018/amd-20251227.htm"
+    },
+    {
+      "doc_id": "amd-10q-2025q1",
+      "form": "10-Q",
+      "filed": "2025-05-07",
+      "period": "2025-03-29",
+      "path": "inputs/amd-10q-2025q1.htm",
+      "sha256": "38837430579f5f5af3a06f62750503d1bcb6bb3acf8e29b0ccdcf15dfe14d818",
+      "bytes": 1077538,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248825000047/amd-20250329.htm"
+    },
+    {
+      "doc_id": "amd-10q-2025q2",
+      "form": "10-Q",
+      "filed": "2025-08-06",
+      "period": "2025-06-28",
+      "path": "inputs/amd-10q-2025q2.htm",
+      "sha256": "95bda811f43e02a6e8655d55fdf13baed3746263f8969f357c6c9ae805cfefda",
+      "bytes": 1371475,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248825000108/amd-20250628.htm"
+    },
+    {
+      "doc_id": "amd-10q-2025q3",
+      "form": "10-Q",
+      "filed": "2025-11-05",
+      "period": "2025-09-27",
+      "path": "inputs/amd-10q-2025q3.htm",
+      "sha256": "c470cdf079a6567ba09c4cbdebcb3e4fbe58e3d00254d7574ec40a8a85a9008f",
+      "bytes": 1378179,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248825000166/amd-20250927.htm"
+    },
+    {
+      "doc_id": "amd-10q-2026q1",
+      "form": "10-Q",
+      "filed": "2026-05-06",
+      "period": "2026-03-28",
+      "path": "inputs/amd-10q-2026q1.htm",
+      "sha256": "7e04ff77ce5d5c09578432a2ca6b2be41a4f38bdf1bcc33c825dbacf564e1d9f",
+      "bytes": 1142404,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000076/amd-20260328.htm"
+    },
+    {
+      "doc_id": "amd-10q-2026q2",
+      "form": "10-Q",
+      "filed": "2026-08-05",
+      "period": "2026-06-27",
+      "path": "inputs/amd-10q-2026q2.htm",
+      "sha256": "2940323fe6393f36f32cddf34698ee311906d8046e2371b4ae06a6bf1bc7a247",
+      "bytes": 1348710,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000123/amd-20260627.htm"
+    },
+    {
+      "doc_id": "amd-10q-2026q3",
+      "form": "10-Q",
+      "filed": "2026-11-04",
+      "period": "2026-09-26",
+      "path": "inputs/amd-10q-2026q3.htm",
+      "sha256": "11ee28589c280defd5faed79d0b461ac2932dc4948615e7f70ce1571a9cc686b",
+      "bytes": 1469816,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000191/amd-20260926.htm"
+    },
+    {
+      "doc_id": "amd-8k-2025-10-27",
+      "form": "8-K",
+      "filed": "2025-10-27",
+      "period": "2025-10-27",
+      "path": "inputs/amd-8k-2025-10-27.htm",
+      "sha256": "548e7022ca42d283d30319daff93c6403add343575700d14e0d839a9ab4bc15a",
+      "bytes": 31462,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000119312525250803/d917887d8k.htm"
+    },
+    {
+      "doc_id": "amd-8k-2026-11-03",
+      "form": "8-K",
+      "filed": "2026-11-03",
+      "period": "2026-11-03",
+      "path": "inputs/amd-8k-2026-11-03.htm",
+      "sha256": "fb8c8664131a6441dfc475455453c901ca39d14cbf6d95fe9bf4b666873c5565",
+      "bytes": 30250,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2488/000000248826000188/amd-20261103.htm"
+    }
+  ],
+  "bundle_id": "amd-2026-11",
+  "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98"
+}
