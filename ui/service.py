@@ -1412,15 +1412,15 @@ def record_approval(case_id: str, decision: str, by: str,
                     reasoning: str = "") -> dict:
     """POST /api/cases/{id}/approval — the human gate (auditable record)."""
     c = _get(case_id)
+    if c.state["status"] != "PENDING_APPROVAL":
+        raise ConflictError(
+            f"case {case_id} is {c.state['status']}, not PENDING_APPROVAL; "
+            "approval is only recorded at the human gate")
     if decision not in ("APPROVED", "REJECTED"):
         raise ValidationError(
             f"decision must be APPROVED or REJECTED, got: {decision}")
     if not (by or "").strip():
         raise ValidationError("'by' (approver name) is required")
-    if c.state["status"] != "PENDING_APPROVAL":
-        raise ConflictError(
-            f"case {case_id} is {c.state['status']}, not PENDING_APPROVAL; "
-            "approval is only recorded at the human gate")
     _DEMO_COUNTERS["approval"] += 1
     ts = _now_iso()
     did = f"apr-{_DEMO_COUNTERS['approval']:04d}"
@@ -1552,7 +1552,7 @@ def _unified_lines(old: str, new: str) -> list[dict]:
     out = []
     for line in difflib.unified_diff(old.splitlines(), new.splitlines(),
                                      lineterm=""):
-        if line.startswith(("---", "+++")):
+        if line.startswith(("---", "+++", "@@")):
             continue
         out.append({"op": " " if line.startswith(" ") else line[0],
                     "text": line[1:]})

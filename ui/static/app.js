@@ -1010,7 +1010,9 @@ function diffPane(report) {
   const rows = [];
   let k = 0;
   while (k < lines.length) {
-    if (lines[k].op === " ") { rows.push([" ", lines[k].text, " ", lines[k].text]); k++; continue; }
+    if (lines[k].op !== "-" && lines[k].op !== "+") {
+      rows.push([" ", lines[k].text, " ", lines[k].text]); k++; continue;
+    }
     const dels = [], ins = [];
     while (k < lines.length && lines[k].op === "-") dels.push(lines[k++].text);
     while (k < lines.length && lines[k].op === "+") ins.push(lines[k++].text);

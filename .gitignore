@@ -6,3 +6,4 @@ venv/
 *.egg-info/
 .pytest_cache/
 coverage.xml
+.export-stub/
