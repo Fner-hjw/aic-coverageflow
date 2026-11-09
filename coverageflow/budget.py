@@ -58,8 +58,7 @@ class BudgetReason:
 
     def as_dict(self) -> dict:
         return {"code": self.code, "message": self.message,
-                **({"role": self.detail["role"]} if "role" in self.detail else {}),
-                **self.detail}
+                "detail": dict(self.detail)}
 
     def __getitem__(self, key: str):
         if key == "code":
