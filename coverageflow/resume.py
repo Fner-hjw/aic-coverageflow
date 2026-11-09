@@ -122,15 +122,28 @@ def plan_resume(state: dict, case_dir: Path,
     earliest = min(stages)
     earliest_stage = next(k for k, v in STAGE_INDEX.items() if v == earliest)
 
+    # dropping back to an earlier stage invalidates the current round's
+    # verified artifacts for ALL later stages of that round: they derive from
+    # content that is about to change, so they must re-run
+    stale_downstream: list[str] = []
+    round_prefix = f"rounds/round-{round_no:03d}/"
+    for rel in list(intact.keys()):
+        if not rel.startswith(round_prefix):
+            continue
+        s = artifact_stage(rel)
+        if s in STAGE_INDEX and STAGE_INDEX[s] >= earliest:
+            stale_downstream.append(rel)
+            intact.pop(rel)
+
     notes = []
     for rel in broken:
         notes.append(f"verified artifact broken: {rel}")
-    for rel in discard_candidates:
+    for rel in discard_candidates + stale_downstream:
         notes.append(f"unverified partial output discarded: {rel}")
 
     return ResumePlan(
         verified=intact,
-        discarded=discard_candidates,
+        discarded=discard_candidates + stale_downstream,
         broken_verified=broken,
         earliest_stage=earliest_stage,
         notes=notes,
@@ -138,14 +151,13 @@ def plan_resume(state: dict, case_dir: Path,
 
 
 def apply_plan(plan: ResumePlan, case_dir: Path) -> None:
-    """Move discarded partials to rounds/round-NNN/discarded/ for forensics."""
+    """Move discarded partials to a discarded/ dir beside them for forensics."""
     case_dir = Path(case_dir)
     for rel in plan.discarded:
         path = case_dir / rel
         if not path.exists():
             continue
-        target_dir = case_dir / rel.split("/")[0] / rel.split("/")[1]
-        discard_dir = target_dir / DISCARD_DIRNAME
+        discard_dir = path.parent / DISCARD_DIRNAME
         discard_dir.mkdir(parents=True, exist_ok=True)
         # keep every discard (a role can be re-killed more than once)
         n = sum(1 for _ in discard_dir.glob(path.name + "*"))
