@@ -243,3 +243,212 @@ class TestKimiDetection:
         monkeypatch.setenv("FAKE_KIMI_MODE", "headless")
         backend.invalidate_detection()  # explicit re-detect (e.g. CLI upgraded)
         assert backend.healthcheck().ok is True
+
+
+# --------------------------------------------------------------------------
+# api_backend.py - OpenAI-compatible chat completions
+# --------------------------------------------------------------------------
+
+import httpx
+
+
+def _stub_handler(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "id": "chatcmpl-1",
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": CANNED}}
+            ],
+            "usage": {"prompt_tokens": 101, "completion_tokens": 9},
+        },
+    )
+
+
+class TestApiBackend:
+    def _backend(self, transport=None, sleeps=None):
+        from coverageflow.backends import api_backend as api
+
+        kwargs = {}
+        if transport is not None:
+            kwargs["transport"] = transport
+        if sleeps is not None:
+            kwargs["sleep"] = sleeps.append
+        return api.ApiBackend(
+            base_url="https://stub.local/v1",
+            model="stub-model",
+            api_key="sk-test",
+            **kwargs,
+        )
+
+    def test_ok(self):
+        backend = self._backend(transport=httpx.MockTransport(_stub_handler))
+        res = backend.invoke(make_call(), "hello prompt")
+        assert res.ok, res.error
+        assert res.output_text == CANNED
+        assert res.tokens_in == 101 and res.tokens_out == 9
+        assert res.backend == "api"
+        assert res.elapsed_seconds >= 0
+
+    def test_request_shape(self):
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            seen["json"] = json.loads(request.content)
+            seen["auth"] = request.headers.get("Authorization")
+            return _stub_handler(request)
+
+        backend = self._backend(transport=httpx.MockTransport(handler))
+        res = backend.invoke(make_call(timeout_seconds=30), "PAYLOAD-PROMPT")
+        assert res.ok, res.error
+        assert seen["url"] == "https://stub.local/v1/chat/completions"
+        assert seen["auth"] == "Bearer sk-test"
+        assert seen["json"]["model"] == "stub-model"
+        assert seen["json"]["messages"][0]["content"] == "PAYLOAD-PROMPT"
+
+    def test_retries_5xx_then_succeeds(self):
+        attempts = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            if len(attempts) < 3:
+                return httpx.Response(500, text="server exploded")
+            return _stub_handler(request)
+
+        sleeps = []
+        backend = self._backend(
+            transport=httpx.MockTransport(handler), sleeps=sleeps
+        )
+        res = backend.invoke(make_call(), "hello")
+        assert res.ok, res.error
+        assert len(attempts) == 3
+        assert sleeps == [0.5, 1.0]  # exponential backoff between attempts
+
+    def test_retries_timeout_then_gives_up(self):
+        attempts = []
+        sleeps = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            raise httpx.ConnectTimeout("timed out")
+
+        backend = self._backend(
+            transport=httpx.MockTransport(handler), sleeps=sleeps
+        )
+        res = backend.invoke(make_call(), "hello")
+        assert res.ok is False
+        assert len(attempts) == 3
+        assert res.error and "timeout" in res.error.lower()
+
+    def test_4xx_is_not_retried(self):
+        attempts = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            return httpx.Response(401, text="bad key")
+
+        backend = self._backend(transport=httpx.MockTransport(handler))
+        res = backend.invoke(make_call(), "hello")
+        assert res.ok is False
+        assert len(attempts) == 1
+        assert "401" in res.error
+
+    def test_unconfigured_backend_fails_cleanly(self, monkeypatch):
+        from coverageflow.backends import api_backend as api
+
+        for var in (
+            "COVERAGEFLOW_BASE_URL",
+            "COVERAGEFLOW_MODEL",
+            "COVERAGEFLOW_API_KEY",
+            "COVERAGEFLOW_CONFIG",
+        ):
+            monkeypatch.delenv(var, raising=False)
+        backend = api.ApiBackend(config_path="/nonexistent/config.json")
+        res = backend.invoke(make_call(), "hello")
+        assert res.ok is False
+        assert res.error and "not configured" in res.error
+        assert backend.healthcheck().ok is False
+
+    def test_env_configuration(self, monkeypatch):
+        from coverageflow.backends import api_backend as api
+
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            return _stub_handler(request)
+
+        monkeypatch.setenv("COVERAGEFLOW_BASE_URL", "https://envstub.local/v1")
+        monkeypatch.setenv("COVERAGEFLOW_MODEL", "env-model")
+        monkeypatch.setenv("COVERAGEFLOW_API_KEY", "sk-env")
+        backend = api.ApiBackend(transport=httpx.MockTransport(handler))
+        assert backend.healthcheck().ok
+        res = backend.invoke(make_call(), "x")
+        assert res.ok, res.error
+        assert seen["url"] == "https://envstub.local/v1/chat/completions"
+
+    def test_config_file_fallback_and_env_precedence(self, monkeypatch, tmp_path):
+        from coverageflow.backends import api_backend as api
+
+        cfg = tmp_path / "config.json"
+        cfg.write_text(
+            json.dumps(
+                {
+                    "api": {
+                        "base_url": "https://filestub.local/v1",
+                        "model": "file-model",
+                        "api_key": "sk-file",
+                    }
+                }
+            )
+        )
+        for var in (
+            "COVERAGEFLOW_BASE_URL",
+            "COVERAGEFLOW_MODEL",
+            "COVERAGEFLOW_API_KEY",
+            "COVERAGEFLOW_CONFIG",
+        ):
+            monkeypatch.delenv(var, raising=False)
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            if seen.get("auth"):
+                seen["url2"] = str(request.url)
+            seen["auth"] = request.headers.get("Authorization")
+            return _stub_handler(request)
+
+        backend = api.ApiBackend(
+            config_path=str(cfg), transport=httpx.MockTransport(handler)
+        )
+        assert backend.healthcheck().ok
+        res = backend.invoke(make_call(), "x")
+        assert res.ok, res.error
+        assert seen["url"] == "https://filestub.local/v1/chat/completions"
+        assert seen["auth"] == "Bearer sk-file"
+
+        # env wins over the config file
+        monkeypatch.setenv("COVERAGEFLOW_BASE_URL", "https://envstub.local/v1")
+        monkeypatch.delenv("COVERAGEFLOW_API_KEY", raising=False)
+        backend2 = api.ApiBackend(
+            config_path=str(cfg), transport=httpx.MockTransport(handler)
+        )
+        res = backend2.invoke(make_call(), "x")
+        assert res.ok, res.error
+        assert seen["url"] == "https://envstub.local/v1/chat/completions"
+        assert seen["auth"] == "Bearer sk-file"  # key still from file
+
+    def test_malformed_success_payload_fails_cleanly(self):
+        backend = self._backend(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"nope": 1}))
+        )
+        res = backend.invoke(make_call(), "x")
+        assert res.ok is False
+        assert res.error and "choices" in res.error
+
+    def test_estimate_cost(self):
+        backend = self._backend()
+        est = backend.estimate_cost("B" * 400)
+        assert est.estimated_tokens == 100
+        assert est.method == "chars/4"
