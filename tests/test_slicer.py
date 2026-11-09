@@ -99,13 +99,15 @@ def test_slicing_is_deterministic(tmp_path):
     assert [x.sha256 for x in s1] == [x.sha256 for x in s2]
 
 
-def test_default_outdir_is_doc_parent():
-    slices = slice_document(FIXTURES / "copy-of-mini.htm", "8-K") if False else slice_document(
-        FIXTURES / "mini-8k.htm", "8-K"
-    )
+def test_default_outdir_is_doc_parent(tmp_path):
+    import shutil
+
+    doc = tmp_path / "mini-8k.htm"
+    shutil.copyfile(FIXTURES / "mini-8k.htm", doc)
+    slices = slice_document(doc, "8-K")
     assert len(slices) == 1
     assert slices[0].path == "slices/mini-8k/FULL.txt"
-    assert (FIXTURES / "slices" / "mini-8k" / "FULL.txt").is_file()
+    assert (tmp_path / "slices" / "mini-8k" / "FULL.txt").is_file()
 
 
 # ---------------------------------------------------------------- mini 8-K
