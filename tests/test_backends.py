@@ -452,3 +452,127 @@ class TestApiBackend:
         est = backend.estimate_cost("B" * 400)
         assert est.estimated_tokens == 100
         assert est.method == "chars/4"
+
+
+# --------------------------------------------------------------------------
+# replay_backends.py - RecordingBackend + ReplayBackend roundtrip
+# --------------------------------------------------------------------------
+
+
+class StubLiveBackend:
+    """Minimal live backend for record/replay tests - no CLI, no network."""
+
+    name = "stub"
+
+    def __init__(self, response_text=CANNED, ok=True, error=None):
+        self._text = response_text
+        self._ok = ok
+        self._error = error
+        self.invocations = []
+
+    def invoke(self, call, assembled_prompt):
+        self.invocations.append(assembled_prompt)
+        return bbase.AgentResult(
+            ok=self._ok, output_text=self._text, backend=self.name,
+            error=self._error, elapsed_seconds=0.01, tokens_in=10, tokens_out=5,
+        )
+
+    def healthcheck(self):
+        return bbase.HealthReport(backend=self.name, ok=True)
+
+    def estimate_cost(self, text):
+        return bbase.CostEstimate(backend=self.name, estimated_tokens=1, method="chars/4")
+
+
+class TestRecordReplay:
+    def test_roundtrip(self, tmp_path):
+        from coverageflow.backends import replay_backends as rp
+
+        live = StubLiveBackend()
+        rec = rp.RecordingBackend(live, record_dir=str(tmp_path))
+        call = make_call(request_id="req-0009", role="extractor")
+        res = rec.invoke(call, "ASSEMBLED-PROMPT-TEXT")
+        assert res.ok, res.error
+        assert res.raw_response_ref == "req-0009.json"
+
+        record = json.loads((tmp_path / "req-0009.json").read_text())
+        assert record["role"] == "extractor"
+        assert record["request_id"] == "req-0009"
+        assert record["response_text"] == CANNED
+        assert record["backend"] == "stub"
+        assert record["recorded_at"]
+        assert record["prompt_path"], "recording must keep where the prompt text is stored"
+        assert record["prompt_sha256"] == record["assembled_prompt_sha256"]
+        import hashlib
+        assert record["assembled_prompt_sha256"] == hashlib.sha256(
+            "ASSEMBLED-PROMPT-TEXT".encode()
+        ).hexdigest()
+        assert record["candidate_id"] == call.candidate_id
+
+        # stored prompt text is recoverable from the recording directory
+        prompt_path = tmp_path / record["prompt_path"]
+        assert prompt_path.read_text() == "ASSEMBLED-PROMPT-TEXT"
+
+        # replay exactly: same role + same assembled prompt -> same answer
+        replay = rp.ReplayBackend(replay_dir=str(tmp_path))
+        res2 = replay.invoke(call, "ASSEMBLED-PROMPT-TEXT")
+        assert res2.ok
+        assert res2.output_text == CANNED
+        assert res2.backend == "replay"
+
+    def test_replay_match_is_role_and_prompt_hash_not_request_id(self, tmp_path):
+        # an orchestrator retry rebinds request_id for a fresh dispatch, but
+        # role+prompt-hash stays the identity: replay must still answer.
+        from coverageflow.backends import replay_backends as rp
+
+        call1 = make_call(request_id="req-1", role="ingest")
+        call2 = make_call(request_id="req-2", role="ingest")
+        rec = rp.RecordingBackend(StubLiveBackend(), record_dir=str(tmp_path))
+        rec.invoke(call1, "SHARED-PROMPT")
+        replay = rp.ReplayBackend(replay_dir=str(tmp_path))
+        res = replay.invoke(call2, "SHARED-PROMPT")
+        assert res.ok
+        assert res.output_text == CANNED
+
+    def test_replay_miss_is_hard_error(self, tmp_path):
+        from coverageflow.backends import replay_backends as rp
+
+        rec = rp.RecordingBackend(StubLiveBackend(), record_dir=str(tmp_path))
+        rec.invoke(make_call(request_id="req-1", role="ingest"), "PROMPT-A")
+        replay = rp.ReplayBackend(replay_dir=str(tmp_path))
+        with pytest.raises(rp.ReplayMissError):
+            replay.invoke(make_call(request_id="req-2", role="ingest"), "PROMPT-B")
+        with pytest.raises(rp.ReplayMissError):
+            replay.invoke(make_call(request_id="req-3", role="extractor"), "PROMPT-A")
+
+    def test_failed_live_result_not_recorded(self, tmp_path):
+        from coverageflow.backends import replay_backends as rp
+
+        live = StubLiveBackend(ok=False, error="backend claude: exit code 3")
+        rec = rp.RecordingBackend(live, record_dir=str(tmp_path))
+        res = rec.invoke(make_call(request_id="req-1"), "PROMPT")
+        assert res.ok is False
+        assert res.raw_response_ref is None  # nothing recorded
+        assert list(tmp_path.glob("*.json")) == []
+
+    def test_replay_healthcheck(self, tmp_path):
+        from coverageflow.backends import replay_backends as rp
+
+        empty = rp.ReplayBackend(replay_dir=str(tmp_path))
+        assert empty.healthcheck().ok is False
+        rp.RecordingBackend(StubLiveBackend(), record_dir=str(tmp_path)).invoke(
+            make_call(request_id="req-1"), "P"
+        )
+        loaded = rp.ReplayBackend(replay_dir=str(tmp_path))
+        assert loaded.healthcheck().ok is True
+        assert "1" in loaded.healthcheck().detail
+
+    def test_replay_passes_through_recorded_backend_metadata(self, tmp_path):
+        from coverageflow.backends import replay_backends as rp
+
+        rec = rp.RecordingBackend(StubLiveBackend(), record_dir=str(tmp_path))
+        rec.invoke(make_call(request_id="req-1", role="writer"), "PROMPT")
+        replay = rp.ReplayBackend(replay_dir=str(tmp_path))
+        res = replay.invoke(make_call(request_id="req-2", role="writer"), "PROMPT")
+        assert res.ok
+        assert res.raw_response_ref == "req-1.json"  # recording the answer came from

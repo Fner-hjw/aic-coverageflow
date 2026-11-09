@@ -21,12 +21,17 @@ def fakecli_on_path(monkeypatch):
     monkeypatch.setenv("PATH", str(FAKECLIS) + os.pathsep + os.environ.get("PATH", ""))
 
 
-def make_call(role: str = "ingest", timeout_seconds: float = 240.0) -> RoleCall:
+def make_call(
+    role: str = "ingest",
+    timeout_seconds: float = 240.0,
+    request_id: str = "req-0001",
+    candidate_id: str | None = None,
+) -> RoleCall:
     """Build a minimal, contract-shaped RoleCall for backend tests."""
     return RoleCall(
         role=role,
-        request_id="req-0001",
-        candidate_id=None,
+        request_id=request_id,
+        candidate_id=candidate_id,
         role_card={"path": f"prompts/{role}.md", "version": "1.0", "sha256": "00" * 32},
         payload={},
         output_schema=f"{role}-report.json",
