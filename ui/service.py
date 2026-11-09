@@ -1365,7 +1365,8 @@ def _realt_backend_rows() -> list[dict]:
     for tmpl in _BACKENDS:
         row = dict(tmpl)
         if row["name"] == "replay":
-            continue  # always-available template row stands
+            rows.append(row)  # always-available template row stands
+            continue
         ok = row["name"] in detected
         if ok:
             try:
@@ -1621,8 +1622,6 @@ def create_case(payload: dict) -> dict:
     period = payload.get("period") or "fy2026q4"
     case_id = (payload.get("case_id") or
                f"{ticker.lower()}-{period}-{cutoff.replace('-', '')}")
-    if case_id in _CASES:
-        raise ConflictError(f"case already exists: {case_id}", case_id=case_id)
     if _using_real():
         ws = _rws()
         cases_root = ws / "cases"
@@ -1650,6 +1649,8 @@ def create_case(payload: dict) -> dict:
                     if d["filed"] <= cutoff],
                 "validation": "passed",
                 "trace_tail": len(_real_statestore.read_trace(orch.case_dir))}
+    if case_id in _CASES:
+        raise ConflictError(f"case already exists: {case_id}", case_id=case_id)
     mandate = _mandate_from_payload(
         payload, f"man-{len(_CASES) + 1:04d}", case_id)
     bundle_id = payload.get("bundle_id")
@@ -2859,8 +2860,15 @@ def build_bundle(cik: str, docs: list[str], name: str) -> dict:
         "bundle_sha256": _sha("|".join(d["doc_id"] + d.get("source_url", "")
                                       for d in chosen))[:40]}
     _BUNDLES[bundle_id] = manifest
+    if _using_real():
+        # the offline fallback still lands in the real workspace so case
+        # creation can resolve the bundle later
+        dest = _rws() / "bundles" / bundle_id
+        dest.mkdir(parents=True, exist_ok=True)
+        _real_statestore.atomic_write_json(dest / "manifest.json", manifest)
     _emit("*", "BUNDLE_CREATED", {"bundle_id": bundle_id,
-                                  "documents": len(chosen)})
+                                  "documents": len(chosen),
+                                  "offline_fallback": _using_real()})
     return manifest
 
 

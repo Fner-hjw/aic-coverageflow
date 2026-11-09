@@ -42,7 +42,7 @@ def _dispatch_root(workspace: Path | None = None) -> Path:
     return DEFAULT_WORKSPACE
 
 
-def load_dispatch(offline: bool = False, backend: str = "auto",
+def load_dispatch(offline: bool = False, backend: str | None = None,
                   workspace: Path | None = None,
                   replay_dir: Path | None = None):
     """Return (dispatch, backend_name) — A3's real dispatch when importable.
