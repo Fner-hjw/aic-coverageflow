@@ -1,4 +1,4 @@
---version: 1.0
+--version: 1.1
 --role: extractor
 --produces: facts.json
 --read: statement slices (with citation anchors) for one period
@@ -10,8 +10,11 @@
 From each statement slice in the bound request, extract the canonical
 line-item values for the requested period(s) as schema-bound facts. Field
 names use the pinned accounting-definitions reference (e.g.
-`income_statement.revenue`, `cash_flow.ppe_additions`,
-`segment.DCAI.revenue`). Every fact carries a citation naming the slice,
+`income_statement.revenue`, `cash_flow.capital_expenditure`,
+`segments.Data Center and AI.revenue` — quarterly segment facts use the
+as-reported full segment names; the deterministic model engine translates
+them onto the canonical segment ids via the versioned mapping table). Every
+fact carries a citation naming the slice,
 anchor heading, and a line locator.
 
 ## OUTPUT SCHEMA
@@ -19,7 +22,7 @@ Strict JSON only, matching **facts.json** (contracts §5):
 `role("extractor"), request_id, candidate_id,
 facts[] {field, period, value, unit("USDmm" | "USD" | "shares_mm" | "ratio"),
   confidence (0–1), citation {doc_id, slice_id, anchor, locator}},
-missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.0")`.
+missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.1")`.
 `period` format: `YYYY-QN` or `YYYY`.
 
 ## BOUNDS
@@ -46,7 +49,7 @@ schema check at dispatch and return as repairable errors. Budgets enforced.
    "unit":"USDmm","confidence":0.99,
    "citation":{"doc_id":"toy-10q-2026q3","slice_id":"toy-10q-2026q3/IS",
      "anchor":"Consolidated Statements of Operations","locator":"line 14"}}],
- "missing":[{"field":"income_statement.restructuring_charges",
+ "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
  "notes":["figures are one period only; comparatives in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.0"}
+ "conformance":"schema 1.0","prompt_version":"1.1"}
