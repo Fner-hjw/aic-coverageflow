@@ -32,14 +32,83 @@ OWNED_BY_OTHER_STREAM_EXIT = 2
 # wiring helpers (seams owned by other streams; offline fallback otherwise)
 # ---------------------------------------------------------------------------
 
-def load_dispatch(offline: bool = True):
-    """Return (dispatch, backend_name). A3's dispatch.py is the real target."""
+def _dispatch_root(workspace: Path | None = None) -> Path:
+    """Repo-style root for role-card assembly (prompts/ + references/)."""
+    bases = [Path(workspace) if workspace else None, DEFAULT_WORKSPACE,
+             Path(__file__).resolve().parent.parent]
+    for base in bases:
+        if base is not None and (base / "prompts").is_dir():
+            return base
+    return DEFAULT_WORKSPACE
+
+
+def load_dispatch(offline: bool = False, backend: str = "auto",
+                  workspace: Path | None = None,
+                  replay_dir: Path | None = None):
+    """Return (dispatch, backend_name) — A3's real dispatch when importable.
+
+    The dispatch callable mirrors the orchestrator seam
+    ``dispatch(RoleCall) -> AgentResult``:
+
+    - ``backend="auto"``: detect backends via
+      ``coverageflow.backends.detect_available_backends``; when nothing is
+      available (offline CI) we fall back to the scripted offline stub so
+      development stays network-free.
+    - ``backend="replay"``: the offline deterministic path —
+      ``ReplayBackend(replay_dir)`` answering from recorded responses
+      (missing recordings are hard errors by design, never silent replay).
+    - ``backend="claude"|"codex"|"kimi"|"api"``: that live backend.
+    - when the agent layer is not importable at all: offline stub.
+    """
     try:
         from . import dispatch as dispatch_mod  # stream A3
-        return dispatch_mod.build_dispatch(), dispatch_mod.BACKEND_NAME
+        from .backends import make_backend, detect_available_backends
     except Exception:
         from . import _dispatch_test_stub
         return _dispatch_test_stub.StubDispatch(), "replay-stub (offline)"
+
+    class RealDispatch:
+        """Callable dispatch(RoleCall) over dispatch_role + a backend."""
+
+        name = backend
+
+        def __init__(self, be):
+            self._backend = be
+            self.name = be.name
+
+        def __call__(self, call):
+            result, _trace = dispatch_mod.dispatch_role(
+                call, self._backend, root=_dispatch_root(workspace))
+            return result
+
+        def healthcheck(self):
+            report = self._backend.healthcheck()
+            return {"ok": report.ok, "backend": report.backend,
+                    "detail": report.detail}
+
+    name = str(backend or "").strip().lower()
+    if not name:
+        from . import _dispatch_test_stub
+        return _dispatch_test_stub.StubDispatch(), "replay-stub (offline)"
+    if name == "replay":
+        if replay_dir is None:
+            raise ValueError("replay backend requires a replay_dir "
+                             "(cases/<id>/replay)")
+        b = make_backend("replay", replay_dir=str(replay_dir))
+        return RealDispatch(b), "replay"
+    if name == "auto":
+        available = detect_available_backends()
+        if not available:
+            from . import _dispatch_test_stub
+            return _dispatch_test_stub.StubDispatch(), "replay-stub (offline)"
+        b = make_backend(available[0])
+        return RealDispatch(b), b.name
+    try:
+        b = make_backend(name)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+    return RealDispatch(b), b.name
+
 
 
 def load_gate_engine(schema_path: Path | None = None, stub_engines: bool = False,
@@ -144,6 +213,28 @@ def cmd_case_new(args, ws: Path) -> int:
     return 0
 
 
+def _mandate_assumption_extras(wacc: float, terminal_growth: float,
+                               as_of: str) -> dict:
+    """Human-owned valuation extras required by the A1 valuation engine
+    (valuation_engine.Assumptions.from_payload): market.price, own_band
+    (lo, hi per multiple), sensitivity.{wacc_points,terminal_growth_points}.
+    """
+    return {
+        "market": {"as_of": as_of, "price": None,
+                   "note": "human-owned market data; fill at mandate "
+                           "creation (USD per share, as-of <= cutoff)"},
+        "own_band": {"as_of": as_of,
+                     "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0],
+                     "p_s": [2.5, 7.5],
+                     "note": "own historical multiple band (lo, hi)"},
+        "sensitivity": {
+            "wacc_points": [round(wacc + d * 0.02, 6) for d in (-2, -1, 0, 1, 2)],
+            "terminal_growth_points": [round(terminal_growth + d * 0.01, 6)
+                                       for d in (-2, -1, 0, 1, 2)],
+            "note": "WACC x terminal growth sensitivity grid points"},
+    }
+
+
 def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
     """A conservative default mandate (human-owned; editable at creation)."""
     return {
@@ -168,9 +259,10 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
                              "Altera": [-0.10, 0.15], "Mobileye": [-0.05, 0.20]},
                 "margin_floor_gross": 0.30, "margin_ceiling_gross": 0.55,
             },
-            "peer_block": {"as_of": cutoff,
+"peer_block": {"as_of": cutoff,
                            "peers": [], "note": "to be filled at mandate creation"},
             "dcf_comps_tolerance": 0.25,
+            **_mandate_assumption_extras(0.104, 0.025, cutoff),
         },
         "limits": {"role_tokens_max": 60000, "case_minutes": 45,
                    "rounds_max": 4, "retries_max": 3, "approval_hours": 48},
@@ -212,12 +304,33 @@ def _find_case(ws: Path, case_id: str | None) -> Path:
     return sorted(candidates, key=lambda p: p.stat().st_mtime)[-1]
 
 
+def _resolve_backend(args) -> str | None:
+    """--replay > --backend > COVERAGEFLOW_BACKEND env (config layer).
+
+    Unset backbone (offline-first default): the scripted offline stub.
+    ``--backend auto`` runs live auto-detection (detect_available_backends);
+    an offline environment with nothing detected also lands on the stub.
+    """
+    if getattr(args, "replay", False):
+        return "replay"
+    explicit = getattr(args, "backend", None)
+    if explicit:
+        return explicit
+    import os
+    return os.environ.get("COVERAGEFLOW_BACKEND", "").strip().lower() or None
+
+
 def cmd_run(args, ws: Path) -> int:
     case_dir = _find_case(ws, args.case)
-    orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
+    backend = _resolve_backend(args)
+    dispatch, backend_name = load_dispatch(
+        backend=backend, workspace=ws,
+        replay_dir=case_dir / "replay" if backend == "replay" else None)
+    orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
                             stub_engines=args.stub_engines, workspace=ws))
     summary = orch.run()
+    summary["backend"] = backend_name
     _print(summary)
     return 0
 
@@ -435,7 +548,9 @@ def build_parser() -> argparse.ArgumentParser:
     # run / resume
     run = add("run", cmd_run)
     run.add_argument("--case", default=None)
-    run.add_argument("--backend", default="auto")
+    run.add_argument("--backend", default=None,
+                     help="auto | replay | claude | codex | kimi | api; "
+                          "omit for the offline stub (dev/test default)")
     run.add_argument("--replay", action="store_true")
     run.add_argument("--record", action="store_true")
     run.add_argument("--stub-engines", action="store_true",
@@ -494,9 +609,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     ws = Path(args.workspace) if args.workspace else DEFAULT_WORKSPACE
     if getattr(args, "replay", False) or getattr(args, "record", False):
-        # replay/record are A3 backend selections; surface the seam note
-        print("note: --replay/--record backend selection is wired by stream "
-              "A3's dispatch layer (currently stubbed offline)")
+        print("note: --replay uses the offline ReplayBackend over the "
+              "case's replay/ recordings (missing recordings are hard "
+              "errors); --record wraps the selected live backend with "
+              "a RecordingBackend")
     return int(args.handler(args, ws) or 0)
 
 

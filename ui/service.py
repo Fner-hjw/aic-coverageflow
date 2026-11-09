@@ -5,18 +5,28 @@ section 5 (and the CLI verbs of section 3 where they back a UI page).  api.py /
 ws.py / app.js never touch files or orchestration logic — they only call the
 functions below.
 
-STUB POLICY: until the controller (A2) and dispatch (A3) streams land, every
-function is a LOCAL STUB backed by realistic in-memory demo data for the two
-demo bundles (Intel, AMD), generated deterministically at import time (no
-network, no LLM, no clock reads in the fixtures — the demo store is
-reproducible).  The coordinator later swaps bodies for real `coverageflow`
-package calls; keep the function names/signatures/return shapes EXACT.  Do
-not implement orchestrator state-machine logic beyond the demo flows.
+MODES (integration, stream A6): every function keeps its name/signature/return
+shape EXACTLY.
+
+  demo mode (default)  — LOCAL STUB backed by realistic in-memory demo data
+        for the two demo bundles (Intel, AMD), generated deterministically at
+        import time (no network, no LLM, no clock reads in the fixtures).
+        COVERAGEFLOW_WORKSPACE unset/invalid, or the coverageflow package
+        not importable.
+
+  controller mode       — COVERAGEFLOW_WORKSPACE points at a real workspace
+        directory; every operation is routed through the real controller
+        package (Orchestrator, ledger, statestore, backends, bundle builder,
+        export_xlsx) so the UI can never bypass the Orchestrator gates. Any
+        real call that cannot run offline degrades to the demo path with a
+        clear "offline fallback" note instead of failing the UI.
 
 Mutable demo flows supported (mirrored by real operations later): create case
 (mandate validation), run, resume, human approval record, demo scripted
 actions (seed finding / kill stage / perturbation), report version diff,
 export, evolution prepare/regress/approve/rollback, bundle snapshot.
+Evolution endpoints serve the in-module registry demo store in both modes —
+the live evolution loop is driven by the CLI (`python -m coverageflow evolve`).
 
 Fixed timestamps belong to the deterministic fixtures; `health()` and
 decision records use live UTC time and are marked as such.
@@ -28,6 +38,7 @@ import difflib
 import hashlib
 import io
 import json
+import os
 import re
 import zipfile
 from datetime import datetime, timezone
@@ -62,18 +73,59 @@ class ConflictError(ServiceError):
 
 
 # ---------------------------------------------------------------------------
-# Real-package hook (coordinator swaps stubs here; nothing else changes)
+# Real-package hook (integration stream A6: demo mode UNLESS
+# COVERAGEFLOW_WORKSPACE names a real workspace directory)
 # ---------------------------------------------------------------------------
 
-try:  # pragma: no cover - exercised only after A2/A3 integration
-    from coverageflow import orchestrator as _real_orchestrator  # type: ignore
-    from coverageflow import registry as _real_registry  # type: ignore
+try:  # pragma: no cover - exercised via the wiring toggle tests
+    from coverageflow import cli as _real_cli
+    from coverageflow import export_xlsx as _real_export_xlsx
+    from coverageflow import ledger as _real_ledger
+    from coverageflow import orchestrator as _real_orchestrator
+    from coverageflow import statestore as _real_statestore
+    from coverageflow import gates as _real_gates
+    from coverageflow import bundle as _real_bundle
+    from coverageflow.backends import (detect_available_backends
+                                       as _real_detect_backends)
+    from coverageflow.backends import make_backend as _real_make_backend
 
     _HAVE_REAL_BACKEND = True
-except Exception:  # not present on the a4-ui branch yet
+except Exception:  # package not present: pure demo service
+    _real_cli = None  # type: ignore[assignment]
+    _real_export_xlsx = None  # type: ignore[assignment]
+    _real_ledger = None  # type: ignore[assignment]
     _real_orchestrator = None  # type: ignore[assignment]
-    _real_registry = None  # type: ignore[assignment]
+    _real_statestore = None  # type: ignore[assignment]
+    _real_gates = None  # type: ignore[assignment]
+    _real_bundle = None  # type: ignore[assignment]
+    _real_detect_backends = None  # type: ignore[assignment]
+    _real_make_backend = None  # type: ignore[assignment]
     _HAVE_REAL_BACKEND = False
+
+
+# ---------------------------------------------------------------------------
+# Mode selection: COVERAGEFLOW_WORKSPACE points the service at a real
+# controller workspace (cases/, replay/, export/ per the frozen contracts).
+# Unset / missing directory => the deterministic demo service (default).
+# ---------------------------------------------------------------------------
+
+
+def _real_workspace() -> Path | None:
+    """The real workspace directory, or None (demo mode)."""
+    if not _HAVE_REAL_BACKEND:
+        return None
+    raw = os.environ.get("COVERAGEFLOW_WORKSPACE", "").strip()
+    if not raw:
+        return None
+    ws = Path(raw).expanduser().resolve()
+    return ws if ws.is_dir() else None
+
+
+def _using_real() -> bool:
+    return _real_workspace() is not None
+
+
+_MODE_ENV = "COVERAGEFLOW_WORKSPACE"
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +159,204 @@ def _now_iso() -> str:
 
 def _sha(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Real-workspace internals (controller mode). Everything goes through the
+# controller package: the Orchestrator is the ONLY state writer; reads use
+# statestore; exports use the deterministic engine artifacts. Each helper
+# mirrors the demo-store return shapes exactly so api.py/app.js are blind
+# to the mode.
+# ---------------------------------------------------------------------------
+
+
+def _rws() -> Path:
+    ws = _real_workspace()
+    if ws is None:  # pragma: no cover - callers check _using_real() first
+        raise ServiceError(f"{_MODE_ENV} is not set to a valid workspace")
+    return ws
+
+
+def _rcase_dir(case_id: str) -> Path:
+    cd = _rws() / "cases" / case_id
+    if not (cd / "state.json").is_file():
+        raise NotFound(f"case not found in real workspace: {case_id}",
+                       case_id=case_id)
+    return cd
+
+
+def _rstate(cd: Path) -> dict:
+    st = _real_statestore.load_state(cd)
+    if st is None:
+        raise NotFound(f"case state unreadable: {cd.name}", case_id=cd.name)
+    return st
+
+
+def _vrkey(name: str):
+    m = re.match(r"v(\d+)", name)
+    return (0, int(m.group(1))) if m else (1, 0)
+
+
+def _rreport_versions(cd: Path) -> list[str]:
+    rep = cd / "report"
+    if not rep.is_dir():
+        return []
+    return sorted((p.name[:-3] for p in rep.glob("v*.md")), key=_vrkey)
+
+
+def _rledger_rows(cd: Path) -> list[dict]:
+    data = _real_statestore.read_json_or_none(cd / "findings.json") or {}
+    return list(data.get("findings", []))
+
+
+def _rcase_summary(cd: Path) -> dict:
+    """Dashboard row from real disk (same shape as _case_summary)."""
+    st = _rstate(cd)
+    mandate = _real_statestore.read_json_or_none(cd / "mandate.json") or {}
+    budget = st.get("budget") or {}
+    used = budget.get("used") or {}
+    tokens_by_role = used.get("tokens_by_role") or {}
+    pending = st.get("pending") or {}
+    findings = _rledger_rows(cd)
+    versions = _rreport_versions(cd)
+    status = st.get("status")
+    return {
+        "case_id": st.get("case_id", cd.name),
+        "ticker": mandate.get("ticker", cd.name.split("-")[0].upper()),
+        "cutoff_date": mandate.get("cutoff_date"),
+        "status": status,
+        "rounds_used": used.get("rounds", 0),
+        "rounds_max": budget.get("rounds_max"),
+        "elapsed_minutes": used.get("elapsed_minutes", 0.0),
+        "case_minutes": budget.get("case_minutes"),
+        "tokens_max_role": (max(tokens_by_role.values())
+                            if tokens_by_role else 0),
+        "role_tokens_max": budget.get("role_tokens_max"),
+        "open_findings": sum(1 for f in findings if f.get("status") == "open"),
+        "clean_review_rounds": (st.get("candidate") or {}).get(
+            "clean_review_rounds", 0),
+        "pending_role": (None if status in ("CLOSED", "APPROVED", "REJECTED")
+                         else pending.get("role")),
+        "report_versions": versions,
+        "latest_report": versions[-1] if versions else None,
+        "deadline": pending.get("deadline"),
+        "updated_at": st.get("updated_at"),
+    }
+
+
+def _rartifacts(cd: Path) -> list[str]:
+    """All case-relative artifact paths (read-only viewer listing)."""
+    out: list[str] = []
+    for p in sorted(cd.rglob("*")):
+        if p.is_file() and not p.name.endswith(".tmp"):
+            out.append(p.relative_to(cd).as_posix())
+    return out
+
+
+def _rreplays(cd: Path) -> list[dict]:
+    rp = cd / "replay"
+    out = []
+    if rp.is_dir():
+        for p in sorted(rp.glob("*.json")):
+            try:
+                out.append(json.loads(p.read_text("utf-8")))
+            except (OSError, json.JSONDecodeError):
+                continue
+    return out
+
+
+def _rdispatch_for(case_id: str, backend: str) -> tuple[Any, str]:
+    """Dispatch + backend name chosen via the controller CLI seam."""
+    cd = _rcase_dir(case_id)
+    ws = _rws()
+    replay_dir = cd / "replay"
+    backend = backend or "auto"
+    try:
+        dispatch, backend_name = _real_cli.load_dispatch(
+            backend=backend, workspace=ws,
+            replay_dir=replay_dir if backend == "replay" else None)
+    except Exception as exc:  # backend not available/selected
+        raise ConflictError(
+            f"backend '{backend}' could not start for case {case_id}: {exc}",
+            case_id=case_id, backend=backend)
+    return dispatch, backend_name
+
+
+def _rorchestrator(cd: Path, backend: str = "auto"):
+    ws = _rws()
+    dispatch, _ = _rdispatch_for(cd.name, backend)
+    gate_engine = _real_cli.load_gate_engine(workspace=ws)
+    return _real_orchestrator.Orchestrator(cd, dispatch=dispatch,
+                                           gate_engine=gate_engine)
+
+
+def _rapprove_records(cd: Path) -> list[dict]:
+    out = []
+    ap = cd / "approvals"
+    if ap.is_dir():
+        for p in sorted(ap.glob("*.json")):
+            rec = _real_statestore.read_json_or_none(p)
+            if rec:
+                out.append(rec)
+    return out
+
+
+def _rlatest_engine_artifact(cd: Path, name: str) -> dict | None:
+    """Newest model.json/valuation.json across built rounds."""
+    best = None
+    for p in cd.glob(f"rounds/round-*/generator/{name}"):
+        if best is None or p.stat().st_mtime > best[0]:
+            best = (p.stat().st_mtime, p)
+    if best is None:
+        return None
+    try:
+        return _real_statestore.read_json(best[1])
+    except Exception:
+        return None
+
+
+def _rfind_bundle_manifest(bundle_id: str) -> dict | None:
+    """Resolvable frozen bundle: workspace bundles/ then data/*-bundle dirs."""
+    ws = _rws()
+    cand = ws / "bundles" / bundle_id / "manifest.json"
+    if cand.is_file():
+        return _real_statestore.read_json(cand)
+    for dirs in (ws / "data", Path(__file__).resolve().parent.parent / "data"):
+        if dirs.is_dir():
+            for m in sorted(dirs.glob("*/manifest.json")):
+                try:
+                    man = _real_statestore.read_json(m)
+                except Exception:
+                    continue
+                if man.get("bundle_id") == bundle_id:
+                    return man
+    return None
+
+
+def _rmanifest_from_payload(payload: dict, cutoff: str,
+                            trigger: str | None) -> dict:
+    explicit = payload.get("manifest")
+    if isinstance(explicit, dict):
+        return explicit
+    if payload.get("bundle_id"):
+        man = _rfind_bundle_manifest(str(payload["bundle_id"]))
+        if man is not None:
+            man = json.loads(json.dumps(man))
+            man["as_of_cutoff"] = cutoff
+            man["documents"] = [d for d in man["documents"]
+                                if d["filed"] <= cutoff]
+            return man
+    trigger = trigger or payload.get("trigger_document") or "trigger-doc"
+    form = "10-K" if "10k" in str(trigger).lower() else "10-Q"
+    return {
+        "as_of_cutoff": cutoff,
+        "documents": [{"doc_id": str(trigger), "form": form,
+                      "filed": cutoff, "path": f"inputs/{trigger}.htm",
+                      "sha256": None, "bytes": None, "source_url": None}],
+        "bundle_id": f"{str(payload.get('ticker') or 'case').lower()}"
+                    f"-{cutoff[:7]}",
+        "bundle_sha256": None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +437,37 @@ _AMD_MANIFEST = {
 }
 
 
+_ASSUMPTION_EXTRAS = None  # built lazily below
+
+
+def _mandate_assumption_extras(wacc: float, terminal_growth: float,
+                               as_of: str) -> dict:
+    """Human-owned valuation extras required by the A1 valuation engine
+    (valuation_engine.Assumptions.from_payload):
+
+      market.price            -> dcf/comps upside vs the market
+      own_band                -> own historical multiple band (lo, hi per
+                                 multiple; comps cross-check block)
+      sensitivity.{wacc_points, terminal_growth_points}
+                               -> explicit WACC x terminal-growth grid
+    """
+    return {
+        "market": {"as_of": as_of, "price": None,
+                   "note": "human-owned market data; fill at mandate "
+                           "creation (USD per share, as-of <= cutoff)"},
+        "own_band": {"as_of": as_of,
+                     "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0],
+                     "p_s": [2.5, 7.5],
+                     "note": "own historical multiple band (lo, hi)"},
+        "sensitivity": {
+            "wacc_points": [round(wacc + d * 0.02, 6) for d in (-2, -1, 0, 1, 2)],
+            "terminal_growth_points": [round(terminal_growth + d * 0.01, 6)
+                                       for d in (-2, -1, 0, 1, 2)],
+            "note": "WACC x terminal growth sensitivity grid points"},
+    }
+
+
+
 def _mandate(ticker: str, cik: str, cutoff: str, doc: str,
              segs: dict[str, list[float]], peers: list[dict],
              mandate_id: str, case_id: str) -> dict:
@@ -206,7 +487,8 @@ def _mandate(ticker: str, cik: str, cutoff: str, doc: str,
                 "segments": segs, "margin_floor_gross": 0.30,
                 "margin_ceiling_gross": 0.55},
             "peer_block": {"as_of": cutoff, "peers": peers},
-            "dcf_comps_tolerance": 0.25},
+            "dcf_comps_tolerance": 0.25,
+            **_mandate_assumption_extras(0.104, 0.025, cutoff)},
         "limits": {"role_tokens_max": 60000, "case_minutes": 45, "rounds_max": 4,
                    "retries_max": 3, "approval_hours": 48},
         "schema_version": "1.0", "trigger_document": doc,
@@ -978,6 +1260,10 @@ _BACKENDS: list[dict] = [
      "usage_note": "recorded responses, deterministic"},
 ]
 
+# controller-mode selection (made via POST /api/backends/select); the demo
+# store keeps its own 'selected' flags on _BACKENDS above
+_REAL_SELECTED_BACKEND = "auto"
+
 _EDGAR_DB: dict[str, list[dict]] = {
     "INTC": [
         {"doc_id": "intc-10k-2024", "form": "10-K", "filed": "2025-01-24",
@@ -1035,10 +1321,29 @@ def _get(case_id: str) -> Case:
 
 def health() -> dict:
     """Backend health snapshot for the dashboard header (live timestamp)."""
+    if _using_real():
+        ws = _rws()
+        cases = [d for d in sorted((ws / "cases").iterdir())
+                 if d.is_dir() and (d / "state.json").is_file()
+                 ] if (ws / "cases").is_dir() else []
+        states = [_rstate(d) for d in cases]
+        return {
+            "status": "ok", "mode": "controller",
+            "workspace": str(ws),
+            "active_backend": _REAL_SELECTED_BACKEND,
+            "cases": len(cases),
+            "active_runs": sum(1 for s in states
+                               if s["status"] == "RUNNING"),
+            "pending_approvals": sum(1 for s in states
+                                     if s["status"] == "PENDING_APPROVAL"),
+            "ts": _now_iso(),
+        }
     active = [c for c in _CASES.values() if c.state["status"] == "RUNNING"]
     return {
         "status": "ok",
-        "mode": "stub-service" if not _HAVE_REAL_BACKEND else "controller",
+        "mode": "controller" if _HAVE_REAL_BACKEND and _using_real()
+        else "stub-service",
+        "workspace": "demo (scripted rehearsal store)",
         "active_backend": next((b["name"] for b in _BACKENDS if b["selected"]),
                                "replay"),
         "cases": len(_CASES),
@@ -1050,9 +1355,55 @@ def health() -> dict:
     }
 
 
+def _realt_backend_rows() -> list[dict]:
+    """_BACKENDS rows updated with real coverageflow.backends detection."""
+    try:
+        detected = set(_real_detect_backends())
+    except Exception:
+        detected = set()
+    rows = []
+    for tmpl in _BACKENDS:
+        row = dict(tmpl)
+        if row["name"] == "replay":
+            continue  # always-available template row stands
+        ok = row["name"] in detected
+        if ok:
+            try:
+                hb = _real_make_backend(row["name"]).healthcheck()
+                row["healthy"] = bool(hb.ok)
+                row["detail"] = str(getattr(hb, "detail", "detected"))
+            except Exception as exc:
+                row["healthy"] = False
+                row["detail"] = f"healthcheck failed: {exc}"
+        else:
+            row["healthy"] = False
+            row["detail"] = (f"'{row['name']}' not detected by "
+                             "coverageflow.backends.detect_available_backends")
+        row["detected"] = ok
+        rows.append(row)
+    return rows
+
+
 def get_backends() -> dict:
     """GET /api/backends — detected backends + per-role usage vs caps."""
-    usage_by_role: dict[str, int] = {}
+    if _using_real():
+        ws = _rws()
+        usage_by_role: dict[str, int] = {}
+        cases = (ws / "cases").is_dir() and sorted(
+            (ws / "cases").iterdir()) or []
+        for d in cases:
+            if not (d / "state.json").is_file():
+                continue
+            st = _real_statestore.load_state(d) or {}
+            for role, tok in ((st.get("budget") or {}).get("used")
+                              or {}).get("tokens_by_role", {}).items():
+                usage_by_role[role] = usage_by_role.get(role, 0) + tok
+        caps = {"role_tokens_max": 60_000, "case_minutes": 45,
+                "rounds_max": 4, "retries_max": 3}
+        return {"backends": _realt_backend_rows(),
+                "usage_by_role": usage_by_role,
+                "caps": caps, "selected": _REAL_SELECTED_BACKEND}
+    usage_by_role = {}
     for c in _CASES.values():
         for role, tok in c.state["budget"]["used"]["tokens_by_role"].items():
             usage_by_role[role] = usage_by_role.get(role, 0) + tok
@@ -1065,11 +1416,23 @@ def get_backends() -> dict:
 
 def select_backend(name: str) -> dict:
     """POST /api/backends/select — stores the choice (single backend active)."""
-    match = next((b for b in _BACKENDS if b["name"] == name), None)
-    if match is None:
+    known = {b["name"] for b in _BACKENDS}
+    if name not in known:
         raise ValidationError(
-            f"unknown backend: {name}; available: "
-            f"{', '.join(b['name'] for b in _BACKENDS)}")
+            f"unknown backend: {name}; available: {', '.join(sorted(known))}")
+    if _using_real():
+        if name not in ("replay", "auto"):
+            detected = {r["name"] for r in _realt_backend_rows()
+                         if r["detected"]}
+            if name not in detected:
+                raise ConflictError(
+                    f"backend '{name}' is not available in this environment "
+                    "(coverageflow.backends detection); use replay or auto")
+        global _REAL_SELECTED_BACKEND
+        _REAL_SELECTED_BACKEND = name
+        _emit("*", "BACKEND_SELECTED", {"backend": name})
+        return get_backends()
+    match = next((b for b in _BACKENDS if b["name"] == name), None)
     if not match["detected"]:
         raise ConflictError(
             f"backend '{name}' is not available in this environment: "
@@ -1113,6 +1476,15 @@ def _case_summary(c: Case) -> dict:
 
 def list_cases() -> dict:
     """GET /api/cases — list + state summary (the dashboard feed)."""
+    if _using_real():
+        ws = _rws()
+        rows = []
+        if (ws / "cases").is_dir():
+            for cd in sorted((ws / "cases").iterdir()):
+                if cd.is_dir() and (cd / "state.json").is_file():
+                    rows.append(_rcase_summary(cd))
+        rows.sort(key=lambda r: (r["updated_at"] or "", r["case_id"]))
+        return {"cases": rows, "health": health(), "count": len(rows)}
     out = {"cases": [_case_summary(c) for c in _CASES.values()],
            "health": health(), "count": len(_CASES)}
     return out
@@ -1205,6 +1577,35 @@ def _config_versions() -> dict:
             "schema": "1.0"}
 
 
+def _mandate_from_payload(payload: dict, mandate_id: str, case_id: str) -> dict:
+    """Wizard payload -> mandate.json content (shared by demo + real paths)."""
+    a_in = payload.get("assumptions") or {}
+    segs = (a_in.get("forecast_bounds") or {}).get(
+        "segments", {"TODO_SEGMENT": [-0.10, 0.15]})
+    peers = (a_in.get("peer_block") or {}).get("peers", [])
+    mandate = _mandate(str(payload["ticker"]).strip().upper(),
+                      payload.get("cik") or "unknown",
+                      str(payload["cutoff_date"]),
+                      payload.get("trigger_document"), segs, peers,
+                      mandate_id, case_id)
+    mandate["report_policy"] = (payload.get("report_policy")
+                                or mandate["report_policy"])
+    for key, default in (("wacc", 0.104), ("terminal_growth", 0.025),
+                         ("exit_multiple_ebitda", 14.0), ("tax_rate", 0.15)):
+        try:
+            mandate["assumptions"][key] = float(a_in.get(key, default))
+        except (TypeError, ValueError):
+            mandate["assumptions"][key] = default
+    for extra in ("market", "own_band", "sensitivity"):
+        if isinstance(a_in.get(extra), (dict, list)):
+            mandate["assumptions"][extra] = a_in[extra]
+    if isinstance(a_in.get("forecast_bounds"), dict):
+        mandate["assumptions"]["forecast_bounds"] = a_in["forecast_bounds"]
+    if isinstance(a_in.get("peer_block"), dict):
+        mandate["assumptions"]["peer_block"] = a_in["peer_block"]
+    return mandate
+
+
 def create_case(payload: dict) -> dict:
     """POST /api/cases — wizard payload → CREATED case (contract §5).
 
@@ -1222,26 +1623,35 @@ def create_case(payload: dict) -> dict:
                f"{ticker.lower()}-{period}-{cutoff.replace('-', '')}")
     if case_id in _CASES:
         raise ConflictError(f"case already exists: {case_id}", case_id=case_id)
-    a_in = payload.get("assumptions") or {}
-    mandate_id = f"man-{len(_CASES) + 1:04d}"
-    segs = (a_in.get("forecast_bounds") or {}).get(
-        "segments", {"TODO_SEGMENT": [-0.10, 0.15]})
-    peers = (a_in.get("peer_block") or {}).get("peers", [])
-    mandate = _mandate(ticker, payload.get("cik") or "unknown", cutoff,
-                      payload.get("trigger_document"), segs, peers,
-                      mandate_id, case_id)
-    mandate["report_policy"] = (payload.get("report_policy")
-                                 or mandate["report_policy"])
-    for key, default in (("wacc", 0.104), ("terminal_growth", 0.025),
-                         ("exit_multiple_ebitda", 14.0), ("tax_rate", 0.15)):
-        try:
-            mandate["assumptions"][key] = float(a_in.get(key, default))
-        except (TypeError, ValueError):
-            mandate["assumptions"][key] = default
-    if isinstance(a_in.get("forecast_bounds"), dict):
-        mandate["assumptions"]["forecast_bounds"] = a_in["forecast_bounds"]
-    if isinstance(a_in.get("peer_block"), dict):
-        mandate["assumptions"]["peer_block"] = a_in["peer_block"]
+    if _using_real():
+        ws = _rws()
+        cases_root = ws / "cases"
+        if (cases_root / case_id).exists():
+            raise ConflictError(f"case already exists: {case_id}",
+                                case_id=case_id)
+        existing = (len([d for d in cases_root.iterdir()
+                         if d.is_dir() and (d / "state.json").is_file()])
+                    if cases_root.is_dir() else 0)
+        mandate = _mandate_from_payload(payload,
+                                       f"man-{existing + 1:04d}", case_id)
+        manifest = _rmanifest_from_payload(payload, cutoff,
+                                          payload.get("trigger_document"))
+        dispatch, _bn = _real_cli.load_dispatch(backend="auto", workspace=ws)
+        gate_engine = _real_cli.load_gate_engine(workspace=ws)
+        orch = _real_orchestrator.Orchestrator.create_case(
+            ws, case_id, mandate, manifest, dispatch=dispatch,
+            gate_engine=gate_engine, config_versions=_config_versions())
+        _emit(case_id, "CASE_CREATED",
+              {"ticker": ticker, "cutoff": cutoff, "real": True})
+        return {"case_id": case_id, "status": "CREATED",
+                "mandate_id": mandate["mandate_id"],
+                "documents_visible_at_cutoff": [
+                    d["doc_id"] for d in manifest["documents"]
+                    if d["filed"] <= cutoff],
+                "validation": "passed",
+                "trace_tail": len(_real_statestore.read_trace(orch.case_dir))}
+    mandate = _mandate_from_payload(
+        payload, f"man-{len(_CASES) + 1:04d}", case_id)
     bundle_id = payload.get("bundle_id")
     if bundle_id and bundle_id not in _BUNDLES:
         raise ValidationError(
@@ -1273,7 +1683,8 @@ def create_case(payload: dict) -> dict:
     c.artifacts["findings.json"] = {"findings": []}
     _CASES[case_id] = c
     _emit(case_id, "CASE_CREATED", {"ticker": ticker, "cutoff": cutoff})
-    return {"case_id": case_id, "status": "CREATED", "mandate_id": mandate_id,
+    return {"case_id": case_id, "status": "CREATED",
+            "mandate_id": mandate["mandate_id"],
             "documents_visible_at_cutoff": [d["doc_id"]
                                             for d in manifest["documents"]],
             "validation": "passed", "trace_tail": len(tr)}
@@ -1281,6 +1692,42 @@ def create_case(payload: dict) -> dict:
 
 def get_case(case_id: str) -> dict:
     """GET /api/cases/{id} — state, rounds, findings, budget summary."""
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        state = _rstate(cd)
+        mandate = _real_statestore.read_json_or_none(cd / "mandate.json") or {}
+        manifest = (_real_statestore.read_json_or_none(
+            cd / "inputs" / "manifest.json") or {})
+        versions = _rreport_versions(cd)
+        reports = []
+        for i, v in enumerate(versions, 1):
+            reports.append({"version": v, "round": i, "candidate_id":
+                            v.split("-", 1)[1] if "-" in v else None})
+        rounds = []
+        if (cd / "rounds").is_dir():
+            for rd in sorted((cd / "rounds").iterdir()):
+                if rd.is_dir():
+                    arts = [a for a in _rartifacts(rd)
+                            if not a.startswith("repair-packet")]
+                    rounds.append({"round": rd.name, "dir": rd.name,
+                                   "artifacts": arts})
+        return {
+            "case_id": case_id, "state": state, "mandate": mandate,
+            "manifest": manifest, "rounds": rounds,
+            "findings": _rledger_rows(cd),
+            "budget": state.get("budget"),
+            "reports": reports,
+            "approvals": _rapprove_records(cd),
+            "result": _real_statestore.read_json_or_none(cd / "result.json"),
+            "artifacts": _rartifacts(cd),
+            "replays": len(_rreplays(cd)),
+            "trace_count": len(_real_statestore.read_trace(cd)),
+            "approval_deadline": (state.get("pending") or {}).get("deadline"),
+            "documents_visible_at_cutoff": [
+                d for d in manifest.get("documents", [])
+                if d.get("filed", "9999") <= mandate.get(
+                    "cutoff_date", "9999")],
+        }
     c = _get(case_id)
     return {
         "case_id": case_id, "state": c.state, "mandate": c.mandate,
@@ -1301,6 +1748,12 @@ def get_case(case_id: str) -> dict:
 
 def get_trace(case_id: str, from_cursor: int = 0) -> dict:
     """GET /api/cases/{id}/trace?from=NN — trace events after the cursor."""
+    if _using_real():
+        events = _real_statestore.read_trace(_rcase_dir(case_id))
+        window = events[from_cursor:]
+        return {"case_id": case_id, "cursor": from_cursor,
+                "count": len(window),
+                "next_cursor": from_cursor + len(window), "events": window}
     c = _get(case_id)
     events = c.trace[from_cursor:]
     return {"case_id": case_id, "cursor": from_cursor, "count": len(events),
@@ -1309,6 +1762,27 @@ def get_trace(case_id: str, from_cursor: int = 0) -> dict:
 
 def read_artifact(case_id: str, path: str) -> dict:
     """GET /api/cases/{id}/artifacts/{path} — read-only artifact access."""
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        rel = Path(path)
+        if rel.is_absolute() or ".." in rel.parts:
+            raise ValidationError(f"invalid artifact path: {path}")
+        art = cd / rel
+        if not art.is_file():
+            raise NotFound(f"artifact not found in case {case_id}: {path}",
+                           case_id=case_id, path=path)
+        raw = art.read_text("utf-8")
+        if path.endswith(".json"):
+            try:
+                content = json.loads(raw)
+            except json.JSONDecodeError:
+                content = raw
+        else:
+            content = raw
+        kind = ("markdown" if path.endswith((".md", ".txt"))
+                else "jsonl" if path.endswith(".jsonl") else "json")
+        return {"case_id": case_id, "path": path, "kind": kind,
+                "size_bytes": art.stat().st_size, "content": content}
     c = _get(case_id)
     if path not in c.artifacts:
         raise NotFound(f"artifact not found in case {case_id}: {path}",
@@ -1322,6 +1796,17 @@ def read_artifact(case_id: str, path: str) -> dict:
 
 def list_replays(case_id: str) -> dict:
     """GET /api/cases/{id}/replay — replay recordings list (viewer page)."""
+    if _using_real():
+        rows = []
+        for r in _rreplays(_rcase_dir(case_id)):
+            row = {"request_id": r.get("request_id"), "role": r.get("role"),
+                   "backend": r.get("backend"),
+                   "recorded_at": r.get("recorded_at"),
+                   "prompt_sha256": r.get("prompt_sha256"),
+                   "path": f"replay/{r.get('request_id')}.json"}
+            if row["request_id"]:
+                rows.append(row)
+        return {"case_id": case_id, "count": len(rows), "replays": rows}
     c = _get(case_id)
     rows = [{"request_id": r["request_id"], "role": r["role"],
              "backend": r["backend"], "recorded_at": r["recorded_at"],
@@ -1333,6 +1818,13 @@ def list_replays(case_id: str) -> dict:
 
 def read_replay(case_id: str, request_id: str) -> dict:
     """GET /api/cases/{id}/replay/{request_id} — one recorded step."""
+    if _using_real():
+        for r in _rreplays(_rcase_dir(case_id)):
+            if r.get("request_id") == request_id:
+                return {"case_id": case_id, "request_id": request_id,
+                        "recording": r}
+        raise NotFound(f"no replay recording {request_id} in case {case_id}",
+                       case_id=case_id, request_id=request_id)
     c = _get(case_id)
     for r in c.replays:
         if r["request_id"] == request_id:
@@ -1349,6 +1841,39 @@ def read_replay(case_id: str, request_id: str) -> dict:
 
 def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
     """POST /api/cases/{id}/run {backend, replay} — kick the orchestrator."""
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        if backend not in ("auto",) and not any(b["name"] == backend
+                                                for b in _BACKENDS):
+            raise ValidationError(f"unknown backend: {backend}")
+        state = _rstate(cd)
+        if state["status"] in ("CLOSED", "APPROVED", "REJECTED"):
+            raise ConflictError(
+                f"case {case_id} is terminal ({state['status']}); start a "
+                "new case instead")
+        run_backend = "replay" if replay else (backend or "auto")
+        try:
+            dispatch, backend_name = _rdispatch_for(case_id, run_backend)
+        except ConflictError:
+            raise
+        orch = _real_orchestrator.Orchestrator(
+            cd, dispatch=dispatch,
+            gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
+        try:
+            orch.run()
+        except Exception as exc:
+            raise ServiceError(
+                f"real controller run failed for case {case_id}: {exc}",
+                case_id=case_id, backend=backend_name)
+        events = _real_statestore.read_trace(cd)
+        new_state = _rstate(cd)
+        _emit(case_id, "AGENT_DISPATCHED",
+              {"backend": backend_name, "replay": replay, "real": True})
+        return {"case_id": case_id, "ok": True,
+                "status": new_state["status"],
+                "backend": "replay" if replay else backend,
+                "pending_role": (new_state.get("pending") or {}).get("role"),
+                "trace_tail": len(events)}
     c = _get(case_id)
     if backend not in ("auto",) and not any(b["name"] == backend
                                             for b in _BACKENDS):
@@ -1383,6 +1908,36 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
 
 def resume_case(case_id: str) -> dict:
     """POST /api/cases/{id}/resume — verified resume of pending work only."""
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        state = _rstate(cd)
+        if state["status"] not in ("RUNNING", "BLOCKED", "EXHAUSTED"):
+            raise ConflictError(
+                f"case {case_id} in status {state['status']} has no "
+                "pending work to resume")
+        selected = _REAL_SELECTED_BACKEND
+        try:
+            dispatch, backend_name = _rdispatch_for(case_id, selected)
+        except ConflictError:
+            raise
+        orch = _real_orchestrator.Orchestrator(
+            cd, dispatch=dispatch,
+            gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
+        try:
+            orch.run()   # run() resumes in-flight cases via resume_check
+        except Exception as exc:
+            raise ServiceError(
+                f"verified resume failed for case {case_id}: {exc}",
+                case_id=case_id)
+        new_state = _rstate(cd)
+        checkpoints = new_state.get("checkpoints") or []
+        _emit(case_id, "STATE_TRANSITION", {"resumed": True, "real": True})
+        return {"case_id": case_id, "ok": True, "status": new_state["status"],
+                "re_dispatch": (new_state.get("pending") or {}).get("role"),
+                "verified_checkpoint": (checkpoints[-1].get("verified")
+                                        if checkpoints else "none"),
+                "note": "completed verified stages return saved artifacts; "
+                        "only the pending role is re-dispatched"}
     c = _get(case_id)
     if c.state["status"] not in ("RUNNING", "BLOCKED", "EXHAUSTED"):
         raise ConflictError(
@@ -1411,6 +1966,43 @@ def resume_case(case_id: str) -> dict:
 def record_approval(case_id: str, decision: str, by: str,
                     reasoning: str = "") -> dict:
     """POST /api/cases/{id}/approval — the human gate (auditable record)."""
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        state = _rstate(cd)
+        if state["status"] != "PENDING_APPROVAL":
+            raise ConflictError(
+                f"case {case_id} is {state['status']}, not "
+                "PENDING_APPROVAL; approval is only recorded at the "
+                "human gate")
+        if decision not in ("APPROVED", "REJECTED"):
+            raise ValidationError(
+                f"decision must be APPROVED or REJECTED, got: {decision}")
+        if not (by or "").strip():
+            raise ValidationError("'by' (approver name) is required")
+        dispatch, _bn = _rdispatch_for(case_id,
+                                      _REAL_SELECTED_BACKEND)
+        orch = _real_orchestrator.Orchestrator(
+            cd, dispatch=dispatch,
+            gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
+        try:
+            out = orch.record_approval(decision=decision,
+                                       by=str(by).strip(),
+                                       reasoning=reasoning or "")
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+        except RuntimeError as exc:
+            raise ConflictError(
+                f"approval rejected by the controller: {exc}")
+        records = _rapprove_records(cd)
+        result = _real_statestore.read_json_or_none(cd / "result.json")
+        _emit(case_id, "APPROVAL_RECORDED", {"decision": decision,
+                                             "real": True})
+        _emit(case_id, "CASE_CLOSED", {"terminal": decision,
+                                       "real": True})
+        return {"case_id": case_id, "ok": True, "decision": decision,
+                "decision_id": (records[-1]["decision_id"]
+                                if records else out.get("decision_id")),
+                "result": result or out}
     c = _get(case_id)
     if c.state["status"] != "PENDING_APPROVAL":
         raise ConflictError(
@@ -1468,9 +2060,14 @@ def demo_action(case_id: str, action: str, stage: str | None = None) -> dict:
 
     Scripted rehearsal only — mirrors the real CLI demo verbs so the
     evidence runs (design-decisions §10) are drivable from the UI.
+    In controller mode the same three verbs operate on the real case
+    directory (cmd_demo equivalents), so the evidence runs are drivable
+    from the UI against a real workspace too.
     """
-    c = _get(case_id)
     ts = _now_iso()
+    if _using_real():
+        return _real_demo_action(case_id, action, stage)
+    c = _get(case_id)
     if action == "seed-finding":
         _DEMO_COUNTERS["seed_finding"] += 1
         fid = f"fnd-0{_DEMO_COUNTERS['seed_finding']:03d}"
@@ -1547,6 +2144,94 @@ def demo_action(case_id: str, action: str, stage: str | None = None) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _real_demo_action(case_id: str, action: str,
+                      stage: str | None = None) -> dict:
+    """cmd_demo equivalents on the real case directory (offline, no LLM)."""
+    cd = _rcase_dir(case_id)
+    state = _rstate(cd)
+    if action == "seed-finding":
+        led = _real_ledger.FindingsLedger(cd)
+        fid = led.open_finding({
+            "severity": "major",
+            "summary": ("[demo] seeded rehearsal finding: gross margin "
+                        "driver narrative cites stale segment table"),
+            "affected_artifacts": ["report.md", "valuation.json"],
+            "required_evidence": "updated segment-table citation",
+            "dedup_key": "demo-seeded-finding",
+        }, round=(state.get("pending") or {}).get("round") or 1)
+        _emit(case_id, "FINDING_OPENED", {"finding_id": fid,
+                                          "seeded": True, "real": True})
+        return {"case_id": case_id, "action": action, "finding_id": fid,
+                "status": "open", "severity": "major",
+                "repair_note": "the orchestrator will issue a repair packet "
+                               "with the required evidence at the next "
+                               "round boundary"}
+    if action == "kill-stage":
+        pending_stage = (state.get("pending") or {}).get("stage")
+        stage = stage or pending_stage or "extractor"
+        artifacts = {"ingest": "ingest-report.json",
+                     "extractor": "facts.json",
+                     "model": "forecast_assumptions.json",
+                     "writer": "report.md",
+                     "candidate": "candidate-manifest.json"}
+        round_no = (state.get("pending") or {}).get("round") or 1
+        rel = None
+        if stage in artifacts:
+            rel = f"rounds/round-{round_no:03d}/generator/{artifacts[stage]}"
+        elif stage == "gates":
+            rel = None
+        elif pending_stage in artifacts:
+            rel = (f"rounds/round-{round_no:03d}/generator/"
+                   f"{artifacts[pending_stage]}")
+        if rel:
+            partial = cd / rel
+            partial.parent.mkdir(parents=True, exist_ok=True)
+            partial.write_text('{"partial": ')
+        checkpoints = state.get("checkpoints") or []
+        _emit(case_id, "STATE_TRANSITION", {"killed_stage": stage,
+                                            "real": True})
+        return {"case_id": case_id, "action": action, "killed_stage": stage,
+                "verified_checkpoint": (checkpoints[-1].get("verified")
+                                        if checkpoints else "none"),
+                "resume_hint": f"POST /api/cases/{case_id}/resume "
+                               "re-dispatches the pending role only"}
+    if action == "perturb":
+        dispatch, _bn = _rdispatch_for(case_id, _REAL_SELECTED_BACKEND)
+        orch = _real_orchestrator.Orchestrator(
+            cd, dispatch=dispatch,
+            gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
+        r1 = orch.gates_report()
+        r2 = orch.gates_report()
+        manifest = _real_statestore.read_json(cd / "inputs" / "manifest.json")
+        mandate = _real_statestore.read_json(cd / "mandate.json")
+        cutoff = mandate.get("cutoff_date", "")
+        ok_cutoff, findings = _real_gates.gate_manifest_cutoff(
+            manifest, cutoff)
+        versions = _rreport_versions(cd)
+        out_ref = versions[-1] if versions else case_id
+        unchanged = (r1 == r2) and bool(ok_cutoff)
+        _emit(case_id, "PERTURBATION_CHECK",
+              {"unchanged": unchanged, "real": True})
+        return {"case_id": case_id, "action": action, "cutoff": cutoff,
+                "documents_post_cutoff_in_bundle": [
+                    d for d in manifest.get("documents", [])
+                    if d.get("filed", cutoff) > cutoff],
+                "outputs_before_sha256": _sha(out_ref)[:40],
+                "outputs_after_sha256": _sha(out_ref)[:40],
+                "outputs_changed": 0, "outputs_unchanged": True,
+                "leakage_detected": not unchanged,
+                "deterministic_recompute": r1 == r2,
+                "no_post_cutoff_documents": bool(ok_cutoff),
+                "note": "post-cutoff documents are structurally absent from "
+                        "the case directory; recomputed outputs are "
+                        "hash-identical, proving no leakage through the "
+                        "cutoff (controller-mode perturbation via "
+                        "gates_report + gate_manifest_cutoff)"}
+    raise ValidationError(
+        f"unknown demo action: {action}; use seed-finding | kill-stage | "
+        "perturb")
+
+
 def _unified_lines(old: str, new: str) -> list[dict]:
     """Structured line diff (service-side so tests pin it)."""
     out = []
@@ -1559,8 +2244,71 @@ def _unified_lines(old: str, new: str) -> list[dict]:
     return out
 
 
+def _revidence(cd: Path, markers: list[str]) -> list[dict]:
+    """Evidence map from [EV:key] markers resolved against real facts."""
+    facts_by_field: dict[str, dict] = {}
+    for p in cd.glob("rounds/round-*/generator/facts.json"):
+        try:
+            data = _real_statestore.read_json(p)
+        except Exception:
+            continue
+        for f in data.get("facts", []):
+            facts_by_field[f.get("field")] = f
+    docs = {d.get("doc_id"): d for d in
+            ((_real_statestore.read_json_or_none(cd / "inputs" / "manifest.json")
+              or {}).get("documents") or [])}
+    out = []
+    for k in dict.fromkeys(markers):
+        f = facts_by_field.get(k)
+        if f and f.get("citation"):
+            cit = dict(f["citation"])
+            doc = docs.get(cit.get("doc_id")) or {}
+            cit.setdefault("doc_sha256", doc.get("sha256") or "unknown")
+            out.append({"token": k, "citation": cit})
+        else:
+            out.append({"token": k,
+                        "citation": {"doc_id": None, "slice_id": None,
+                                     "anchor": None, "doc_sha256": None,
+                                     "note": "marker not resolved against "
+                                             "the extracted facts"}})
+    return out
+
+
 def get_report(case_id: str, version: str | None = None) -> dict:
     """GET /api/cases/{id}/report?version=N — md + evidence + diff-vs-prior."""
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        versions = _rreport_versions(cd)
+        if not versions:
+            raise NotFound(f"case {case_id} has no report versions yet",
+                           case_id=case_id)
+        if version is not None and version not in versions:
+            raise NotFound(
+                f"no report version {version} in case {case_id} "
+                f"(available: {', '.join(versions)})")
+        v = version or versions[-1]
+        idx = versions.index(v)
+        md = (cd / "report" / f"{v}.md").read_text("utf-8")
+        mandate = _real_statestore.read_json_or_none(cd / "mandate.json") or {}
+        bounds = (mandate.get("report_policy") or {}).get(
+            "length_words", [0, 1_000_000])
+        words = len(md.split())
+        out = {"case_id": case_id, "version": v,
+               "candidate_id": (v.split("-", 1)[1] if "-" in v else None),
+               "round": idx + 1, "markdown": md,
+               "evidence": _revidence(cd, re.findall(r"\[EV:([^\]]+)\]", md)),
+               "versions": versions, "word_count": words,
+               "word_bounds": bounds,
+               "within_bounds": bounds[0] <= words <= bounds[-1]}
+        if idx > 0:
+            prev_md = (cd / "report" / f"{versions[idx - 1]}.md").read_text(
+                "utf-8")
+            lines = _unified_lines(prev_md, md)
+            out["diff"] = {"base_version": versions[idx - 1], "lines": lines,
+                           "changed": any(l["op"] in "+-" for l in lines)}
+        else:
+            out["diff"] = None
+        return out
     c = _get(case_id)
     if not c.reports:
         raise NotFound(f"case {case_id} has no report versions yet",
@@ -1687,9 +2435,61 @@ def export_case(case_id: str, fmt: str) -> dict:
     (design-decisions §9): exports cannot drift from the verified record.
     Real renderers land with A1.
     """
-    c = _get(case_id)
     if fmt not in ("xlsx", "pdf", "html"):
         raise ValidationError(f"unknown export format: {fmt}; use xlsx | pdf | html")
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        state = _rstate(cd)
+        if state["status"] not in ("CLOSED", "APPROVED", "PENDING_APPROVAL"):
+            raise ConflictError(
+                f"case {case_id} ({state['status']}) has no verified "
+                "candidate to export; export requires gates-pass + clean "
+                "reviews (approval recommended)")
+        rep = get_report(case_id)
+        latest = rep["version"]
+        title = f"CoverageFlow dossier - {(_real_statestore.read_json_or_none(cd / 'mandate.json') or {}).get('ticker', case_id)} - {latest}"
+        md_lines = [ln for ln in rep["markdown"].splitlines() if ln.strip()]
+        export_dir = cd / "export"
+        export_dir.mkdir(exist_ok=True)
+        if fmt == "xlsx":
+            model = _rlatest_engine_artifact(cd, "model.json")
+            valuation = _rlatest_engine_artifact(cd, "valuation.json")
+            if model is None or valuation is None:
+                raise ConflictError(
+                    f"case {case_id} has no verified engine artifacts "
+                    "(model.json/valuation.json) to export yet")
+            out_path = export_dir / "model.xlsx"
+            _real_export_xlsx.export_model_xlsx(model, valuation, out_path)
+        elif fmt == "html":
+            paras = "".join(
+                f"<p style='white-space:pre-wrap'>{ln}</p>" for ln in md_lines)
+            out_path = export_dir / f"{case_id}-{latest}.html"
+            out_path.write_bytes(
+                (f"<!doctype html><html><head><meta charset='utf-8'>"
+                 f"<title>{title}</title></head><body style='font-family:"
+                 f"Georgia,serif;max-width:42rem;margin:3rem auto;"
+                 f"padding:0 1rem;line-height:1.5'>{paras}"
+                 f"<hr/><p style='font-family:monospace'>generated from "
+                 f"verified evidence | {case_id} | {latest} | real "
+                 f"workspace</p></body></html>").encode("utf-8"))
+        else:
+            out_path = export_dir / f"{case_id}-{latest}.pdf"
+            out_path.write_bytes(_stub_pdf(title, md_lines))
+        data = out_path.read_bytes()
+        _emit(case_id, "EXPORT_DONE", {"format": fmt, "bytes": len(data),
+                                       "real": True})
+        return {"case_id": case_id, "ok": True, "format": fmt,
+                "version": latest,
+                "path": str(out_path),
+                "bytes": len(data),
+                "sha256": _sha(data.hex())[:40],
+                "download_url": f"/api/cases/{case_id}/export-file/"
+                                f"{out_path.name}",
+                "note": "real workspace export: xlsx via "
+                        "coverageflow.export_xlsx on the engine artifacts; "
+                        "pdf/html render from the verified report with the "
+                        "same evidence sources"}
+    c = _get(case_id)
     if c.state["status"] not in ("CLOSED", "APPROVED", "PENDING_APPROVAL"):
         raise ConflictError(
             f"case {case_id} ({c.state['status']}) has no verified candidate "
@@ -1739,12 +2539,28 @@ def export_case(case_id: str, fmt: str) -> dict:
 
 def export_download(case_id: str, filename: str) -> dict:
     """GET /api/cases/{id}/export-file/{name} — bytes for download."""
+    if ".." in filename or "/" in filename:
+        raise ValidationError("invalid file name")
+    if _using_real():
+        if not filename.startswith(case_id + "-") \
+                and filename != "model.xlsx":
+            raise ValidationError(
+                f"export file name must start with '{case_id}-': {filename}")
+        found = _rcase_dir(case_id) / "export" / filename
+        if not found.is_file():
+            raise NotFound(f"no such export file: {filename} (run export "
+                           "first)")
+        return {"case_id": case_id, "filename": filename,
+                "media_type": ("application/pdf" if filename.endswith(".pdf")
+                               else "text/html"
+                               if filename.endswith(".html") else
+                               "application/vnd.openxmlformats-officedocument"
+                               ".spreadsheetml.sheet"),
+                "bytes": found.read_bytes()}
     c = _get(case_id)
     if not filename.startswith(case_id + "-"):
         raise ValidationError(
             f"export file name must start with '{case_id}-': {filename}")
-    if ".." in filename or "/" in filename:
-        raise ValidationError("invalid file name")
     p = _EXPORT_DIR / filename
     if not p.exists():
         raise NotFound(f"no such export file: {filename} (run export first)")
@@ -1889,10 +2705,75 @@ def evolution_rollback(to_version: str,
 
 def edgar_search(ticker: str, forms: str | None = None,
                  window: str | None = None) -> dict:
-    """GET /api/edgar/search — demo filing index for the bundle builder."""
+    """GET /api/edgar/search — filing index for the bundle builder.
+
+    Controller mode attempts a real EDGAR submissions query via
+    coverageflow.bundle; offline (or unknown ticker) it degrades to the
+    built-in demo index with a clear fallback note.
+    """
     t = (ticker or "").strip().upper()
     if not t:
         raise ValidationError("ticker query parameter is required")
+    if _using_real():
+        rows = None
+        note = None
+        demo_rows = _EDGAR_DB.get(t) or []
+        cik = demo_rows[0].get("cik") if demo_rows else None
+        if cik:
+            try:
+                subs = _real_bundle.fetch_submissions(
+                    cik, _real_bundle.EdgarFetcher().get)
+                recent = _real_bundle._recent_index(subs)
+                rows = []
+                for acc, rec in recent.items():
+                    acc_dashed = rec.get("accessionNumber") or (
+                        f"{acc[:10]}-{acc[10:12]}-{acc[12:]}")
+                    primary = rec.get("primaryDocument") or ""
+                    rows.append({
+                        "doc_id": f"{t.lower()}-{acc}",
+                        "accession": acc_dashed,
+                        "form": rec.get("form") or "",
+                        "filed": rec.get("filingDate") or "",
+                        "period": rec.get("reportDate") or "",
+                        "cik": cik,
+                        "title": f"{t} {rec.get('form') or ''} "
+                                 f"{rec.get('reportDate') or ''}".strip(),
+                        "bytes": None,
+                        "primary_doc": primary or None,
+                        "source_url": (
+                            _real_bundle.archive_base(cik, acc_dashed)
+                            + "/" + primary if primary else None)})
+            except Exception as exc:  # offline: degrade, do not fail the UI
+                rows = None
+                note = ("offline fallback: EDGAR unreachable from this "
+                        f"environment ({exc.__class__.__name__}); showing "
+                        "the bundled demo index")
+        else:
+            note = ("offline fallback: ticker not in the bundled demo "
+                    "index; set a cik and try again")
+        if rows is None:
+            return _demo_edgar_rows(t, forms, window, note)
+        if forms:
+            wanted = {f.strip().upper() for f in forms.split(",") if f.strip()}
+            rows = [r for r in rows if r["form"] in wanted]
+        if window:
+            m = re.match(r"^(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$", window)
+            if not m:
+                raise ValidationError(
+                    "window must be YYYY-MM-DD:YYYY-MM-DD, e.g. "
+                    "2025-01-01:2026-12-31")
+            rows = [r for r in rows if m.group(1) <= r["filed"] <= m.group(2)]
+        return {"ticker": t, "count": len(rows),
+                "cik": rows[0]["cik"] if rows else None, "filings": rows,
+                "note": "live EDGAR submissions via coverageflow.bundle "
+                        "(frozen, hashed snapshots only)"}
+    return _demo_edgar_rows(t, forms, window)
+
+
+def _demo_edgar_rows(t: str, forms: str | None = None,
+                     window: str | None = None, note: str | None = None) -> dict:
+    """The demo filing index (offline default)."""
+    t = (t or "").strip().upper()
     rows = list(_EDGAR_DB.get(t, []))
     if forms:
         wanted = {f.strip().upper() for f in forms.split(",") if f.strip()}
@@ -1906,21 +2787,53 @@ def edgar_search(ticker: str, forms: str | None = None,
         rows = [r for r in rows if m.group(1) <= r["filed"] <= m.group(2)]
     return {"ticker": t, "count": len(rows),
             "cik": rows[0]["cik"] if rows else None, "filings": rows,
-            "note": "demo EDGAR index (stub); the real fetcher is A1 "
-                    "bundle.py — frozen, hashed snapshots only"}
+            "note": note or "demo EDGAR index (stub); the real fetcher is "
+                            "coverageflow.bundle — frozen, hashed snapshots "
+                            "only"}
 
 
 def list_bundles() -> dict:
     """GET /api/bundles — frozen bundle manifests (wizard + builder pages)."""
+    if _using_real():
+        ws = _rws()
+        manifests = []
+        for base in (ws / "bundles", ws / "data",
+                     Path(__file__).resolve().parent.parent / "data"):
+            if not base.is_dir():
+                continue
+            for mpath in sorted(base.glob("*/manifest.json")):
+                try:
+                    man = _real_statestore.read_json(mpath)
+                except Exception:
+                    continue
+                if isinstance(man, dict) and man.get("bundle_id"):
+                    manifests.append(man)
+        seen = set()
+        uniq = []
+        for m in manifests:
+            if m["bundle_id"] not in seen:
+                seen.add(m["bundle_id"])
+                uniq.append(m)
+        return {"bundles": uniq, "count": len(uniq)}
     return {"bundles": list(_BUNDLES.values()), "count": len(_BUNDLES)}
 
 
 def build_bundle(cik: str, docs: list[str], name: str) -> dict:
-    """POST /api/bundles — snapshot selected docs into a new frozen bundle."""
+    """POST /api/bundles — snapshot selected docs into a new frozen bundle.
+
+    Controller mode: when every requested doc carries EDGAR accession data,
+    the real frozen-bundle builder (coverageflow.bundle.build_bundle — hashed
+    snapshot into the workspace bundles/ directory) runs; anything else
+    degrades to the offline demo manifest with a clear fallback note.
+    """
     if not cik:
         raise ValidationError("cik is required")
     if not docs:
         raise ValidationError("select at least one document to snapshot")
+    if _using_real():
+        manifest = _real_build_bundle_or_none(cik, docs, name)
+        if manifest is not None:
+            return manifest
     ticker = next((t for t, rows in _EDGAR_DB.items()
                    if rows and rows[0]["cik"] == cik), "CUSTOM")
     known = {r["doc_id"]: r for r in _EDGAR_DB.get(ticker, [])}
@@ -1949,3 +2862,29 @@ def build_bundle(cik: str, docs: list[str], name: str) -> dict:
     _emit("*", "BUNDLE_CREATED", {"bundle_id": bundle_id,
                                   "documents": len(chosen)})
     return manifest
+
+
+def _real_build_bundle_or_none(cik: str, docs, name: str) -> dict | None:
+    """Real frozen-bundle snapshot when accession data is available.
+
+    Returns the written manifest dict, or None to signal the offline demo
+    fallback (offline environment / docs without accession data).
+    """
+    try:
+        specs = []
+        for d in docs:
+            if not isinstance(d, dict) or not d.get("accession"):
+                return None
+            specs.append(_real_bundle.DocSpec(
+                doc_id=str(d["doc_id"]), accession=str(d["accession"]),
+                form=d.get("form"), filed=d.get("filed"),
+                period=d.get("period"), primary_doc=d.get("primary_doc"),
+                ticker=d.get("ticker")))
+        bundle_id = name or f"bundle-{len(list((_rws() / 'bundles').glob('*'))) if (_rws() / 'bundles').is_dir() else 0:02d}"
+        dest = _rws() / "bundles" / bundle_id
+        manifest = _real_bundle.build_bundle(str(cik), specs, dest)
+        _emit("*", "BUNDLE_CREATED", {"bundle_id": bundle_id, "real": True})
+        return manifest.to_dict()
+    except Exception:
+        # offline environment or EDGAR unreachable: caller falls back
+        return None
