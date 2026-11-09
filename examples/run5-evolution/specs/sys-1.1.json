@@ -1,0 +1,32 @@
+{
+  "version": "sys-1.1",
+  "parent": "sys-1.0",
+  "scope": "prompt card: extractor citation formatting",
+  "proposal": {
+    "author": "evo-change-01 (recorded rehearsal)",
+    "diff_files": [
+      "prompts/extractor.md"
+    ],
+    "diff_sha256": "062d086b9cad944e0be240b50bad8a9359319646ff051c8ea2edde8ae20441c8",
+    "summary": "Extractor role card: emit locator as 'line N' plus the statement anchor in every citation."
+  },
+  "tested": {
+    "model": "1.0",
+    "prompt_cards": {
+      "ingest": "1.0",
+      "extractor": "1.1",
+      "model": "1.0",
+      "writer": "1.0",
+      "critics": [
+        "1.0"
+      ]
+    },
+    "engines": "1.0",
+    "cases": [
+      "dev-1",
+      "dev-2",
+      "dev-3",
+      "dev-4"
+    ]
+  }
+}

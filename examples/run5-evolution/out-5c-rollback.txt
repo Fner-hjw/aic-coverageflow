@@ -1,0 +1,9 @@
+{
+  "rollback": {
+    "active": "sys-1.1",
+    "rolled_back_from": "sys-1.2",
+    "by": "Gaetano Marco Chiantia",
+    "reason": "Authorized rollback: verification falls back to the prior approved version."
+  },
+  "active": "sys-1.1"
+}

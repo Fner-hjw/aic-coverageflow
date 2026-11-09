@@ -1,0 +1,8 @@
+{
+  "perturbation": {
+    "deterministic_recompute": true,
+    "no_post_cutoff_documents": true,
+    "cutoff": "2026-10-30",
+    "leaking_docs": []
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "status": "PENDING_APPROVAL",
+  "candidate_id": "cand-51e41bccca84",
+  "round": 2,
+  "clean_review_rounds": 2,
+  "reason": null,
+  "message": "run advanced the case",
+  "re_ran": true
+}

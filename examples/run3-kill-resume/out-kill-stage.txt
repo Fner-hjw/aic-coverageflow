@@ -1,0 +1,5 @@
+{
+  "simulated_kill": true,
+  "partial_output": "rounds/round-001/generator/facts.json",
+  "resume_hint": "resume --case intc-fy2026q3-20261030"
+}

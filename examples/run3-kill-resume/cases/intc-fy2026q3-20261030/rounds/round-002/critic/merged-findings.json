@@ -1,0 +1,17 @@
+{
+  "role": "critic_lead",
+  "round": 2,
+  "candidate_id": "cand-51e41bccca84",
+  "findings": [],
+  "clean": true,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": false,
+  "fresh_context_proofs": [
+    "req-0012",
+    "req-0013",
+    "req-0014",
+    "req-0015"
+  ],
+  "request_id": "req-0016"
+}

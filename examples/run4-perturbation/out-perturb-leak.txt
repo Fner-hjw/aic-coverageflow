@@ -1,0 +1,11 @@
+{
+  "perturbation": {
+    "deterministic_recompute": true,
+    "no_post_cutoff_documents": false,
+    "cutoff": "2026-10-30",
+    "leaking_docs": [
+      "document intc-8k-2026-11-05-postcutoff-injection filed 2026-11-05 is after the information cutoff 2026-10-30"
+    ]
+  }
+}
+exit_code_nonzero=1

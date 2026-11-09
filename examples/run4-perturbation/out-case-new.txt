@@ -1,0 +1,6 @@
+{
+  "created": "intc-fy2026q3-20261030",
+  "case_dir": "examples/run4-perturbation/cases/intc-fy2026q3-20261030",
+  "backend": "replay-stub (offline)",
+  "note": "manifest placeholder until A1's bundle builder is wired; overrides: --manifest / --mandate"
+}

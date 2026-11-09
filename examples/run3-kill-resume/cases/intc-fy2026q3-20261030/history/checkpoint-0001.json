@@ -1,0 +1,9 @@
+{
+  "checkpoint_index": 0,
+  "ts": "2026-11-09T17:02:51Z",
+  "from": "CREATED",
+  "to": "RUNNING",
+  "verified": "case start; case clock started",
+  "state_sha256": "sha256:cb0f9e9d72a49fc00a93f91cfcb73911f68b1fb6697c437ac83ed9561ea7b3e0",
+  "verified_artifacts": {}
+}

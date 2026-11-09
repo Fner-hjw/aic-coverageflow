@@ -1,0 +1,25 @@
+{
+  "version": "sys-2.0",
+  "parent": "sys-1.1",
+  "scope": "controller update: relax acceptance to 1 clean review and raise gate tolerances (DELIBERATELY over-broad for the demo)",
+  "proposal": {
+    "author": "evo-change-02 (recorded rehearsal)",
+    "diff_files": [
+      "coverageflow/orchestrator.py",
+      "coverageflow/gates.py",
+      "prompts/extractor.md"
+    ],
+    "diff_sha256": "73ccadde8952d62d9f255f3600cc2f06f096ba415d876f30d9f7da51d6d4d833",
+    "summary": "Attempts to change LOCKED controller logic: acceptance rule and gate thresholds - outside the evolvable set."
+  },
+  "tested": {
+    "model": "1.0",
+    "prompt_cards": {
+      "extractor": "1.1"
+    },
+    "engines": "1.0",
+    "cases": [
+      "dev-1"
+    ]
+  }
+}

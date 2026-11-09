@@ -1,0 +1,4 @@
+{
+  "seeded_finding": "fnd-001",
+  "case": "intc-fy2026q3-20261030"
+}

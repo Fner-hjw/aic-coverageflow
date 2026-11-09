@@ -1,0 +1,6 @@
+{
+  "files_checked": 7,
+  "byte_identical_pre_post_perturbation": 7,
+  "changed": [],
+  "STABLE_OUTPUTS": true
+}

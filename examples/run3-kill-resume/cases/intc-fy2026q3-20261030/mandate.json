@@ -1,0 +1,73 @@
+{
+  "mandate_id": "man-intc-fy2026q3-20261030",
+  "case_id": "intc-fy2026q3-20261030",
+  "ticker": "INTC",
+  "cutoff_date": "2026-10-30",
+  "report_policy": {
+    "note_type": "quarterly_update",
+    "length_words": [
+      800,
+      1600
+    ],
+    "sections": [
+      "Summary",
+      "Results",
+      "Segment detail",
+      "Outlook",
+      "Valuation",
+      "Risks"
+    ]
+  },
+  "assumptions": {
+    "as_of": "2026-10-30",
+    "wacc": 0.104,
+    "terminal_growth": 0.025,
+    "exit_multiple_ebitda": 14.0,
+    "discount_convention": "year_end",
+    "tax_rate": 0.15,
+    "forecast_bounds": {
+      "segments": {
+        "CCG": [
+          -0.1,
+          0.12
+        ],
+        "DCAI": [
+          -0.05,
+          0.25
+        ],
+        "NEX": [
+          -0.05,
+          0.2
+        ],
+        "Foundry": [
+          -0.05,
+          0.3
+        ],
+        "Altera": [
+          -0.1,
+          0.15
+        ],
+        "Mobileye": [
+          -0.05,
+          0.2
+        ]
+      },
+      "margin_floor_gross": 0.3,
+      "margin_ceiling_gross": 0.55
+    },
+    "peer_block": {
+      "as_of": "2026-10-30",
+      "peers": [],
+      "note": "to be filled at mandate creation"
+    },
+    "dcf_comps_tolerance": 0.25
+  },
+  "limits": {
+    "role_tokens_max": 60000,
+    "case_minutes": 45,
+    "rounds_max": 4,
+    "retries_max": 3,
+    "approval_hours": 48
+  },
+  "schema_version": "1.0"
+}

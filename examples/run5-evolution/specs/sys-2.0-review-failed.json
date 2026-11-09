@@ -1,0 +1,16 @@
+{
+  "fresh_critic_findings": [
+    {
+      "severity": "major",
+      "summary": "Scope gate violation: proposal modifies locked controller logic (acceptance rule, gate thresholds) - a proposal cannot weaken its own acceptance standard.",
+      "affected_artifacts": [
+        "coverageflow/orchestrator.py",
+        "coverageflow/gates.py"
+      ]
+    }
+  ],
+  "regressions_all_pass": false,
+  "identical_outputs_proof": {
+    "dev-1": "regression FAILED: acceptance criteria changed (not identical)"
+  }
+}

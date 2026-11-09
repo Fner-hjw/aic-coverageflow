@@ -1,0 +1,230 @@
+{
+  "case_id": "intc-fy2026q3-20261030",
+  "status": "CLOSED",
+  "pending": {
+    "role": "approval",
+    "request_id": null,
+    "round": 2,
+    "retry_count": 0,
+    "case_clock_started": null,
+    "deadline": "2026-11-11T17:02:51Z",
+    "stage": null
+  },
+  "candidate": {
+    "candidate_id": "cand-51e41bccca84",
+    "clean_review_rounds": 2,
+    "built_round": 1,
+    "gates_passed": true,
+    "last_review_candidate": "cand-51e41bccca84"
+  },
+  "budget": {
+    "rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 45.0,
+    "role_tokens_max": 60000,
+    "approval_hours": 48.0,
+    "used": {
+      "rounds": 1,
+      "elapsed_minutes": 0.016,
+      "tokens_by_role": {
+        "ingest": 400,
+        "extractor": 400,
+        "model": 400,
+        "writer": 400,
+        "generator_lead": 400,
+        "critic_c1": 800,
+        "critic_c2": 800,
+        "critic_c3": 800,
+        "critic_c4": 800,
+        "critic_lead": 800
+      }
+    }
+  },
+  "inputs_manifest_ref": "inputs/manifest.json",
+  "inputs_manifest_sha256": "a1717b0d8d9289b08f9f6b89d3af19ea5b5a6a37d1eb80fe0f673975ebfd786a",
+  "config_versions": {
+    "prompt_cards": {
+      "ingest": "1.0",
+      "extractor": "1.0",
+      "model": "1.0",
+      "writer": "1.0",
+      "critics": [
+        "1.0"
+      ]
+    },
+    "mapping_tables": "1.0",
+    "engines": "1.0",
+    "schema": "1.0"
+  },
+  "checkpoints": [
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "CREATED",
+      "to": "RUNNING",
+      "verified": "case start; case clock started",
+      "state": "sha256:cb0f9e9d72a49fc00a93f91cfcb73911f68b1fb6697c437ac83ed9561ea7b3e0"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001 build start",
+      "state": "sha256:3fb539c67e580bff9ee04604c522dec77a99fa562056637502c7f0de454d23a4"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/ingest-report.json",
+      "state": "sha256:d8efc20845107900747189cdcf7ab4b0ebf9b1176af0e6e11e0c1413b45f2fdd"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/facts.json",
+      "state": "sha256:10703dbfa8774dd9f0ebbb601fc0a06f30f9953bdcd9a60b8248f5d40ff4cc49"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/forecast_assumptions.json",
+      "state": "sha256:0ff5266dd1feb6be7dfa83c932b383f46552d0697de6c712f581f6dca0d278d8"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/model.json",
+      "state": "sha256:adda1b79d091b275a1e7946d6febe55121ca8ba4f4db52e8e860cc838c042e9a"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/report.md",
+      "state": "sha256:632d2a3db1377c193e7ce0c63d25e7c8c6f39948733835576d4c88c0384161c1"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/candidate-manifest.json",
+      "state": "sha256:000a5b763e791d5023098c3ce7a69bdc17ce489c3665b034fcea512dc936f903"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/numerical/gates.json",
+      "state": "sha256:7d331ff37349e6efada786cd865b47320f4ed1840c06a87d037b458cdcc4370f"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c1.json",
+      "state": "sha256:496904c15c121075d407464d5fc6769c347b7b71d9bfc45bd3b4753759844d97"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c2.json",
+      "state": "sha256:fb790cc6e875bc0caa4277e33ad102cb65c53ca2057478046ccee03ed1239568"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c3.json",
+      "state": "sha256:1fb041780af3893934cd310c5fd6a9978cb6e5b281ca267b7a205c791034cff4"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c4.json",
+      "state": "sha256:4db0dfd1141a07625b1ce38aa91f24460e3e547ab3b91f01d54f7022e6530aa9"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/merged-findings.json",
+      "state": "sha256:ee5ecc3a55c2e477ef545f82b05ecba574e7c9aa40530dc336efca57d1db19df"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/merged-findings.json",
+      "state": "sha256:3615252e49a25afe3a15916facee4780ecb6f5338cdbd2703fff52044aa8116b"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c1.json",
+      "state": "sha256:493a81b59863708094af4a15fb5bddeb743f3ad7df0033d194957e1e8b1f03c7"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c2.json",
+      "state": "sha256:0fc1d4f1713b917d74def883c14db63bd2a84428a21c6be61f8fef1dcf7987ca"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c3.json",
+      "state": "sha256:e528305ffc933537eb75f0bc5ffdbf972cb0d8c4c76f8db0bb98ca5a6ad57543"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c4.json",
+      "state": "sha256:0315ff11a4ca197b5c056f90a2933bc8f2c411b05d089d551445652e85c55685"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/merged-findings.json",
+      "state": "sha256:aba5649cc971c424d6499235e1731bea15e34bad2f009173859db8debdee4000"
+    },
+    {
+      "ts": "2026-11-09T17:02:51Z",
+      "from": "RUNNING",
+      "to": "PENDING_APPROVAL",
+      "verified": "rounds/round-002/critic/merged-findings.json",
+      "state": "sha256:7f68aca3a43964931061a7fcd56680f8ddb162de96b8c0ea2e9c4823676c8b78"
+    },
+    {
+      "ts": "2026-11-09T17:02:52Z",
+      "from": "PENDING_APPROVAL",
+      "to": "APPROVED",
+      "verified": "report/v1-cand-51e.md",
+      "state": "sha256:c4b043e1406c0349b5e3bc75575c73dbff2bb81dd757f4f70b7e59c9eb3a50c0"
+    },
+    {
+      "ts": "2026-11-09T17:02:52Z",
+      "from": "APPROVED",
+      "to": "CLOSED",
+      "verified": "report/v1-cand-51e.md",
+      "state": "sha256:4be8ab93cb95e0861d3f351414e3078a563d9183401a8eea6db694c675df6fd8"
+    }
+  ],
+  "reason": {
+    "code": "APPROVED",
+    "message": "human approved",
+    "detail": {
+      "by": "Gaetano Marco Chiantia"
+    }
+  },
+  "updated_at": "2026-11-09T17:02:52Z"
+}

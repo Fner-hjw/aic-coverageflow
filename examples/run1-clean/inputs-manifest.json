@@ -1,0 +1,127 @@
+{
+  "as_of_cutoff": "2026-10-30",
+  "documents": [
+    {
+      "doc_id": "intc-10q-2026q3",
+      "form": "10-Q",
+      "filed": "2026-10-30",
+      "period": "2026-09-26",
+      "path": "inputs/intc-10q-2026q3.htm",
+      "sha256": "e7a8e698b7dfdedbbbfd39609a752515cd8c4e6463400fea94d9c90ae0d2172d",
+      "bytes": 1837623,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm"
+    },
+    {
+      "doc_id": "intc-10k-fy2024",
+      "form": "10-K",
+      "filed": "2025-01-31",
+      "period": "2024-12-28",
+      "path": "inputs/intc-10k-fy2024.htm",
+      "sha256": "166f730b6f31ffe8b58d77be92cb65a4678add475d0f4cc919f63a97cd03c7ee",
+      "bytes": 3334327,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086325000009/intc-20241228.htm"
+    },
+    {
+      "doc_id": "intc-10k-fy2025",
+      "form": "10-K",
+      "filed": "2026-01-23",
+      "period": "2025-12-27",
+      "path": "inputs/intc-10k-fy2025.htm",
+      "sha256": "08fd76ad44ae25591de0d244e2700f93918bba8842c0dbfa5f7e2598057155ef",
+      "bytes": 3320828,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000011/intc-20251227.htm"
+    },
+    {
+      "doc_id": "intc-10q-2025q1",
+      "form": "10-Q",
+      "filed": "2025-04-25",
+      "period": "2025-03-29",
+      "path": "inputs/intc-10q-2025q1.htm",
+      "sha256": "1f4c1fae79ae925e4a36becab193f68917c61fc0297bae55f99f15985c2f73d1",
+      "bytes": 1404591,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086325000074/intc-20250329.htm"
+    },
+    {
+      "doc_id": "intc-10q-2025q2",
+      "form": "10-Q",
+      "filed": "2025-07-24",
+      "period": "2025-06-28",
+      "path": "inputs/intc-10q-2025q2.htm",
+      "sha256": "4f5f2d2a0aec11fa41d476fe1fe9a59730c5b5c15db686fec99f5eb7f027698d",
+      "bytes": 1756242,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086325000109/intc-20250628.htm"
+    },
+    {
+      "doc_id": "intc-10q-2025q3",
+      "form": "10-Q",
+      "filed": "2025-11-06",
+      "period": "2025-09-27",
+      "path": "inputs/intc-10q-2025q3.htm",
+      "sha256": "dd0e74bd03c27704ea1dd3b68f53740058aaf95e66fd4c95b9db4368f57e38ae",
+      "bytes": 1899725,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086325000179/intc-20250927.htm"
+    },
+    {
+      "doc_id": "intc-10q-2026q1",
+      "form": "10-Q",
+      "filed": "2026-04-24",
+      "period": "2026-03-28",
+      "path": "inputs/intc-10q-2026q1.htm",
+      "sha256": "5f87ca90ad16d0854ae8896566df1117d476a05591c69d206bc60bdbfd91ca00",
+      "bytes": 1486371,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000079/intc-20260328.htm"
+    },
+    {
+      "doc_id": "intc-10q-2026q2",
+      "form": "10-Q",
+      "filed": "2026-07-24",
+      "period": "2026-06-27",
+      "path": "inputs/intc-10q-2026q2.htm",
+      "sha256": "f287cd437c6a55ec45ab672912ba8831c91b4e26ded74b7be6c50058c61f4295",
+      "bytes": 1716791,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000157/intc-20260627.htm"
+    },
+    {
+      "doc_id": "intc-8k-2024-08-01",
+      "form": "8-K",
+      "filed": "2024-08-01",
+      "period": "2024-08-01",
+      "path": "inputs/intc-8k-2024-08-01.htm",
+      "sha256": "4dd8a68faee19213ffcd3b7137b4829f55e15d061d53756c371c8e17323f88ae",
+      "bytes": 27811,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086324000122/intc-20240801.htm"
+    },
+    {
+      "doc_id": "intc-8k-2024-12-03",
+      "form": "8-K",
+      "filed": "2024-12-03",
+      "period": "2024-12-01",
+      "path": "inputs/intc-8k-2024-12-03.htm",
+      "sha256": "1c164f678affbccf57ef3fc23e8751396c891f6053636c134229a9ed22d2c792",
+      "bytes": 33072,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086324000173/intc-20241201.htm"
+    },
+    {
+      "doc_id": "intc-8k-2025-09-15",
+      "form": "8-K",
+      "filed": "2025-09-15",
+      "period": "2025-09-12",
+      "path": "inputs/intc-8k-2025-09-15.htm",
+      "sha256": "35e804da403a0d9eb79e03a1f6b97fdef98b8efdd577330d76ccfec6b3fb78ad",
+      "bytes": 66635,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086325000153/intc-20250912.htm"
+    },
+    {
+      "doc_id": "intc-8k-2026-10-29",
+      "form": "8-K",
+      "filed": "2026-10-29",
+      "period": "2026-10-29",
+      "path": "inputs/intc-8k-2026-10-29.htm",
+      "sha256": "e89efc1f425b51f57b78c9e37512f8d57daeb2c1ff1f80900c7087bbbb38eb1a",
+      "bytes": 27271,
+      "source_url": "https://www.sec.gov/Archives/edgar/data/50863/000005086326000188/intc-20261029.htm"
+    }
+  ],
+  "bundle_id": "intc-2026-10",
+  "bundle_sha256": "40fc08efbf985dfd0b842acc61c31e553fc08eb17f29887246b578464840bbc4"
+}

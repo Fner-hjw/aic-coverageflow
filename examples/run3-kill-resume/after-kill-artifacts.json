@@ -1,0 +1,35 @@
+{
+  "pending_stage": "extractor",
+  "completed_artifacts": {
+    "ingest-report.json": {
+      "sha256": "21edf910e09318cdc7ededb58bcf340e304f1d3f9d679d9e61026aa5a5ef17fe",
+      "content": {
+        "role": "ingest",
+        "classification": {
+          "form": "10-Q",
+          "affects": [
+            "extraction",
+            "model",
+            "valuation",
+            "report"
+          ],
+          "reason": "new quarterly statements supersede prior-period estimates"
+        },
+        "slices": [
+          {
+            "slice_id": "intc-10q-2026q3/IS",
+            "kind": "income_statement",
+            "path": "inputs/slices/intc-10q-2026q3/IS.txt",
+            "sha256": "aae009d532ea778ca6c2f8cf0a7cd672c1177b76eb9aa25eab29acc76a2ca154",
+            "anchors": {
+              "first_line": "Consolidated Statements of Operations"
+            }
+          }
+        ],
+        "superseded": [],
+        "conformance": "schema 1.0",
+        "prompt_version": "1.0"
+      }
+    }
+  }
+}

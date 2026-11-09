@@ -1,0 +1,12 @@
+{
+  "killed_during": "extractor",
+  "detail": "simulated kill during extractor dispatch"
+}
+{
+  "dangling_dispatch_requests": [
+    "req-0002"
+  ],
+  "state": "RUNNING",
+  "pending_role": "generator",
+  "pending_stage": "extractor"
+}

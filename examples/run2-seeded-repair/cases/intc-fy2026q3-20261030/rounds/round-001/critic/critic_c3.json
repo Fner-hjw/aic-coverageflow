@@ -1,0 +1,29 @@
+{
+  "role": "critic_c3",
+  "round": 1,
+  "verdict": "clean",
+  "findings": [],
+  "verified_resolutions": [
+    {
+      "finding_id": "fnd-001",
+      "resolved": true,
+      "verified_evidence": {
+        "artifact": "rounds/round-001/generator/report.md",
+        "sha256": "ac80522aa3635e2f382549e2c9f8fd32bd0dcf914e73b5b914faf08b0d2b97d7"
+      }
+    }
+  ],
+  "coverage": {
+    "rubric_version": "1.0",
+    "areas_checked": [
+      "citation_integrity",
+      "recomputation",
+      "cutoff_discipline",
+      "risk_controls"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0",
+  "request_id": "req-0008",
+  "candidate_id": "cand-43f01cba83f4"
+}

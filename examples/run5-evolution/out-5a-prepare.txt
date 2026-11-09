@@ -1,0 +1,14 @@
+{
+  "prepared": {
+    "version": null,
+    "parent": "sys-1.0",
+    "scope": "prompt card: extractor citation formatting",
+    "proposal": {
+      "author": "hjw",
+      "diff_files": [],
+      "diff_sha256": null
+    },
+    "tested": {}
+  },
+  "next": "fill version/scope/diff; then: evolve propose"
+}

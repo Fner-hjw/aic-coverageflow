@@ -1,0 +1,11 @@
+{
+  "checkpoint_index": 2,
+  "ts": "2026-11-09T17:05:50Z",
+  "from": "RUNNING",
+  "to": "RUNNING",
+  "verified": "rounds/round-001/generator/ingest-report.json",
+  "state_sha256": "sha256:1bf0ef07fdcecdf6506ba15bbb6a8886e5c58c83ebd1c4ec9566a927591548cc",
+  "verified_artifacts": {
+    "rounds/round-001/generator/ingest-report.json": "21edf910e09318cdc7ededb58bcf340e304f1d3f9d679d9e61026aa5a5ef17fe"
+  }
+}

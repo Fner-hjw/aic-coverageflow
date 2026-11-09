@@ -1,0 +1,32 @@
+{
+  "version": "sys-1.2",
+  "parent": "sys-1.1",
+  "scope": "engine default config: slicer anchor ordering for 10-K filings",
+  "proposal": {
+    "author": "evo-change-03 (recorded rehearsal)",
+    "diff_files": [
+      "coverageflow/slicer.py"
+    ],
+    "diff_sha256": "902d87a20756749a263be6771b40201469493745071087d053ca8284a1b9c857",
+    "summary": "Deterministic slicer: emit income-statement anchor before cash-flow on 10-K documents (regression-proven identical outputs on all baseline cases)."
+  },
+  "tested": {
+    "model": "1.0",
+    "prompt_cards": {
+      "ingest": "1.0",
+      "extractor": "1.1",
+      "model": "1.0",
+      "writer": "1.0",
+      "critics": [
+        "1.0"
+      ]
+    },
+    "engines": "1.1",
+    "cases": [
+      "dev-1",
+      "dev-2",
+      "dev-3",
+      "dev-4"
+    ]
+  }
+}

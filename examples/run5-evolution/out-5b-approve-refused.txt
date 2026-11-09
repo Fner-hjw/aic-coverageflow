@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 201, in _run_module_as_main
+  File "<frozen runpy>", line 87, in _run_code
+  File "/Users/hjw/Fudan/Module 5/AIC/Project/coverageflow-a5-docs/coverageflow/__main__.py", line 6, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/hjw/Fudan/Module 5/AIC/Project/coverageflow-a5-docs/coverageflow/cli.py", line 500, in main
+    return int(args.handler(args, ws) or 0)
+               ~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/hjw/Fudan/Module 5/AIC/Project/coverageflow-a5-docs/coverageflow/cli.py", line 361, in cmd_evolve
+    rg.approve(args.version, by=args.by or os_user(),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               decision=(args.decision or "APPROVED"))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/hjw/Fudan/Module 5/AIC/Project/coverageflow-a5-docs/coverageflow/registry.py", line 131, in approve
+    raise RuntimeError("cannot approve a version whose fresh-critic "
+                       "review did not pass all regressions")
+RuntimeError: cannot approve a version whose fresh-critic review did not pass all regressions
+approve_REFUSED_exit_code=1
+{
+  "active": "sys-1.1"
+}

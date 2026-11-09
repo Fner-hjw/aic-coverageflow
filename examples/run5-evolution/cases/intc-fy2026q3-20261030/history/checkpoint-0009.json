@@ -1,0 +1,18 @@
+{
+  "checkpoint_index": 8,
+  "ts": "2026-11-09T17:05:50Z",
+  "from": "RUNNING",
+  "to": "RUNNING",
+  "verified": "rounds/round-001/numerical/gates.json",
+  "state_sha256": "sha256:b05459725dc7c01c75780ea33d42e7f796c4153ccdebeff399dd59ec046ddfa6",
+  "verified_artifacts": {
+    "rounds/round-001/generator/ingest-report.json": "c8e02b583ebe30bedf41d10742c985b39966c4b11d8f25ce1a20aa39b2baa609",
+    "rounds/round-001/generator/facts.json": "a4ea19ef74cdf76b92e2c97f18ee043f13c7c1fce3f4124d9eafa8bc49cac40e",
+    "rounds/round-001/generator/forecast_assumptions.json": "9b5a20dbbc58f2a2fa61be8625989d67896ba4d00cadc6f7f002c80f2e15f136",
+    "rounds/round-001/generator/model.json": "edefeb3a860b2ebae132d7f646f559298b236fb2eb939e30aba14aa2ab9f64fe",
+    "rounds/round-001/generator/valuation.json": "8a60c1db2d0499abd3921fa38091a205f0678e0c45efd8b88c11d0c77219a561",
+    "rounds/round-001/generator/report.md": "ac80522aa3635e2f382549e2c9f8fd32bd0dcf914e73b5b914faf08b0d2b97d7",
+    "rounds/round-001/generator/candidate-manifest.json": "e1d6b2e32db9e19dd99b8f6b93bde67b8e61db95ed62d94c702de3e7873e8cf5",
+    "rounds/round-001/numerical/gates.json": "116a33ea55362a728a9df32377b4b40e28c12e6cf3a9fd6e2a62010da4f68bdb"
+  }
+}

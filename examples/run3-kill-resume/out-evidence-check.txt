@@ -1,0 +1,47 @@
+{
+  "case": "intc-fy2026q3-20261030",
+  "completed_artifacts_unchanged": {
+    "checked": 1,
+    "byte_identical": 1,
+    "changed": []
+  },
+  "dispatch_counts": {
+    "ingest": 1,
+    "extractor": 2,
+    "model": 1,
+    "writer": 1,
+    "generator_lead": 1,
+    "critic_c1": 2,
+    "critic_c2": 2,
+    "critic_c3": 2,
+    "critic_c4": 2,
+    "critic_lead": 2
+  },
+  "result_counts": {
+    "ingest": 1,
+    "extractor": 1,
+    "model": 1,
+    "writer": 1,
+    "generator_lead": 1,
+    "critic_c1": 2,
+    "critic_c2": 2,
+    "critic_c3": 2,
+    "critic_c4": 2,
+    "critic_lead": 2
+  },
+  "only_pending_role_re_ran": {
+    "killed_role_total_dispatches": 2,
+    "killed_role_results": 1,
+    "ingest_re_dispatched": false,
+    "model_re_dispatched": false,
+    "writer_re_dispatched": false,
+    "lead_re_dispatched": false
+  },
+  "torn_partial_discarded": [
+    "facts.json.00.partial"
+  ],
+  "facts_are_not_the_torn_partial": true,
+  "final_status": "CLOSED",
+  "final_clean_review_rounds": 2,
+  "ALL_CHECKS_PASS": true
+}

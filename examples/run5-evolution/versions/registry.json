@@ -1,0 +1,183 @@
+{
+  "active": "sys-1.1",
+  "versions": [
+    {
+      "version": "sys-1.0",
+      "parent": null,
+      "scope": "baseline",
+      "proposal": {
+        "author": "kickoff",
+        "diff_files": [],
+        "diff_sha256": null
+      },
+      "tested": {
+        "model": "1.0",
+        "prompt_cards": {
+          "ingest": "1.0",
+          "extractor": "1.0",
+          "model": "1.0",
+          "writer": "1.0",
+          "critics": [
+            "1.0"
+          ]
+        },
+        "engines": "1.0",
+        "cases": []
+      },
+      "review": {
+        "fresh_critic_findings": [],
+        "regressions_all_pass": true,
+        "identical_outputs_proof": {}
+      },
+      "approval": {
+        "decision": "APPROVED",
+        "by": "kickoff",
+        "ts": null
+      },
+      "rollback_to": null
+    },
+    {
+      "version": "sys-1.1",
+      "parent": "sys-1.0",
+      "scope": "prompt card: extractor citation formatting",
+      "proposal": {
+        "author": "evo-change-01 (recorded rehearsal)",
+        "diff_files": [
+          "prompts/extractor.md"
+        ],
+        "diff_sha256": "062d086b9cad944e0be240b50bad8a9359319646ff051c8ea2edde8ae20441c8",
+        "summary": "Extractor role card: emit locator as 'line N' plus the statement anchor in every citation."
+      },
+      "tested": {
+        "model": "1.0",
+        "prompt_cards": {
+          "ingest": "1.0",
+          "extractor": "1.1",
+          "model": "1.0",
+          "writer": "1.0",
+          "critics": [
+            "1.0"
+          ]
+        },
+        "engines": "1.0",
+        "cases": [
+          "dev-1",
+          "dev-2",
+          "dev-3",
+          "dev-4"
+        ]
+      },
+      "review": {
+        "fresh_critic_findings": [],
+        "regressions_all_pass": true,
+        "identical_outputs_proof": {
+          "dev-1": "160ac8ea76cfa201a5821c80e249cfee73ff07ec50de1b881b3b323108be756f",
+          "dev-2": "d71bd6371e7148d0180dc5ae345b7be6eeeebc89f8a88539d0f2afe11a01259c",
+          "dev-3": "43a7885986da5102a47a65304209738e0291c26b4f68dfee096193d076ba81f4",
+          "dev-4": "40cf359085584b78f9d1a266ba0107da08c0525d8674e549c0683f93ce9a5fc9"
+        }
+      },
+      "approval": {
+        "decision": "APPROVED",
+        "by": "Gaetano Marco Chiantia",
+        "ts": "2026-11-09T17:05:49Z"
+      },
+      "rollback_to": null
+    },
+    {
+      "version": "sys-2.0",
+      "parent": "sys-1.1",
+      "scope": "controller update: relax acceptance to 1 clean review and raise gate tolerances (DELIBERATELY over-broad for the demo)",
+      "proposal": {
+        "author": "evo-change-02 (recorded rehearsal)",
+        "diff_files": [
+          "coverageflow/orchestrator.py",
+          "coverageflow/gates.py",
+          "prompts/extractor.md"
+        ],
+        "diff_sha256": "73ccadde8952d62d9f255f3600cc2f06f096ba415d876f30d9f7da51d6d4d833",
+        "summary": "Attempts to change LOCKED controller logic: acceptance rule and gate thresholds - outside the evolvable set."
+      },
+      "tested": {
+        "model": "1.0",
+        "prompt_cards": {
+          "extractor": "1.1"
+        },
+        "engines": "1.0",
+        "cases": [
+          "dev-1"
+        ]
+      },
+      "review": {
+        "fresh_critic_findings": [
+          {
+            "severity": "major",
+            "summary": "Scope gate violation: proposal modifies locked controller logic (acceptance rule, gate thresholds) - a proposal cannot weaken its own acceptance standard.",
+            "affected_artifacts": [
+              "coverageflow/orchestrator.py",
+              "coverageflow/gates.py"
+            ]
+          }
+        ],
+        "regressions_all_pass": false,
+        "identical_outputs_proof": {
+          "dev-1": "regression FAILED: acceptance criteria changed (not identical)"
+        }
+      },
+      "approval": {
+        "decision": "REJECTED",
+        "by": "Gaetano Marco Chiantia",
+        "ts": "2026-11-09T17:05:49Z"
+      },
+      "rollback_to": null
+    },
+    {
+      "version": "sys-1.2",
+      "parent": "sys-1.1",
+      "scope": "engine default config: slicer anchor ordering for 10-K filings",
+      "proposal": {
+        "author": "evo-change-03 (recorded rehearsal)",
+        "diff_files": [
+          "coverageflow/slicer.py"
+        ],
+        "diff_sha256": "902d87a20756749a263be6771b40201469493745071087d053ca8284a1b9c857",
+        "summary": "Deterministic slicer: emit income-statement anchor before cash-flow on 10-K documents (regression-proven identical outputs on all baseline cases)."
+      },
+      "tested": {
+        "model": "1.0",
+        "prompt_cards": {
+          "ingest": "1.0",
+          "extractor": "1.1",
+          "model": "1.0",
+          "writer": "1.0",
+          "critics": [
+            "1.0"
+          ]
+        },
+        "engines": "1.1",
+        "cases": [
+          "dev-1",
+          "dev-2",
+          "dev-3",
+          "dev-4"
+        ]
+      },
+      "review": {
+        "fresh_critic_findings": [],
+        "regressions_all_pass": true,
+        "identical_outputs_proof": {
+          "dev-1": "fe43ee5922e4b78b3f0fdc2092362b0e7dcb1248d6111b022b7960c0ae18d3a3",
+          "dev-2": "86def2e8bd6a1f242765a7555dd23f7858d07d88fe13ae8bae199a00dbc9c533",
+          "dev-3": "b8046c366404a7d0f62087dc25ea8426b660c1e4031b3a1776694d4e521fe3d5",
+          "dev-4": "0e0c37336185d26a7d895e5d34c612f0ce20aac2ca1934fd970b74d30a2b8b40"
+        }
+      },
+      "approval": {
+        "decision": "APPROVED",
+        "by": "Gaetano Marco Chiantia",
+        "ts": "2026-11-09T17:05:49Z"
+      },
+      "rollback_to": "sys-1.1"
+    }
+  ]
+}

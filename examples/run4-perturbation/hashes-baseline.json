@@ -1,0 +1,9 @@
+{
+  "approvals/apr-0001.json": "4e8ce9178af372c21f4bac9a8629e876a2e1a2213a945aa69dca8e61d0c30652",
+  "inputs/manifest.json": "a1717b0d8d9289b08f9f6b89d3af19ea5b5a6a37d1eb80fe0f673975ebfd786a",
+  "report/v1-cand-43f.md": "ac80522aa3635e2f382549e2c9f8fd32bd0dcf914e73b5b914faf08b0d2b97d7",
+  "result.json": "b7886a5903f99689c4698d1a3cb5c8666f75dc9241e6e29a504de8f53225dbd8",
+  "rounds/round-001/generator/model.json": "edefeb3a860b2ebae132d7f646f559298b236fb2eb939e30aba14aa2ab9f64fe",
+  "rounds/round-001/generator/valuation.json": "8a60c1db2d0499abd3921fa38091a205f0678e0c45efd8b88c11d0c77219a561",
+  "rounds/round-001/numerical/gates.json": "116a33ea55362a728a9df32377b4b40e28c12e6cf3a9fd6e2a62010da4f68bdb"
+}

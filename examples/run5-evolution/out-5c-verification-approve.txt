@@ -1,0 +1,42 @@
+{
+  "status": "CLOSED",
+  "terminal": "APPROVED",
+  "report_version": "v1-cand-43f",
+  "result": {
+    "case_id": "intc-fy2026q3-20261030",
+    "terminal": "APPROVED",
+    "candidate_id": "cand-43f01cba83f4",
+    "report_version": "v1-cand-43f",
+    "reason": {
+      "code": "APPROVED",
+      "message": "human approved; 2 consecutive clean reviews; all gates pass",
+      "detail": {
+        "by": "Gaetano Marco Chiantia"
+      }
+    },
+    "budget_final": {
+      "rounds_max": 4,
+      "retries_max": 3,
+      "case_minutes": 45.0,
+      "role_tokens_max": 60000,
+      "approval_hours": 48.0,
+      "used": {
+        "rounds": 1,
+        "elapsed_minutes": 0.002,
+        "tokens_by_role": {
+          "ingest": 400,
+          "extractor": 400,
+          "model": 400,
+          "writer": 400,
+          "generator_lead": 400,
+          "critic_c1": 800,
+          "critic_c2": 800,
+          "critic_c3": 800,
+          "critic_c4": 800,
+          "critic_lead": 800
+        }
+      }
+    },
+    "closed_ts": "2026-11-09T17:05:50Z"
+  }
+}

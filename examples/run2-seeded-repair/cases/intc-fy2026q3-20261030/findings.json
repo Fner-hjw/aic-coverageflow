@@ -1,0 +1,27 @@
+{
+  "case_id": "intc-fy2026q3-20261030",
+  "findings": [
+    {
+      "finding_id": "fnd-001",
+      "dedup_key": "demo-seeded-finding",
+      "source_critic": null,
+      "first_seen_round": 1,
+      "last_seen_round": 1,
+      "status": "closed",
+      "closed_by": {
+        "round": 1,
+        "critic": "critic_c1",
+        "verified_evidence": {
+          "artifact": "rounds/round-001/generator/report.md",
+          "sha256": "ac80522aa3635e2f382549e2c9f8fd32bd0dcf914e73b5b914faf08b0d2b97d7"
+        }
+      },
+      "severity": "minor",
+      "summary": "[demo] seeded rehearsal finding: gross margin driver narrative cites stale segment table",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "updated segment-table citation"
+    }
+  ]
+}

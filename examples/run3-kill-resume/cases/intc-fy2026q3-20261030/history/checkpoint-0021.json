@@ -1,0 +1,28 @@
+{
+  "checkpoint_index": 20,
+  "ts": "2026-11-09T17:02:51Z",
+  "from": "RUNNING",
+  "to": "PENDING_APPROVAL",
+  "verified": "rounds/round-002/critic/merged-findings.json",
+  "state_sha256": "sha256:7f68aca3a43964931061a7fcd56680f8ddb162de96b8c0ea2e9c4823676c8b78",
+  "verified_artifacts": {
+    "rounds/round-001/generator/ingest-report.json": "8d1c9e523a4fe62dd466519b9dea305c8ff8aa577997e57982f57cc689d4735c",
+    "rounds/round-001/generator/facts.json": "109e3c64c4de97fa4c37976f2b926b9f2d793650d8ab4aa64b05af81437ec3b6",
+    "rounds/round-001/generator/forecast_assumptions.json": "c97c7b73c0072952b439288d143dec855ae436fc66a129276123b048819c439f",
+    "rounds/round-001/generator/model.json": "040eae6d7b8b46c40716cef0cdbc2b76e97adbadd89b51a31728a81fed655747",
+    "rounds/round-001/generator/valuation.json": "f35027f0959d5d4d24f93b37015d6292863f2fd750cae45b22cb7fd160bf8cd0",
+    "rounds/round-001/generator/report.md": "ac80522aa3635e2f382549e2c9f8fd32bd0dcf914e73b5b914faf08b0d2b97d7",
+    "rounds/round-001/generator/candidate-manifest.json": "45a36bf7ca5d609cea3fcfd4ac68f99d5772c08b1fb67cd5ac944fa2867bc156",
+    "rounds/round-001/numerical/gates.json": "ab72c7c93791b03bf0d5d7157efaa679e12eb32768b7033b395149dab94964a9",
+    "rounds/round-001/critic/critic_c1.json": "785befba3e7cd8c93259c2646d98a0a7916ebaa1de9da933ba4ec898105dc18b",
+    "rounds/round-001/critic/critic_c2.json": "12728c7efadec53a23cda777384363273282919f77c9ec3387597d87c25401eb",
+    "rounds/round-001/critic/critic_c3.json": "6c4d52fb26c6a8dc3c0b399a4460fffc8a1d39fefda0b65a3a5f1518b3e79fdd",
+    "rounds/round-001/critic/critic_c4.json": "e7286ad13fa158b10c1c92fc3055b5073634e6e5ed382f43f61f716e3480aa6d",
+    "rounds/round-001/critic/merged-findings.json": "67f2f570e643a9289eabf6e0201957ab48faf74f3163d1ab1ea6a4150ea1ccd9",
+    "rounds/round-002/critic/critic_c1.json": "a045f51095f62c5187107f525d4cd4ecf5659b707ba23775c75edbe7c13a56cd",
+    "rounds/round-002/critic/critic_c2.json": "8ccabf795b724813877a6d9864361fbda25e255cf973dd73fb529439eabe38b8",
+    "rounds/round-002/critic/critic_c3.json": "01997b890e3b91d97ab70b8ba5b05dec773f85a0094639601db6288a09cc7f46",
+    "rounds/round-002/critic/critic_c4.json": "ba9ab6822d7c73c7c1240a3f99154135073308ae593f7741f1f1dd8dc1e58d49",
+    "rounds/round-002/critic/merged-findings.json": "fa11af8ba7eb74a9c9e88b4812bf373dcf0ecaef798e554e5e44908a21fe946b"
+  }
+}

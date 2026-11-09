@@ -1,0 +1,9 @@
+{
+  "checkpoint_index": 1,
+  "ts": "2026-11-09T16:53:48Z",
+  "from": "RUNNING",
+  "to": "RUNNING",
+  "verified": "rounds/round-001 build start",
+  "state_sha256": "sha256:66c12fd622baaa248f11962cf906f583af2ff72550decb4e7bc0937233d12154",
+  "verified_artifacts": {}
+}

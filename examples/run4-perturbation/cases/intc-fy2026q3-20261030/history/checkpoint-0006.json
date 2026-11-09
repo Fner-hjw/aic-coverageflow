@@ -1,0 +1,15 @@
+{
+  "checkpoint_index": 5,
+  "ts": "2026-11-09T17:04:51Z",
+  "from": "RUNNING",
+  "to": "RUNNING",
+  "verified": "rounds/round-001/generator/model.json",
+  "state_sha256": "sha256:9ae785b78e3390a9d640e703e9d659074ebadf9961bd74f0520888b06490050c",
+  "verified_artifacts": {
+    "rounds/round-001/generator/ingest-report.json": "21edf910e09318cdc7ededb58bcf340e304f1d3f9d679d9e61026aa5a5ef17fe",
+    "rounds/round-001/generator/facts.json": "b163c7ac1512fae9a04e1602f19a09c256a8d57f7a11bb403e9c2604cedb37c3",
+    "rounds/round-001/generator/forecast_assumptions.json": "1db9d4599113c1ab664550c41f59b8ba419d7f94a9654e988e9c8ae1d026786a",
+    "rounds/round-001/generator/model.json": "a599063f5897656615973639dccfee42f19b7d2e3f33472aea1847b65417bdd8",
+    "rounds/round-001/generator/valuation.json": "326c02d1affbd084aadebb83824c9ed68f981323b6285d8a6aa7c973bcab1f14"
+  }
+}

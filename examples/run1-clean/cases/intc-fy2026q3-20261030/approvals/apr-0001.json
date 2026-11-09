@@ -1,0 +1,17 @@
+{
+  "decision_id": "apr-0001",
+  "case_id": "intc-fy2026q3-20261030",
+  "candidate_id": "cand-43f01cba83f4",
+  "decision": "APPROVED",
+  "by": "Gaetano Marco Chiantia",
+  "ts": "2026-11-09T16:53:48Z",
+  "reasoning": "Quarterly update verified: all gates pass, 2 clean reviews, no open findings.",
+  "expected_evidence_refs": [
+    "rounds/round-001/generator/ingest-report.json",
+    "rounds/round-001/generator/facts.json",
+    "rounds/round-001/generator/forecast_assumptions.json",
+    "rounds/round-001/generator/report.md",
+    "rounds/round-001/generator/model.json",
+    "rounds/round-001/generator/valuation.json"
+  ]
+}
