@@ -687,3 +687,459 @@ async function renderCaseFindings(body, c) {
       "SEEDED findings come from the scripted-rehearsal panel — they drive the repair-loop evidence run, not real reviewers."));
   }
 }
+
+
+/* -------- trace timeline (filterable) ----------------------------------- */
+
+async function renderCaseTrace(body, c) {
+  const full = await guard(() => Api.get(`/api/cases/${c.case_id}/trace`), "trace load failed");
+  if (!full.ok) { body.replaceChildren(h("div", { class: "err-box" }, full.err.message)); return; }
+  const events = full.data.events;
+  const EVENT_TYPES = [...new Set(events.map(e => e.event))].sort();
+  const ROLES = [...new Set(events.map(e => e.role).filter(Boolean))].sort();
+
+  const fEvent = h("select", { onchange: apply });
+  const fRole = h("select", { onchange: apply });
+  const fRound = h("input", { type: "number", min: "0", placeholder: "round",
+                              class: "num", style: "width:90px", onchange: apply,
+                              oninput: apply });
+  fEvent.append(h("option", { value: "" }, `event type (${EVENT_TYPES.length})`),
+    ...EVENT_TYPES.map(t => h("option", { value: t }, t)));
+  fRole.append(h("option", { value: "" }, `role (${ROLES.length})`),
+    ...ROLES.map(t => h("option", { value: t }, t)));
+
+  const listEl = h("div", { class: "trace" });
+  const countEl = h("span", { class: "hint mono" });
+
+  function apply() {
+    const ev = fEvent.value, ro = fRole.value, rn = fRound.value;
+    let shown = 0;
+    listEl.replaceChildren();
+    events.forEach((e, i) => {
+      if (ev && e.event !== ev) return;
+      if (ro && e.role !== ro) return;
+      if (rn && String(e.round) !== String(rn)) return;
+      shown++;
+      const isGate = e.event.includes("GATE_PASS") || e.event === "REQUEST_BOUND";
+      const isFail = e.event === "GATE_FAIL" || e.event === "FINDING_OPENED";
+      const isKey = ["CASE_CREATED", "CASE_CLOSED", "APPROVAL_RECORDED",
+        "APPROVAL_REQUESTED", "FINDING_VERIFIED_CLOSED"].includes(e.event);
+      const parts = [];
+      if (e.role) parts.push(h("b", null, e.role));
+      if (e.detail) {
+        const fs = Object.entries(e.detail).filter(([k, v]) =>
+          ["finding_id", "decision", "by", "killed_stage", "passed",
+           "findings", "severity", "re_dispatch_role", "resumed"].includes(k));
+        for (const [k, v] of fs) parts.push(`${k}=${Array.isArray(v) ? v.join(",") : v}`);
+      }
+      listEl.append(h("div", { class: `tev ${isFail ? "fail" : isKey ? "hit" : ""}` },
+        h("span", { class: "ts" }, fmt.time(e.ts)),
+        h("div", { class: "what" }, e.event, " ", ...parts),
+        h("div", { class: "meta" },
+          h("span", { class: "mono" },
+            `#${String(i + 1).padStart(3, "0")} · req ${e.request_id || "—"} · round ${e.round}`),
+          e.artifact ? h("span", null, ` · artifact ${e.artifact}`) : null,
+          (e.tokens_in || e.tokens_out) ? h("span", null,
+            ` · tokens ${e.tokens_in || 0}→${e.tokens_out || 0}`) : null,
+          e.detail && e.detail.terminal ? h("span", null, ` · terminal ${e.detail.terminal}`) : null,
+        )));
+    });
+    countEl.textContent = `${shown}/${events.length} shown`;
+    if (!shown) listEl.append(h("div", { class: "empty" },
+      "no events match these filters"));
+  }
+
+  body.replaceChildren(
+    h("div", { class: "actions" },
+      h("span", { class: "label", style: "margin:0" }, "filter"),
+      fEvent, fRole, fRound,
+      h("span", { class: "grow" }),
+      countEl,
+      h("button", { class: "btn small", onclick: () => {
+        fEvent.value = ""; fRole.value = ""; fRound.value = ""; apply();
+      } }, "clear")),
+    h("p", { class: "hint" },
+      "append-only JSONL trace — the orchestrator is the only writer; round/role/event filters are pure views."),
+    listEl);
+  apply();
+}
+
+/* -------- artifacts inspector ------------------------------------------- */
+
+async function renderCaseArtifacts(body, c) {
+  const paths = c.artifacts || [];
+  const groups = {};
+  for (const p of paths) {
+    const seg = p.includes("/") ? p.split("/")[0] + "/" : "(root)";
+    (groups[seg] = groups[seg] || []).push(p);
+  }
+  const detail = h("div", { id: "artifact-view" },
+    emptyState("Select an artifact",
+      "pick any staged file on the left — renderings and raw bytes come from read-only endpoints; the UI cannot modify them."));
+
+  async function show(path, btn) {
+    $$(".art-btn").forEach(b => b.classList.remove("on"));
+    if (btn) btn.classList.add("on");
+    detail.replaceChildren(loadingRow("artifact"));
+    const r = await guard(() => Api.get(
+      `/api/cases/${c.case_id}/artifacts/${path}`), "artifact load failed");
+    if (!r.ok) { detail.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+    const art = r.data;
+    const rawBox = h("pre", { class: "rawjson" },
+      art.kind === "json" ? JSON.stringify(art.content, null, 2) : art.content.text);
+
+    let treeBox = null;
+    if (art.kind === "json") {
+      try {
+        treeBox = h("div", { class: "panel inset" },
+          h("label", { class: "label" }, "json tree"),
+          jsonTree(typeof art.content === "object" && art.content !== null && !art.content.text
+            ? art.content : JSON.parse(rawBox.textContent)));
+      } catch { treeBox = null; }
+    }
+
+    const toggle = h("button", { class: "btn small" }, "raw text");
+    let raw = !!treeBox === false;
+    const pane = h("div", null);
+    function paint() {
+      pane.replaceChildren(raw || !treeBox ? rawBox : treeBox);
+      toggle.textContent = treeBox ? (raw ? "json tree" : "raw text") : "raw text";
+    }
+    toggle.addEventListener("click", () => { raw = !raw; paint(); });
+    paint();
+
+    detail.replaceChildren(
+      h("section", { class: "block" },
+        h("label", { class: "label" }, art.path),
+        h("div", { class: "row wrap mb2" },
+          h("span", { class: "chip" }, `kind ${art.kind}`),
+          h("span", { class: "chip" }, `${fmt.int(art.size_bytes)} bytes`),
+          h("span", { class: "grow" }),
+          toggle)),
+      pane);
+  }
+
+  const list = h("div", { class: "replay-steps" },
+    h("label", { class: "label" }, `staged files (${paths.length})`),
+    ...Object.entries(groups).sort().flatMap(([grp, ps]) => [
+      h("div", { class: "hint mono", style: "padding:6px 12px;background:var(--paper-2);border-bottom:1px solid var(--hairline)" }, grp),
+      ...ps.map(p => {
+        const b = h("button", { class: "step art-btn" }, p.split("/").pop() || p);
+        b.addEventListener("click", () => show(p, b));
+        return b;
+      }),
+    ]));
+
+  body.replaceChildren(h("div", { class: "replay-stage" }, list, detail));
+}
+
+/* -------- report tab: md + citations + diff ------------------------------ */
+
+async function renderCaseReport(body, c) {
+  const ver = await guard(() => Api.get(`/api/cases/${c.case_id}/report`),
+    "report load failed");
+  if (!ver.ok) {
+    body.replaceChildren(h("div", { class: "err-box" }, ver.err.message,
+      h("p", null, "no draft yet — the writer role produces the first version after gates pass.")));
+    return;
+  }
+  const rep = ver.data;
+  const rep2 = await guard(() => Api.get(
+    `/api/cases/${c.case_id}/report?version=${rep.version}`), null);
+  const report = rep2.ok ? rep2.data : rep;
+
+  const selWrap = h("select");
+  selWrap.append(...report.versions.map(v =>
+    h("option", { value: v, selected: v === report.version ? "" : null }, v)));
+
+  const pane = h("div", { id: "report-pane" });
+  const diffToggler = h("button", { class: "btn small" },
+    report.diff ? `side-by-side diff vs ${report.diff.base_version}` : "no prior version");
+  if (!report.diff) diffToggler.disabled = true;
+
+  async function paintVersion(v) {
+    pane.replaceChildren(loadingRow("report"));
+    const r = await guard(() => Api.get(
+      v ? `/api/cases/${c.case_id}/report?version=${v}`
+        : `/api/cases/${c.case_id}/report`), "report load failed");
+    if (!r.ok) { pane.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+    const data = r.data;
+    pane.replaceChildren(
+      h("div", { class: "row wrap mb2" },
+        h("span", { class: "chip accent" }, `version ${data.version}`),
+        h("span", { class: "chip" }, `round ${data.round}`),
+        h("span", { class: "chip" }, `candidate ${(data.candidate_id || "").slice(0, 10)}`),
+        h("span", { class: "chip " + (data.within_bounds ? "ok" : "major") },
+          `${data.word_count} words · policy ${data.word_bounds[0]}–${data.word_bounds[1]}`),
+        h("span", { class: "grow" }),
+        data.evidence.length ? h("span", { class: "chip" },
+          `${data.evidence.length} evidence links`) : null),
+      renderNote(data));
+    diffToggler.textContent = data.diff
+      ? `side-by-side diff vs ${data.diff.base_version}` : "no prior version";
+    diffToggler.disabled = !data.diff;
+    diffToggler.dataset.v = data.version;
+  }
+
+  selWrap.addEventListener("change", () => paintVersion(selWrap.value));
+  diffToggler.addEventListener("click", async () => {
+    const r = await guard(() => Api.get(`/api/cases/${c.case_id}/report?version=${diffToggler.dataset.v}`));
+    if (!r.ok) return;
+    if (diffToggler.dataset.diffing === "1") {
+      diffToggler.dataset.diffing = "";
+      paintVersion(diffToggler.dataset.v);
+      return;
+    }
+    diffToggler.dataset.diffing = "1";
+    pane.replaceChildren(diffPane(r.data));
+  });
+
+  body.replaceChildren(
+    h("div", { class: "actions" },
+      h("label", { class: "label", style: "margin:0" }, "version"),
+      selWrap, diffToggler,
+      h("span", { class: "grow" }),
+      h("span", { class: "label", style: "margin:0" }, "export"),
+      h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "dossier.pdf"),
+      h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "xlsx") }, "model.xlsx"),
+      h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "dossier.html")),
+    h("p", { class: "hint" },
+      "every figure that appears in the ledger renders as a dotted link — click any number for its citation (doc_id, slice, anchor, sha256)."),
+    pane);
+  paintVersion(report.version);
+}
+
+/** render report markdown into a .note block with evidence links */
+function renderNote(data) {
+  const note = h("div", { class: "note" });
+  const lines = data.markdown.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("|") && i + 1 < lines.length && /^\|[-\s|:]+\|?\s*$/.test(lines[i + 1])) {
+      const header = line.split("|").slice(1, -1).map(s => s.trim());
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith("|")) {
+        rows.push(lines[i].split("|").slice(1, -1).map(s => s.trim()));
+        i++;
+      }
+      const t = h("table", null,
+        h("thead", null, h("tr", null,
+          ...header.map(x => h("th", null, h("span", null, inline(x)))))),
+        h("tbody", null, ...rows.map(r => h("tr", null,
+          ...r.map(x => h("td", null, inline(x)))))));
+      note.append(t);
+      continue;
+    }
+    if (line.startsWith("### ")) note.append(h("h3", null, h("span", null, inline(line.slice(4)))));
+    else if (line.startsWith("## ")) note.append(h("h2", null, h("span", null, inline(line.slice(3)))));
+    else if (line.trim()) note.append(h("p", null, h("span", null, inline(line))));
+    i++;
+  }
+  // click-through evidence: wrap each token occurrence in text nodes
+  for (const ev of (data.evidence || [])) {
+    const rx = new RegExp(rxEscape(ev.token), "g");
+    const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (!node.textContent.includes(ev.token)) continue;
+      const frag = document.createDocumentFragment();
+      let last = 0; let m;
+      const text = node.textContent;
+      while ((m = rx.exec(text))) {
+        frag.append(text.slice(last, m.index));
+        const a = h("a", { class: "cite-link", dataset: { token: ev.token } }, ev.token);
+        a.addEventListener("click", e => openCitePanel(e, ev));
+        frag.append(a);
+        last = m.index + ev.token.length;
+      }
+      frag.append(text.slice(last));
+      node.parentNode.replaceChild(frag, node);
+      break;   // first occurrence carries the link (dotted elsewhere)
+    }
+  }
+  return note;
+}
+
+/** inline markdown: **bold** */
+function inline(s) {
+  const parts = [];
+  let last = 0; let m;
+  const rx = /\*\*(.+?)\*\*/g;
+  while ((m = rx.exec(s))) {
+    if (m.index > last) parts.push(s.slice(last, m.index));
+    parts.push(h("strong", null, s.slice(m.index + 2, m.index + m[0].length - 2)));
+    last = m.index + m[0].length;
+  }
+  parts.push(s.slice(last));
+  return parts;
+}
+
+/** citation side panel */
+function openCitePanel(click, ev) {
+  click.preventDefault();
+  const cit = ev.citation;
+  const pop = h("div", { class: "cite-pop" },
+    h("header", null, "evidence — click-through",
+      h("button", { onclick: () => pop.remove() }, "esc")),
+    h("dl", null,
+      h("dt", null, "figure"), h("dd", { class: "token" }, ev.token),
+      h("dt", null, "document (doc_id)"), h("dd", null, cit.doc_id),
+      h("dt", null, "slice (slice_id)"), h("dd", null, cit.slice_id),
+      h("dt", null, "anchor"), h("dd", null, cit.anchor),
+      h("dt", null, "locator"), h("dd", null, cit.locator || "—"),
+      h("dt", null, "document sha256"),
+      h("dd", { title: cit.doc_sha256 }, cit.doc_sha256)));
+  $("#pop").replaceChildren(pop);
+  const x = Math.min(click.clientX + 14, window.innerWidth - 400);
+  const y = Math.min(click.clientY + 10, window.innerHeight - 320);
+  pop.style.left = Math.max(8, x) + "px";
+  pop.style.top = Math.max(8, y) + "px";
+  setTimeout(() => {
+    const closer = e => {
+      if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener("mousedown", closer); }
+    };
+    document.addEventListener("mousedown", closer);
+  }, 0);
+}
+
+/** side-by-side diff from unified line list */
+function diffPane(report) {
+  const lines = report.diff.lines;
+  const rows = [];
+  let k = 0;
+  while (k < lines.length) {
+    if (lines[k].op === " ") { rows.push([" ", lines[k].text, " ", lines[k].text]); k++; continue; }
+    const dels = [], ins = [];
+    while (k < lines.length && lines[k].op === "-") dels.push(lines[k++].text);
+    while (k < lines.length && lines[k].op === "+") ins.push(lines[k++].text);
+    const n = Math.max(dels.length, ins.length);
+    for (let j = 0; j < n; j++) {
+      rows.push(["-", dels[j] !== undefined ? dels[j] : null,
+                 "+", ins[j] !== undefined ? ins[j] : null]);
+    }
+  }
+  const body = h("div", { class: "diff-body" },
+    ...rows.map(r => h("div", { class: "dl" },
+      h("div", { class: r[0] === "-" ? "" : r[0] === " " ? "ctx" : "pad" },
+        r[1] === null ? "" : r[1]),
+      h("div", { class: r[2] === "+" ? "" : r[2] === " " ? "ctx" : "pad" },
+        r[3] === null ? "" : r[3]))));
+  return h("div", null,
+    h("div", { class: "row wrap mb2" },
+      h("span", { class: "chip accent" }, report.version),
+      h("span", { class: "hint" }, "vs"),
+      h("span", { class: "chip" }, report.diff.base_version),
+      report.diff.changed ? h("span", { class: "chip minor" }, "changed") :
+        h("span", { class: "chip ok" }, "identical")),
+    h("div", { class: "diff-wrap" },
+      h("div", { class: "diff-col" }, h("h5", null, report.diff.base_version)),
+      h("div", { class: "diff-col" }, h("h5", null, report.version)),
+      h("div", { class: "diff-body", style: "grid-column:1/span 2" },
+        ...rows.map(r => h("div", { class: "dl" },
+          h("div", { class: r[0] === "-" ? "" : r[0] === " " ? "ctx" : "pad" },
+            r[1] === null ? "" : r[1]),
+          h("div", { class: r[2] === "+" ? "" : r[2] === " " ? "ctx" : "pad" },
+            r[3] === null ? "" : r[3]))))),
+    h("p", { class: "hint mt2" },
+      "deletions tinted left, insertions tinted right; context rows carry both versions."));
+}
+
+/* -------- approval dossier + human gate --------------------------------- */
+
+async function renderCaseApproval(body, c) {
+  const st = c.state;
+  const rep = await guard(() => Api.get(`/api/cases/${c.case_id}/report`), null);
+  const b = st.budget;
+  if (!["PENDING_APPROVAL", "CLOSED", "APPROVED", "REJECTED"].includes(st.status)) {
+    body.replaceChildren(emptyState("Not at the human gate",
+      `the case is ${st.status.replace(/_/g, " ")} — publication requires all gates, 2 clean reviews, closed findings, then this dossier.`));
+    if (rep.ok) {
+      body.append(labeledPanel("Current draft (not yet signable)",
+        renderNote(rep.data),
+        h("p", { class: "hint" },
+          `draft ${rep.data.version} · ${rep.data.word_count} words — drafts never authorize publication on their own.`)));
+    }
+    return;
+  }
+
+  const decisionBox = h("div", { id: "decision-box" });
+  const latest = c.reports.length ? c.reports[c.reports.length - 1] : { version: "—" };
+  const openFindings = (c.findings || []).filter(f => f.status === "open");
+
+  const cover = h("div", { class: "dossier-cover" },
+    h("h2", null, "Coverage note dossier"),
+    h("div", { class: "ticker" }, c.mandate.ticker),
+    h("div", { class: "sub" }, `${case_id_title(c.case_id)} · ${c.mandate.report_policy.note_type.replace(/_/g, " ")}`),
+    h("dl", null,
+      h("dt", null, "report version"), h("dd", null, latest.version),
+      h("dt", null, "cutoff"), h("dd", null, c.mandate.cutoff_date),
+      h("dt", null, "engines"), h("dd", null, `engines ${st.config_versions.engines} · maps ${st.config_versions.mapping_tables}`),
+      h("dt", null, "candidate"), h("dd", null, st.candidate.candidate_id || "—"),
+      h("dt", null, "clean reviews"), h("dd", null, `${st.candidate.clean_review_rounds} / 2 consecutive`),
+      h("dt", null, "gates"), h("dd", null, "4 / 4 numerical gates pass"),
+      h("dt", null, "carried findings"), h("dd", null, String(openFindings.length)),
+      h("dt", null, "budget drawn"), h("dd", null, `${b.used.rounds}/${b.rounds_max} rounds · ${b.used.elapsed_minutes.toFixed(1)}/${b.case_minutes} min`),
+      h("dt", null, "bundle"), h("dd", null, c.manifest.bundle_id),
+      h("dt", null, "approval expires"), h("dd", null, st.pending.deadline ? fmt.datetime(st.pending.deadline) : "—")),
+    h("p", { class: "hint" },
+      "this packet reconciles the frozen inputs, the deterministic engines, the critic verdicts and the drafted note. Research acceptance never authorizes publication — only this sign-off does."));
+
+  const ready = openFindings.length === 0 && st.candidate.clean_review_rounds >= 2;
+
+  const who = h("input", { type: "text", placeholder: "approver name (as recorded)",
+                            value: "Gaetano Marco Chiantia" });
+  const why = h("textarea", { rows: "3", placeholder: "reasoning — what did you check?" });
+  const act = h("div", { class: "signoff" },
+    h("div", { class: "label-bar" }, h("span", null, "human sign-off"),
+      h("span", null, ready ? "eligibility met" : "eligibility NOT met")),
+    why,
+    h("div", { class: "row" },
+      h("span", { class: "who" }, who),
+      h("button", { class: "btn primary", onclick: () => decide("APPROVED") }, "Approve for publication"),
+      h("button", { class: "btn danger", onclick: () => decide("REJECTED") }, "Reject")));
+
+  async function decide(decision) {
+    const r = await guard(() => Api.post(`/api/cases/${c.case_id}/approval`, {
+      decision, by: who.value, reasoning: why.value }), "approval failed");
+    if (r.ok) {
+      toast(`recorded: ${decision}`, `decision ${r.data.decision_id} · auditable record stored`);
+      Route.nav(`#/case/${c.case_id}`);
+      render();
+    }
+  }
+
+  body.replaceChildren(h("div", { class: "dossier" },
+    cover,
+    h("div", null,
+      labeledPanel("Sign-off checklist",
+        kv([
+          ["1 · numerical gates", "4/4 pass — locked thresholds"],
+          ["2 · clean reviews", `${st.candidate.clean_review_rounds} of 2 consecutive, same candidate`],
+          ["3 · carried findings", openFindings.length ? `${openFindings.length} still open` : "all closed with critic-verified evidence"],
+          ["4 · human gate", st.status === "PENDING_APPROVAL" ? "required — this decision" : `recorded: ${(c.approvals[0] || {}).decision || st.status}`],
+        ])),
+      rep.ok ? labeledPanel(`Rendered note for sign-off (${rep.data.version})`,
+        renderNote(rep.data),
+        h("div", { class: "actions mt2" },
+          h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "export dossier.pdf"),
+          h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "export dossier.html"),
+          h("a", { class: "btn small", href: `#/case/${c.case_id}/report` }, "report tab →"))) : null,
+      st.status === "PENDING_APPROVAL" ? act : decisionBox)));
+
+  if (st.status !== "PENDING_APPROVAL") {
+    const apr = (c.approvals || [])[0];
+    decisionBox.replaceChildren(labeledPanel("Decision record",
+      apr ? kv([
+        ["decision", apr.decision],
+        ["by", apr.by],
+        ["at", fmt.datetime(apr.ts)],
+        ["reasoning", apr.reasoning || "—"],
+        ["decision id", apr.decision_id],
+        ["evidence refs", (apr.expected_evidence_refs || []).join(" · ")],
+      ]) : kv([["terminal", st.status], ["reason", st.reason || "—"]])));
+  }
+}
+
+function case_id_title(id) { return id.split("-").slice(0, 2).join(" ").toUpperCase(); }
