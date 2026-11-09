@@ -1290,7 +1290,15 @@ class Orchestrator:
     def gates_report(self) -> dict:
         """Re-run the numerical gates on the saved candidate (CLI `gates`)."""
         state = self.load()
-        arts = Arts(round=state["candidate"]["built_round"] or 1)
+        built = state["candidate"]["built_round"]
+        if not built:
+            # no verified candidate yet: nothing to re-run (fail closed)
+            return {"case_id": state["case_id"],
+                    "candidate_id": state["candidate"]["candidate_id"],
+                    "passed": False,
+                    "error": "no built candidate; run the case first",
+                    "results": []}
+        arts = Arts(round=built)
         ctx = self._candidate_context(state, arts)
         report = self.gate_engine.run_all(ctx)
         return {

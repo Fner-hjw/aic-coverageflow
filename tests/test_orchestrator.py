@@ -592,3 +592,85 @@ class TestRepairPacketsFromCritics:
         # the tampering critic kept raising findings -> acceptance never granted
         assert led.open_findings(), "finding reopened by critic must stay open"
         assert st["candidate"]["clean_review_rounds"] < 2
+
+
+# ===========================================================================
+# CLI surface (contracts interfaces section 3; offline wiring)
+# ===========================================================================
+
+import shutil as _shutil
+from coverageflow import cli
+
+
+class TestCLI:
+    def _workspace(self, tmp_path: Path) -> Path:
+        # pin the (A1-owned) model schema into the workspace; the fixture
+        # schema stands in until A1 drops references/model-schema.json
+        refs = tmp_path / "references"
+        refs.mkdir(exist_ok=True)
+        _shutil.copyfile(SCHEMA_PATH, refs / "model-schema.json")
+        return tmp_path
+
+    def test_case_new_list_run_approve_roundtrip(self, tmp_path, capsys):
+        ws = self._workspace(tmp_path)
+        rc = cli.main(["--workspace", str(ws), "case", "new",
+                       "--ticker", "INTC", "--trigger-doc", "intc-10q-2026q3",
+                       "--cutoff", "2026-10-30"])
+        assert rc == 0
+        out = json.loads(capsys.readouterr().out)
+        case_id = out["created"]
+        assert case_id == "intc-fy2026q3-20261030"
+
+        rc = cli.main(["--workspace", str(ws), "case", "list"])
+        assert rc == 0
+        rows = json.loads(capsys.readouterr().out)
+        assert rows and rows[0]["case_id"] == case_id
+        assert rows[0]["status"] == "CREATED"
+
+        rc = cli.main(["--workspace", str(ws), "run"])
+        assert rc == 0
+        summary = json.loads(capsys.readouterr().out)
+        assert summary["status"] == "PENDING_APPROVAL"
+
+        rc = cli.main(["--workspace", str(ws), "gates", "--case", case_id])
+        assert rc == 0
+        report = json.loads(capsys.readouterr().out)
+        assert report["passed"] is True
+
+        rc = cli.main(["--workspace", str(ws), "approve", "--case", case_id,
+                       "--decision", "APPROVED", "--by", "Chiantia",
+                       "--reason", "ties out"])
+        assert rc == 0
+        outcome = json.loads(capsys.readouterr().out)
+        assert outcome["status"] == "CLOSED"
+
+        rc = cli.main(["--workspace", str(ws), "case", "list"])
+        rows = json.loads(capsys.readouterr().out)
+        assert rows[0]["status"] == "CLOSED"
+
+    def test_export_and_ui_are_placeholders(self, tmp_path, capsys):
+        ws = self._workspace(tmp_path)
+        rc = cli.main(["--workspace", str(ws), "export", "--case", "x"])
+        assert rc == 2
+        assert "owned by another stream" in capsys.readouterr().out
+        rc = cli.main(["--workspace", str(ws), "ui"])
+        assert rc == 2
+        assert "owned by another stream" in capsys.readouterr().out
+
+    def test_demo_seed_finding_and_perturb(self, tmp_path, capsys):
+        ws = self._workspace(tmp_path)
+        cli.main(["--workspace", str(ws), "case", "new",
+                  "--ticker", "INTC", "--trigger-doc", "intc-10q-2026q3",
+                  "--cutoff", "2026-10-30"])
+        capsys.readouterr()
+        rc = cli.main(["--workspace", str(ws), "demo", "seed-finding",
+                       "--case", "intc-fy2026q3-20261030"])
+        assert rc == 0
+        seeded = json.loads(capsys.readouterr().out)
+        assert seeded["seeded_finding"].startswith("fnd-")
+        rc = cli.main(["--workspace", str(ws), "demo", "perturb",
+                       "--case", "intc-fy2026q3-20261030"])
+        assert rc == 0
+        perturb = json.loads(capsys.readouterr().out)["perturbation"]
+        assert perturb["deterministic_recompute"] is True
+        assert perturb["no_post_cutoff_documents"] is True

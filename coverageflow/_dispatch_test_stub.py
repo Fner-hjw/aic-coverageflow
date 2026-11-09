@@ -368,3 +368,25 @@ class StubDispatch:
 
     def request_ids_of(self, role: str) -> list[str]:
         return [c.request_id for c in self.calls_of(role)]
+
+
+# ---------------------------------------------------------------------------
+# offline engine doubles (for CLI runs while stream A1's engines are not
+# importable; same contract signatures as interfaces.md section 4)
+# ---------------------------------------------------------------------------
+
+def stub_build_model(facts, mapping_version: str):
+    """Stub double of model_engine.build_model (deterministic, no I/O)."""
+    series = {}
+    for f in facts.get("facts", []):
+        series.setdefault(f["field"], {})[f["period"]] = f["value"]
+    return {"artifact": "model", "engine": "stub-model@1.0",
+            "mapping_tables": mapping_version, "series": series}
+
+
+def stub_value_company(model, forecast, assumptions):
+    """Stub double of valuation_engine.value_company (deterministic)."""
+    return {"artifact": "valuation", "engine": "stub-val@1.0",
+            "dcf": {"equity_value": 120000.0, "per_share": 28.0},
+            "comps": {"per_share": 26.0}, "sensitivity": {},
+            "cross_check_delta": 0.08}
