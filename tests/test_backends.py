@@ -576,3 +576,36 @@ class TestRecordReplay:
         res = replay.invoke(make_call(request_id="req-2", role="writer"), "PROMPT")
         assert res.ok
         assert res.raw_response_ref == "req-1.json"  # recording the answer came from
+
+
+# --------------------------------------------------------------------------
+# backends.creation: factory + auto-detection for the controller CLI (A2)
+# --------------------------------------------------------------------------
+
+class TestBackendFactory:
+    def test_make_backend_claude_codex_kimi_api_replay(self):
+        from coverageflow.backends import cli_backends as cli
+        from coverageflow import backends as be
+
+        assert isinstance(be.make_backend("claude"), cli.ClaudeBackend)
+        assert isinstance(be.make_backend("codex"), cli.CodexBackend)
+        assert isinstance(be.make_backend("kimi"), cli.KimiBackend)
+        assert be.make_backend("api").name == "api"
+        assert be.make_backend("replay", replay_dir="/tmp/somewhere").name == "replay"
+
+    def test_make_backend_unknown_name(self):
+        import pytest as _pytest
+
+        from coverageflow import backends as be
+
+        with _pytest.raises(ValueError):
+            be.make_backend("does-not-exist")
+
+    def test_detect_available_finds_fake_clis(self):
+        from coverageflow import backends as be
+
+        available = be.detect_available_backends()
+        assert "claude" in available
+        assert "codex" in available
+        # kimi detection depends on its --help; the fake advertises -p
+        assert "kimi" in available
