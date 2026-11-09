@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Fake `claude` CLI for offline backend tests (stream A3).
+
+Behavior is driven by env vars so one fixture covers every adapter case:
+  FAKE_BEHAVIOR = ok(default) | fail | garbage | sleep | error_result | stderr
+  FAKE_STDOUT_FILE  = path whose contents are dumped verbatim to stdout
+  FAKE_RESULT_TEXT  = canned "result" payload (default: strict-JSON demo doc)
+  FAKE_ARGV_LOG     = file to append sys.argv JSON lines (assert prompt passed)
+  FAKE_SLEEP_SECONDS = seconds to sleep (used with FAKE_BEHAVIOR=sleep)
+Accepts: claude [-p PROMPT] [--output-format json]
+"""
+import json
+import os
+import sys
+import time
+
+argv_log = os.environ.get("FAKE_ARGV_LOG")
+if argv_log:
+    with open(argv_log, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(sys.argv) + "\n")
+
+behavior = os.environ.get("FAKE_BEHAVIOR", "ok")
+
+stdout_file = os.environ.get("FAKE_STDOUT_FILE")
+if stdout_file:
+    with open(stdout_file, "r", encoding="utf-8") as fh:
+        sys.stdout.write(fh.read())
+    sys.exit(0)
+
+prompt = ""
+if "-p" in sys.argv:
+    prompt = sys.argv[sys.argv.index("-p") + 1]
+
+if behavior == "sleep":
+    time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
+if behavior == "fail":
+    sys.stderr.write("fatal: no session found, run /login first\n")
+    sys.exit(3)
+if behavior == "garbage":
+    print("thinking about filings, not JSON at all")
+    sys.exit(0)
+if behavior == "stderr":
+    sys.stderr.write("warning: config file deprecated\nwarning: rain expected\n")
+
+result_text = os.environ.get(
+    "FAKE_RESULT_TEXT", '{"schematic": "good", "trace": "demonstration"}'
+)
+if behavior == "error_result":
+    print(
+        json.dumps(
+            {"type": "result", "is_error": True, "result": "internal error", "usage": {}}
+        )
+    )
+    sys.exit(0)
+
+print(
+    json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": result_text,
+            "usage": {
+                "input_tokens": max(1, len(prompt) // 4),
+                "output_tokens": 9,
+            },
+        }
+    )
+)
