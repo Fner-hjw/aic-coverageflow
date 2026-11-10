@@ -712,3 +712,78 @@ def test_sum_to_100_is_arithmetic_not_a_claim():
 
     ok, findings = gate_report_evidence_links("Revenue grew 100% in the quarter.")
     assert not ok
+
+
+class TestEvidenceKeyResolution:
+    """A writer's marker must resolve when the leaf path is right.
+
+    The gate told the writer "the index has sensitivity.grid" while rejecting
+    `dcf.sensitivity.grid`, and rejected `derived.revenue_yoy` outright. Both
+    are the same evidence under a different name, so the finding reopened every
+    round and the repair loop could not converge.
+    """
+
+    IDX = {"income_statement.revenue": "facts.json",
+           "sensitivity.grid": "valuation.json",
+           "derived.revenue_yoy": "model.json"}
+
+    def test_an_artifact_prefix_resolves_to_the_leaf(self):
+        from coverageflow.gates import _evidence_key
+        assert _evidence_key("dcf.sensitivity.grid", self.IDX) == "sensitivity.grid"
+
+    def test_a_growth_alias_resolves(self):
+        from coverageflow.gates import _evidence_key
+        assert _evidence_key("derived.revenue_yoy", self.IDX) == "derived.revenue_yoy"
+
+    def test_locator_decoration_still_resolves(self):
+        from coverageflow.gates import _evidence_key
+        assert _evidence_key("doc/IS:income_statement.revenue:2026-Q3",
+                             self.IDX) == "income_statement.revenue"
+
+    def test_an_invented_key_still_fails(self):
+        from coverageflow.gates import _evidence_key
+        assert _evidence_key("made.up.metric", self.IDX) is None
+
+    def test_the_report_that_looped_now_passes(self):
+        from coverageflow.gates import gate_report_evidence_links
+        report = (
+            "Revenue reached 16,513 USDmm [EV:income_statement.revenue], up "
+            "20.9% [EV:derived.revenue_yoy].\n"
+            "The path applies to FY2025 revenue of 52,853 USDmm "
+            "[EV:income_statement.revenue]; year 1 is FY2026E.\n"
+            "The grid is unset [EV:dcf.sensitivity.grid].\n"
+        )
+        ok, findings = gate_report_evidence_links(report, self.IDX)
+        assert ok, [f["summary"] for f in findings]
+
+
+class TestForecastColumnOrdinals:
+    """"year 1 is FY2026E" numbers a column, it does not measure the company."""
+
+    def test_year_ordinal_needs_no_marker(self):
+        from coverageflow.gates import gate_report_evidence_links
+        ok, findings = gate_report_evidence_links(
+            "Year 1 is FY2026E and year 5 is FY2030E.\n", {})
+        assert ok, [f["summary"] for f in findings]
+
+    def test_a_bare_number_beside_it_is_still_a_claim(self):
+        from coverageflow.gates import gate_report_evidence_links
+        ok, findings = gate_report_evidence_links(
+            "Year 1 revenue is 59,877 USDmm.\n", {})
+        assert not ok
+        assert any("59,877" in f["summary"] for f in findings)
+
+
+class TestSpanLabels:
+    """"9M FY2026" is a period label, the same kind as "Q3" and "FY2026"."""
+
+    def test_nine_month_label_needs_no_marker(self):
+        from coverageflow.gates import gate_report_evidence_links
+        ok, findings = gate_report_evidence_links(
+            "| USDmm | Q3 FY2026 | 9M FY2026 | 6M FY2025 |\n", {})
+        assert ok, [f["summary"] for f in findings]
+
+    def test_a_bare_nine_is_still_a_claim(self):
+        from coverageflow.gates import gate_report_evidence_links
+        ok, findings = gate_report_evidence_links("Revenue rose 9 percent.\n", {})
+        assert not ok

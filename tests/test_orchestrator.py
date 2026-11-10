@@ -1865,3 +1865,43 @@ class TestExtractionScope:
         orch, _dispatch, _clk, _case_dir = build_env(tmp_path, manifest=manifest)
         ids = [d["doc_id"] for d in orch._extraction_scope()]
         assert ids == ["intc-10k-fy2025"], ids
+
+
+class TestBudgetFindingsAreNotRepairWork:
+    """A critic reporting the run's token usage cannot be answered by a rewrite.
+
+    The tokens are already spent, so the finding reopened every round and the
+    repair loop could never converge. The budget tracker already records the
+    breach and the run exhausts on its own.
+    """
+
+    def test_a_token_cap_finding_is_recognised(self):
+        from coverageflow.orchestrator import _is_self_referential_finding
+        assert _is_self_referential_finding({
+            "dedup_key": "c4|candidate-manifest.json|per-role-token-cap-breach-generator-lead",
+            "summary": "Per-role token cap breached: generator_lead exceeds the cap.",
+        })
+
+    def test_a_content_finding_is_not(self):
+        from coverageflow.orchestrator import _is_self_referential_finding
+        assert not _is_self_referential_finding({
+            "dedup_key": "unknown-ev:derived.revenue_yoy",
+            "summary": "evidence marker names a key not in the index",
+        })
+
+    def test_growth_series_get_the_name_the_report_uses(self):
+        from coverageflow.orchestrator import _growth_aliases
+        model = {"series": {
+            "income_statement.revenue": {"FY2025": 52853.0,
+                                         "yoy": {"FY2025": -0.0047}},
+            "income_statement.diluted_eps": {"FY2025": -0.06,
+                                             "yoy": {"FY2025": -0.986}},
+            "balance_sheet.total_assets": {"FY2025": 211429.0},
+        }}
+        assert _growth_aliases(model) == ["derived.revenue_yoy",
+                                          "derived.diluted_eps_yoy"]
+
+    def test_a_series_without_growth_gets_no_alias(self):
+        from coverageflow.orchestrator import _growth_aliases
+        assert _growth_aliases({"series": {
+            "balance_sheet.total_assets": {"FY2025": 211429.0}}}) == []

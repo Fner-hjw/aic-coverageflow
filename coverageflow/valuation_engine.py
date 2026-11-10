@@ -252,7 +252,9 @@ def value_company(
     gross0 = _require(base["gross_margin"], "gross margin")
     ebitda_m0 = _require(base["ebitda_margin"], "EBITDA margin")
     fcf_base = _require(base["fcf"], "FCF (OCF - capex)")
-    fcf_m0 = fcf_base / revenue0
+    fcf_m0 = base.get("fcf_margin")
+    if fcf_m0 is None:
+        fcf_m0 = fcf_base / revenue0
     net_debt = _require(base["net_debt"], "net debt")
     shares = _require(base["shares"], "diluted shares")
 
@@ -456,6 +458,24 @@ def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
             fcf, fcf_period = ocf - capex, ocf_period
     if fcf is not None:
         fcf = fcf * _annualizer(fcf_period)
+    # A loss-making fiscal year is not a base. FY2025 capex put FCF at -4,949
+    # while the nine months to 2026-Q3 ran at +2,968; projecting from the trough
+    # year made every forecast year negative and collapsed the Gordon terminal
+    # value to a fraction of the exit-multiple one. When the base year's FCF is
+    # negative and a later period is cash-generative, that run-rate is the base.
+    # A positive base year is left alone: a single quarter's capex timing is
+    # noisier than a full year, so it only wins when the year is unusable.
+    latest_fcf = _latest(_series_values(model, "derived.fcf"))
+    if (latest_fcf and fcf_period and fcf is not None and fcf < 0
+            and latest_fcf[1] > 0
+            and _period_key(latest_fcf[0]) > _period_key(fcf_period)):
+        fcf_period, fcf = latest_fcf[0], latest_fcf[1] * _annualizer(latest_fcf[0])
+    fcf_margin = None
+    if fcf is not None:
+        rev_same = _series_values(model, "income_statement.revenue").get(fcf_period)
+        denom = rev_same * _annualizer(fcf_period) if rev_same else revenue
+        if denom:
+            fcf_margin = fcf / denom
     net_debt = _latest(_series_values(model, "derived.net_debt"))
     nd = net_debt[1] if net_debt else None
     if nd is None:
@@ -476,6 +496,7 @@ def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
         "ebitda_margin_period": em_period,
         "fcf": fcf,
         "fcf_period": fcf_period,
+        "fcf_margin": fcf_margin,
         "net_debt": nd,
         "net_debt_period": net_debt[0] if net_debt else None,
         "shares": shares[1] if shares else None,

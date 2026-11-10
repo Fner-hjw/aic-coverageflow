@@ -377,6 +377,7 @@ def cmd_run(args, ws: Path) -> int:
     dispatch, backend_name = load_dispatch(
         backend=backend, workspace=ws,
         replay_dir=case_dir / "replay" if backend == "replay" else None)
+    _stamp_backend(case_dir, backend_name)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
                             stub_engines=args.stub_engines, workspace=ws))
@@ -386,13 +387,41 @@ def cmd_run(args, ws: Path) -> int:
     return 0
 
 
+def _recorded_backend(case_dir: Path) -> str | None:
+    """The backend this case was last run with, if it recorded one."""
+    state = statestore.load_state(case_dir) or {}
+    name = state.get("backend")
+    return name if isinstance(name, str) and name else None
+
+
+def _stamp_backend(case_dir: Path, backend_name: str | None) -> None:
+    """Record the backend on the case so a later resume cannot swap it."""
+    if not backend_name:
+        return
+    state = statestore.load_state(case_dir)
+    if not state or state.get("backend") == backend_name:
+        return
+    state["backend"] = backend_name
+    statestore.write_state(case_dir, state)
+
+
 def cmd_resume(args, ws: Path) -> int:
-    """Verified resume of pending work only (see resume.py)."""
+    """Verified resume of pending work only (see resume.py).
+
+    The backend is inherited from the case, not defaulted. Resuming a live run
+    without it silently swapped in the offline stub, which then wrote canned
+    artifacts that passed every gate: the report came back as three lines of
+    fixture numbers and nothing flagged it, because a stub is a valid backend.
+    """
     case_dir = _find_case(ws, args.case)
-    orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
+    backend = _resolve_backend(args) or _recorded_backend(case_dir)
+    dispatch, backend_name = load_dispatch(backend=backend, workspace=ws)
+    _stamp_backend(case_dir, backend_name)
+    orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
                             stub_engines=args.stub_engines, workspace=ws))
     summary = orch.run()   # run() resumes RUNNING cases via resume_check
+    summary["backend"] = backend_name
     _print(summary)
     return 0
 
@@ -617,6 +646,9 @@ def build_parser() -> argparse.ArgumentParser:
                           "allowance and continue instead of starting a new case")
     resume = add("resume", cmd_resume)
     resume.add_argument("--case", default=None)
+    resume.add_argument("--backend", default=None,
+                        help="omit to inherit the backend the case was run "
+                             "with; never silently falls back to the stub")
     resume.add_argument("--stub-engines", action="store_true")
 
     # approve / gates

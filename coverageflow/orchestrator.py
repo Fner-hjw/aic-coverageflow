@@ -168,6 +168,45 @@ def _dotted_paths(obj: Any, prefix: str = "") -> list[str]:
     return out
 
 
+# A critic reviewing the candidate sometimes reports on the harness's own
+# budget accounting ("per-role token cap breached"). No rewrite of report.md or
+# model.json can close that: the tokens are already spent. Left in the ledger it
+# reopens every round and the repair loop can never converge, so it is dropped
+# at ingestion. The budget tracker already records the breach and the run
+# transitions to EXHAUSTED on its own; a critic finding adds nothing but a
+# permanent blocker.
+_SELF_REFERENTIAL_FINDING = re.compile(
+    r"per-role\s+token\s+cap|token\s+cap\s+breach|budget\s+cap\s+breach",
+    re.IGNORECASE)
+
+
+def _is_self_referential_finding(finding: dict) -> bool:
+    """Does this finding describe the run's budget rather than the work?"""
+    haystack = " ".join(str(finding.get(k) or "") for k in
+                        ("dedup_key", "summary", "required_evidence"))
+    return bool(_SELF_REFERENTIAL_FINDING.search(haystack))
+
+
+def _growth_aliases(model: dict) -> list[str]:
+    """The names a report uses for growth, mapped onto the nested series.
+
+    Growth lives under the series it measures
+    (``income_statement.revenue.yoy.FY2025``), but a writer cites it by the
+    name the prose uses: ``derived.revenue_yoy``. Without the alias the marker
+    was rejected as an unknown key and the writer had no way to discover the
+    nested path, so the same finding reopened every round.
+    """
+    out: list[str] = []
+    for key, entry in (model.get("series") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        short = key.rsplit(".", 1)[-1]
+        for span in ("yoy", "qoq"):
+            if isinstance(entry.get(span), dict) and entry[span]:
+                out.append(f"derived.{short}_{span}")
+    return out
+
+
 def new_case_id(ticker: str, period: str, cutoff_date: str) -> str:
     """case_id per contracts: <ticker-lower>-<period>-<yyyymmdd>."""
     digits = str(cutoff_date).replace("-", "")
@@ -1223,6 +1262,8 @@ class Orchestrator:
                 idx[f["field"]] = facts_rel
         for key in model.get("series", {}):
             idx.setdefault(key, model_rel)
+        for alias in _growth_aliases(model):
+            idx.setdefault(alias, model_rel)
         # The writer cites the computed valuation by dotted path
         # (dcf.base.ebitda_margin, dcf.terminal.gordon.terminal_value,
         # cross_check_delta). Exposing only the first level left every
@@ -1670,6 +1711,21 @@ class Orchestrator:
         # too fed every advisory nit back into the next round's prompts, so
         # the critics re-raised them verbatim and the ledger could never
         # drain -- the packet was manufacturing its own findings.
+        # A finding about the run's own token usage is not a repair obligation
+        # either: the tokens are spent, so carrying it into the packet asks for
+        # work that cannot close it and the round is wasted. Close it here so a
+        # ledger written before the filter existed drains too.
+        for row in led.open_findings():
+            if _is_self_referential_finding(row):
+                led.close_finding(row["finding_id"], critic="orchestrator",
+                                  round=round_no,
+                                  verified_evidence={"artifact": rel,
+                                                     "sha256": "budget-accounting"})
+                self._trace(event="FINDING_DROPPED", round=round_no,
+                            role=row.get("source_critic"),
+                            candidate_id=state["candidate"]["candidate_id"],
+                            detail={"finding_id": row["finding_id"],
+                                    "reason": "budget accounting, not the work"})
         carried = led.blocking_findings()
         advisory = [f for f in led.open_findings()
                     if f.get("severity") not in ledger_mod.BLOCKING_SEVERITIES]
@@ -1830,6 +1886,13 @@ class Orchestrator:
         self._apply_critic_closures(state, arts, reports, led)
         for raw in merged.get("findings", []):
             f = dict(raw)
+            if _is_self_referential_finding(f):
+                self._trace(event="FINDING_DROPPED", round=round_no,
+                            role=f.get("source_critic"),
+                            candidate_id=candidate_id,
+                            detail={"reason": "budget accounting, not the work",
+                                    "summary": f.get("summary")})
+                continue
             fid = led.open_finding(f, round=round_no)
             self._trace(event="FINDING_OPENED",
                         candidate_id=candidate_id, round=round_no,

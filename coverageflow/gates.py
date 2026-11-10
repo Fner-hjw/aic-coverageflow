@@ -434,6 +434,13 @@ _EXEMPT_SPAN = re.compile(
     r"|\bsum(?:s|ming)?\s+to\s+100(?:\.0+)?\s*%"
     r"|\b(?:writer\s+prompt|conformance\s+schema)\s+\d+\.\d+(?:\.\d+)?\b"  # run metadata
     r"|^\s*\d+(?=[.)]\s)"        # markdown ordered-list marker: "1. **Risk**"
+    # "year 1 is FY2026E" numbers a forecast column, it does not measure
+    # the company. The column is cited by the value it carries, not by
+    # its index, so the ordinal needs no marker of its own.
+    r"|(?i:\b(?:year|yr|y)\s+\d+\b)"
+    # "9M FY2026" is a nine-month span label, the same kind of label as
+    # "Q3" and "FY2026". The 9 is not a measurement of the company.
+    r"|\b\d{1,2}M\b(?=\s+(?:FY|Q)\d)"
     # Identifiers are labels too. The provenance header block carries a
     # request id, a candidate id, a bundle id and a sha256; without these the
     # header the writer is required to emit fails the gate on its own metadata.
@@ -496,12 +503,23 @@ def _evidence_key(key: str, evidence_index: dict) -> str | None:
     with the document/slice it came from and the period it covers
     (``doc/IS:income_statement.revenue:2026-Q3``); that still names a real
     evidence key, so strip the decoration and look the field up.
+
+    A writer may also prefix the key with the artifact it lives in
+    (``dcf.sensitivity.grid`` for ``sensitivity.grid``). The leaf path is the
+    part that identifies the evidence, so a suffix match resolves it. Without
+    this the writer was told "the index has sensitivity.grid" and could only
+    fix it by guessing the prefix, which it guessed wrong every round.
     """
     if key in evidence_index:
         return key
     for part in re.split(r"[:/]", key):
         if part in evidence_index:
             return part
+    parts = key.split(".")
+    for i in range(1, len(parts)):
+        suffix = ".".join(parts[i:])
+        if suffix in evidence_index:
+            return suffix
     return None
 
 

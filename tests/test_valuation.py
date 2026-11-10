@@ -440,3 +440,69 @@ def test_year_to_date_cash_flow_is_annualised_by_its_span():
     base = v.to_dict()["dcf"]["base"]
     assert base["period"] == "2026-Q3"
     assert base["fcf"] == pytest.approx((9000.0 - 3000.0) * 4.0 / 3.0)
+
+
+class TestLossMakingBaseYearIsNotABase:
+    """A trough year's FCF cannot anchor a projection.
+
+    FY2025 capex put FCF at -4,949 while the nine months to 2026-Q3 ran at
+    +2,968. Projecting from the trough made every forecast year negative and
+    collapsed the Gordon terminal value to 1/27th of the exit-multiple one, so
+    the two methods could not be read as a cross-check at all.
+    """
+
+    def _model(self, fy_fcf, ytd_fcf):
+        from coverageflow.model_engine import Facts, build_model
+        facts = [
+            {"field": "income_statement.revenue", "period": "FY2025", "value": 52000.0},
+            {"field": "income_statement.revenue", "period": "2026-Q3-YTD", "value": 46000.0},
+            {"field": "income_statement.gross_profit", "period": "FY2025", "value": 18200.0},
+            {"field": "income_statement.operating_income", "period": "FY2025", "value": 2000.0},
+            {"field": "cash_flow.depreciation_amortization", "period": "FY2025", "value": 9000.0},
+            {"field": "cash_flow.operating_cash_flow", "period": "FY2025", "value": fy_fcf + 3000.0},
+            {"field": "cash_flow.capital_expenditure", "period": "FY2025", "value": 3000.0},
+            {"field": "cash_flow.operating_cash_flow", "period": "2026-Q3-YTD", "value": ytd_fcf + 9000.0},
+            {"field": "cash_flow.capital_expenditure", "period": "2026-Q3-YTD", "value": 9000.0},
+            {"field": "balance_sheet.short_term_debt", "period": "FY2025", "value": 2500.0},
+            {"field": "balance_sheet.long_term_debt", "period": "FY2025", "value": 44000.0},
+            {"field": "balance_sheet.cash_and_equivalents", "period": "FY2025", "value": 14000.0},
+            {"field": "income_statement.diluted_shares_outstanding", "period": "FY2025", "value": 4500.0},
+            {"field": "income_statement.net_income", "period": "FY2025", "value": 1500.0},
+        ]
+        # the forecast is segment-driven, so the mix has to exist
+        mix = {"ccg": 12000.0, "dcai": 10000.0, "nex": 8000.0,
+               "foundry": 9000.0, "altera": 7000.0, "mobileye": 6000.0}
+        for seg, rev in mix.items():
+            facts.append({"field": f"segments.{seg}.revenue", "period": "FY2025",
+                          "value": rev})
+        for i, f in enumerate(facts):
+            f.update({"unit": "USDmm", "confidence": 0.95, "idx": i,
+                      "citation": {"doc_id": "d", "slice_id": "s",
+                                   "anchor": "a", "locator": "line 1"}})
+        payload = {"role": "extractor", "request_id": "req-1",
+                   "candidate_id": "cand-1", "facts": facts, "missing": [],
+                   "conformance": "schema 1.0"}
+        return build_model(Facts.from_payload(payload), "1.0")
+
+    def _dcf(self, model):
+        from coverageflow.valuation_engine import (Assumptions, Forecast,
+                                                   value_company)
+        return value_company(model, Forecast.from_payload(FORECAST),
+                             Assumptions.from_payload(ASSUMPTIONS)).to_dict()["dcf"]
+
+    def test_a_negative_base_year_yields_to_the_cash_generative_run_rate(self):
+        dcf = self._dcf(self._model(fy_fcf=-4949.0, ytd_fcf=2968.0))
+        assert dcf["base"]["fcf_period"] == "2026-Q3-YTD"
+        assert dcf["base"]["fcf"] > 0
+        assert all(y["fcf"] > 0 for y in dcf["years"])
+
+    def test_a_positive_base_year_is_left_alone(self):
+        dcf = self._dcf(self._model(fy_fcf=1040.0, ytd_fcf=2968.0))
+        assert dcf["base"]["fcf_period"] == "FY2025"
+
+    def test_the_two_terminal_methods_stay_in_the_same_order_of_magnitude(self):
+        dcf = self._dcf(self._model(fy_fcf=-4949.0, ytd_fcf=2968.0))
+        em = dcf["per_diluted_share"]["exit_multiple"]
+        gg = dcf["per_diluted_share"]["gordon"]
+        assert em > 0 and gg > 0
+        assert max(em, gg) / min(em, gg) < 3
