@@ -45,6 +45,26 @@ they can become active.
 | `tests/` | all streams | 298 tests (as of this branch), fully offline (replay/stub + unit fixtures) |
 | `cases/`, `versions/` | — | runtime workspaces (created at run time; the evidence copies live under `examples/`) |
 
+## Quick start (one command)
+
+```bash
+python3 launch.py
+```
+
+The launcher does everything: creates the virtualenv and installs
+dependencies on first run, asks **once** which backend role dispatch should
+use — **offline demo** (no account, no keys, everything runs for real
+except the model calls, which are canned), an **OpenAI-compatible API**
+(Mistral, OpenAI, …), or a **headless CLI** logged in on the machine
+(`claude` / `codex` / `kimi` / `vibe` — the Mistral CLI) — creates a
+workspace, seeds a ready-to-run Intel demo case, starts the web UI and
+opens it. Answers are saved to `.coverageflow-launch.json`
+(`--configure` to redo them; API credentials land in
+`.coverageflow.json`, which is gitignored). Stop with `Ctrl+C`.
+
+Flags: `--port N`, `--no-browser`, `--yes` (accept all defaults),
+`--configure`.
+
 ## Setup
 
 Python 3.11+ (stdlib-first codebase). Everything runs offline — the entire
@@ -125,7 +145,12 @@ with its `commands.sh`:
 ## Running the web UI
 
 ```bash
+python3 launch.py          # recommended: setup + workspace + server + browser
+# or, manually (demo store, no real workspace):
 .venv/bin/python -m uvicorn ui.api:app --port 8765
+# or, in controller mode against a specific workspace:
+COVERAGEFLOW_WORKSPACE=examples/run1-clean \
+    .venv/bin/python -m uvicorn ui.api:app --port 8765
 # open http://127.0.0.1:8765  (no build step; institutional light "paper" look)
 ```
 
@@ -145,16 +170,21 @@ wired by the integration stream.)
 
 Role dispatches (per fresh call) use one backend, selected per case:
 
-- **CLI headless** — `claude -p` / `codex exec` / `kimi`: uses the local CLI
+- **CLI headless** — `claude -p` / `codex exec` / `kimi` / `vibe -p`
+  (headless Mistral CLI, capped at $1.50 per call): uses the local CLI
   login, no API keys; auto-detection checks PATH (tests ship fake CLI
   fixtures).
 - **OpenAI-compatible API** — set `COVERAGEFLOW_BASE_URL`,
   `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (optionally
-  `COVERAGEFLOW_CONFIG` for a JSON config file). Backend selection is the
+  `COVERAGEFLOW_CONFIG` for a JSON config file); the launcher writes the
+  same fields to `.coverageflow.json`. Backend selection is the
   `--backend` flag on `run` / UI selection / auto-detection.
 - **Replay** — recorded responses matched by role + prompt hash; the whole
   test suite and the five evidence runs use the offline stub/replay
   dispatch ("scripted rehearsal" — real engines, scripted role responses).
+- **Stub** — `--backend stub`: the offline role responder with no
+  recording requirement (the launcher's offline demo mode). The UI's
+  Backends page selection governs runs launched from the case page.
 
 ```bash
 .venv/bin/python -m coverageflow backends     # report backend health/detection

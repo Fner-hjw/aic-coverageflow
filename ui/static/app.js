@@ -209,13 +209,16 @@ function gridTable(head, rows, opts = {}) {
   const thead = h("thead", null, h("tr", null, ...head.map((l, i) =>
     h("th", { class: i > 0 && opts.numFrom !== undefined && i >= opts.numFrom ? "num" : "" }, l))));
   const tbody = h("tbody");
-  (rows || []).forEach(r => {
+  (rows || []).forEach((r, i) => {
     const tr = h("tr", opts.click ? { class: "click" } : {},
       ...r.map((cell, i) => h("td", {
         class: (opts.numFrom !== undefined && i >= opts.numFrom ? "num" : "")
              + (opts.monoFrom !== undefined && i >= opts.monoFrom ? " id" : ""),
       }, cell)));
-    if (opts.click) tr.addEventListener("click", () => opts.click(r));
+    /* click handlers want the SOURCE object, not the mapped cell array —
+     * pass it via opts.data (same order as rows) */
+    if (opts.click) tr.addEventListener("click", () =>
+      opts.click(opts.data ? opts.data[i] : r));
     tbody.append(tr);
   });
   const t = h("table", { class: "grid" }, thead, tbody);
@@ -305,6 +308,8 @@ const Live = {
 
 let CURRENT_CASE_REFRESH = null;   // set by the case view for live events
 let CURRENT_TAB_SNAPSHOT = null;   // set by views interested in snapshots
+let TERMINAL_TIMER = null;         // terminal view poller; render() clears it
+let TERMINAL_TOKEN = 0;           // invalidates pollers from superseded renders
 
 function handleLiveEvent(ev) {
   if (ev && ev.case_id && CURRENT_CASE_REFRESH &&
@@ -336,13 +341,17 @@ const Route = {
 
   syncNav() {
     const { page } = this.parse();
-    $$("#topnav a").forEach(a =>
+    $$("#sidenav a").forEach(a =>
       a.classList.toggle("active", a.getAttribute("href") === `#/${page}`));
   },
 };
 
 async function render() {
   const view = $("#view");
+  // leaving a page stops its poller (the terminal view re-arms its own)
+  if (TERMINAL_TIMER) clearInterval(TERMINAL_TIMER);
+  TERMINAL_TIMER = null;
+  TERMINAL_TOKEN++;   // invalidate any in-flight terminal view
   view.replaceChildren(loadingRow("view"));
   Route.syncNav();
   const { page, rest } = Route.parse();
@@ -353,6 +362,7 @@ async function render() {
     else if (page === "evolution") await Views.evolution(view);
     else if (page === "demo") await Views.demo(view);
     else if (page === "replay") await Views.replay(view);
+    else if (page === "terminal") await Views.terminal(view, rest[0]);
     else if (page === "backends") await Views.backends(view);
     else if (page === "case" && rest[0]) await Views.case(view, rest[0], rest[1] || "overview");
     else await Views.dashboard(view);
@@ -366,9 +376,92 @@ async function render() {
 
 window.addEventListener("hashchange", render);
 
+/* ====================================================== shell chrome == */
+
+/* sidebar collapse — preference survives reloads via localStorage */
+const Sidebar = {
+  KEY: "cf-side-collapsed",
+  apply(collapsed) {
+    document.body.classList.toggle("no-side", collapsed);
+    try { localStorage.setItem(this.KEY, collapsed ? "1" : "0"); } catch {}
+  },
+  init() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(this.KEY) === "1"; } catch {}
+    this.apply(collapsed);
+    $("#side-collapse")?.addEventListener("click", () => this.apply(true));
+    $("#side-open")?.addEventListener("click", () => this.apply(false));
+  },
+};
+
+/* quick search — fuzzy-open by case id or ticker, results navigate to
+ * the case page. Caches /api/cases for a few seconds per keystroke batch. */
+const QuickSearch = {
+  cache: null, cacheAt: 0, hideTimer: null,
+
+  async cases() {
+    if (this.cache && Date.now() - this.cacheAt < 5000) return this.cache;
+    const r = await guard(() => Api.get("/api/cases"));
+    if (r.ok) { this.cache = r.data.cases || []; this.cacheAt = Date.now(); }
+    return r.ok ? this.cache : [];
+  },
+
+  render(list, q) {
+    const pop = $("#search-pop");
+    pop.replaceChildren();
+    if (!list.length) {
+      pop.append(h("div", { class: "none" },
+        q ? `no case matches “${q}”` : "type to search cases by id or ticker"));
+    } else pop.append(...list.map(c =>
+      h("button", { class: "sr", onclick: () => this.go(c) },
+        h("span", { class: "tk" }, c.ticker),
+        c.case_id,
+        h("span", { class: "st" }, statusChip(c.status)))));
+    pop.classList.add("open");
+  },
+
+  go(c) {
+    this.close();
+    $("#quick-search").value = "";
+    Route.nav(`#/case/${c.case_id}`);
+  },
+
+  close() { $("#search-pop").classList.remove("open"); },
+
+  async onInput(e) {
+    const q = e.target.value.trim();
+    if (q.length < 1) { this.close(); return; }
+    const rx = new RegExp(rxEscape(q), "i");
+    const rows = await this.cases();
+    this.render(rows.filter(c =>
+      rx.test(c.case_id) || rx.test(c.ticker)).slice(0, 8), q);
+  },
+
+  init() {
+    const input = $("#quick-search");
+    if (!input) return;
+    input.addEventListener("input", e => void this.onInput(e));
+    input.addEventListener("focus", () => void this.onInput({ target: input }));
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        const first = $("#search-pop .sr");
+        if (first) first.click();
+      } else if (e.key === "Escape") { this.close(); input.blur(); }
+    });
+    document.addEventListener("click", e => {
+      if (!e.target.closest(".search-wrap")) this.close();
+    });
+  },
+};
+
 /* ============================================================= boot ===== */
 
-document.addEventListener("DOMContentLoaded", () => { Live.start(); render(); });
+document.addEventListener("DOMContentLoaded", () => {
+  Sidebar.init();
+  QuickSearch.init();
+  Live.start();
+  render();
+});
 
 
 /* ============================================================ VIEWS ===== */
@@ -385,6 +478,11 @@ Views.dashboard = async function (view) {
   CURRENT_TAB_SNAPSHOT = null;
   document.title = "CoverageFlow — dashboard";
 
+  const rows = data.cases || [];
+  const active = rows.filter(c => c.status === "RUNNING" || c.status === "CREATED");
+  const pending = rows.filter(c => c.status === "PENDING_APPROVAL");
+  const openFindings = rows.reduce((n, c) => n + (c.open_findings || 0), 0);
+
   view.replaceChildren(
     h("div", { class: "page-head" },
       h("h1", null, "Coverage desk"),
@@ -392,24 +490,52 @@ Views.dashboard = async function (view) {
         "versioned research production — every number evidence-linked, every run verified"),
       h("span", { class: "spacer" }),
       h("a", { class: "btn primary", href: "#/new" }, "＋ New case")),
-    healthStrip(data.health),
-    labeledPanel("Cases",
-      casesTable(data.cases)),
-    labeledPanel("Pending human approvals", approvalsTable(data.cases)),
-    labeledPanel("Active runs", activeRunsTable(data.cases)),
+    statRow(rows, active, pending, openFindings),
+    labeledPanel("Cases", casesTable(rows)),
+    h("div", { class: "widgets" },
+      h("div", { class: "col" },
+        labeledPanel("Active runs", activeRunsTable(rows)),
+        labeledPanel("Pending human approvals", approvalsTable(rows))),
+      h("div", { class: "col" },
+        healthCard(data.health))),
   );
 };
 
-function healthStrip(health) {
-  return h("section", { class: "block" },
-    h("dl", { class: "kv", style: "grid-template-columns:repeat(auto-fit,minmax(150px,auto))" },
-      h("dt", null, "service"), h("dd", null, `${health.status} · ${health.mode}`),
-      h("dt", null, "active backend"), h("dd", null, health.active_backend),
-      h("dt", null, "cases"), h("dd", null, String(health.cases)),
-      h("dt", null, "active runs"), h("dd", null, String(health.active_runs)),
-      h("dt", null, "awaiting approval"), h("dd", null, String(health.pending_approvals)),
-      h("dt", null, "checked"), h("dd", null, fmt.time(health.ts)),
-      ));
+function statTile(label, value, detailNodes) {
+  return h("div", { class: "stat" },
+    h("span", { class: "label" }, label),
+    h("div", { class: "v" }, value),
+    detailNodes ? h("div", { class: "d" }, detailNodes) : null);
+}
+
+function statRow(rows, active, pending, openFindings) {
+  const closed = rows.filter(c => ["CLOSED", "APPROVED"].includes(c.status)).length;
+  return h("section", { class: "stats" },
+    statTile("Cases on desk", String(rows.length),
+      [`${closed} deliverable · ${pending.length} at the human gate`]),
+    statTile("Active runs", String(active.length),
+      [active.length
+        ? `pending: ${active.map(c => c.pending_role || "generator").join(", ")}`
+        : "no work in flight"]),
+    statTile("Awaiting approval", String(pending.length),
+      [pending.length ? "dossier ready for sign-off" : "nothing awaits sign-off"]),
+    statTile("Open findings", String(openFindings),
+      [openFindings
+        ? h("span", { class: "down" }, "ledger not closed — repairs pending")
+        : h("span", { class: "up" }, "ledger closed — critic verified")]),
+  );
+}
+
+function healthCard(health) {
+  return labeledPanel("Service",
+    kv([
+      ["status", `${health.status} · ${health.mode}`],
+      ["active backend", health.active_backend],
+      ["cases", String(health.cases)],
+      ["active runs", String(health.active_runs)],
+      ["awaiting approval", String(health.pending_approvals)],
+      ["checked", fmt.time(health.ts)],
+    ]));
 }
 
 function casesTable(rows) {
@@ -426,7 +552,7 @@ function casesTable(rows) {
       c.latest_report ? h("a", { href: `#/case/${c.case_id}/report` }, c.latest_report) : "—",
       fmt.datetime(c.updated_at),
     ]),
-    { numFrom: 9, emptyWhat: "no cases on the desk",
+    { numFrom: 9, data: rows, emptyWhat: "no cases on the desk",
       emptyNote: "create a case from the wizard (needs a frozen bundle and a cutoff date)",
       click: c => Route.nav(`#/case/${c.case_id}`) });
 }
@@ -442,7 +568,7 @@ function approvalsTable(rows) {
       c.deadline ? fmt.datetime(c.deadline) : "—",
       `${c.clean_review_rounds}/2 clean`,
       h("a", { class: "btn primary small", href: `#/case/${c.case_id}/approval` }, "open dossier →"),
-    ]), { click: c => Route.nav(`#/case/${c.case_id}/approval`) });
+    ]), { data: pending, click: c => Route.nav(`#/case/${c.case_id}/approval`) });
 }
 
 function activeRunsTable(rows) {
@@ -534,7 +660,7 @@ function renderCaseOverview(body, c) {
             ["retries at role", `${st.pending.retry_count}/${b.retries_max}`],
             ["candidate", st.candidate.candidate_id || "pending"],
             ["clean reviews (2 needed)", String(st.candidate.clean_review_rounds)],
-            ["reason", st.reason || "—"],
+            ["reason", reasonText(st.reason)],
           ])),
         labeledPanel("Budgets & clocks",
           kv([
@@ -562,6 +688,8 @@ function renderCaseOverview(body, c) {
               ? h("button", { class: "btn danger", onclick: () => doKill(c.case_id) }, "✖ Kill stage (rehearsal)") : null,
             !["CLOSED", "APPROVED", "REJECTED"].includes(st.status)
               ? h("a", { class: "btn", href: `#/demo?case=${c.case_id}` }, "demo panel →") : null,
+            h("a", { class: "btn", href: `#/terminal/${c.case_id}` },
+              "tail in Terminal →"),
           ),
           h("p", { class: "hint" },
             "every action goes through the orchestrator: the UI only calls /api endpoints; gates and acceptance rules are untouchable from here.")),
@@ -626,14 +754,17 @@ function renderCaseBuild(body, c) {
     return;
   }
   const rounds = c.rounds.map(rnd => {
-    const gateChip = rnd.gates.failed
-      ? h("span", { class: "chip major" }, `gates ${rnd.gates.passed}/${rnd.gates.total}`)
-      : h("span", { class: "chip ok" }, `gates ${rnd.gates.passed}/${rnd.gates.total}`);
-    const critics = rnd.critics.map(cr =>
+    const g = rnd.gates;
+    const gateChip = !g
+      ? h("span", { class: "chip" }, "gates pending")
+      : g.failed
+        ? h("span", { class: "chip major" }, `gates ${g.passed}/${g.total}`)
+        : h("span", { class: "chip ok" }, `gates ${g.passed}/${g.total}`);
+    const critics = (rnd.critics || []).map(cr =>
       h("tr", { class: cr.verdict === "findings" ? "finding-row carried" : "" },
         h("td", { class: "id" }, cr.role),
         h("td", null, cr.verdict === "clean" ? h("span", { class: "chip ok" }, "clean") :
-          h("span", { class: "chip major" }, cr.verdict)),
+          h("span", { class: "chip major" }, cr.verdict || "—")),
         h("td", null, cr.verdict === "pending" ? "awaiting dispatch" :
           cr.findings && cr.findings.length ? cr.findings.join(", ") : "—")));
     const pkChip = h("span", { class: "chip", title: "repair packet" },
@@ -645,7 +776,7 @@ function renderCaseBuild(body, c) {
           h("th", null, "generator stage artifacts"),
           h("th", null, "hash verification"))),
         h("tbody", null, h("tr", null,
-          h("td", null, rnd.generator_artifacts.join(" · ")),
+          h("td", null, (rnd.generator_artifacts || rnd.artifacts || []).join(" · ")),
           h("td", { class: "muted small" },
             "per-artifact sha256 in candidate-manifest.json — see the Artifacts tab")))),
       h("label", { class: "label mt3" }, "Critic verdicts"),
@@ -665,7 +796,7 @@ async function renderCaseFindings(body, c) {
   body.replaceChildren(
     h("p", { class: "hint" },
       "append-only ledger. Carried findings block acceptance until a critic verifies the repair evidence."),
-    c.findings.length ? gridTable(
+    labeledPanel("Finding ledger", c.findings.length ? gridTable(
       ["finding", "severity", "status", "rounds", "summary", "closure evidence"],
       c.findings.map(f => [
         h("span", { class: "mono muted" }, f.finding_id),
@@ -681,7 +812,7 @@ async function renderCaseFindings(body, c) {
       ]),
       { emptyWhat: "no findings", emptyNote: "critics found nothing worth raising" })
     : emptyState("No findings recorded",
-      "critic findings (C1 evidence, C2 robustness, C3 timing, C4 controls) appear here with critic-verified closure."));
+      "critic findings (C1 evidence, C2 robustness, C3 timing, C4 controls) appear here with critic-verified closure.")));
   if (c.findings.some(f => f.seeded)) {
     body.append(h("p", { class: "hint" }, h("strong", null, "note: "),
       "SEEDED findings come from the scripted-rehearsal panel — they drive the repair-loop evidence run, not real reviewers."));
@@ -1140,8 +1271,19 @@ async function renderCaseApproval(body, c) {
         ["reasoning", apr.reasoning || "—"],
         ["decision id", apr.decision_id],
         ["evidence refs", (apr.expected_evidence_refs || []).join(" · ")],
-      ]) : kv([["terminal", st.status], ["reason", st.reason || "—"]])));
+      ]) : kv([["terminal", st.status], ["reason", reasonText(st.reason)]])));
   }
+}
+
+/** state["reason"] arrives as {code, message, detail} — render it readable
+ * instead of letting the DOM coerce it to "[object Object]". */
+function reasonText(r) {
+  if (!r) return "—";
+  if (typeof r === "string") return r;
+  let out = `${r.code || "?"} — ${r.message || ""}`;
+  const d = r.detail && Object.keys(r.detail).length ? JSON.stringify(r.detail) : "";
+  if (d && d.length < 200) out += ` (${d})`;
+  return out;
 }
 
 function case_id_title(id) { return id.split("-").slice(0, 2).join(" ").toUpperCase(); }
@@ -1657,8 +1799,16 @@ Views.demo = async function demo(view) {
       .map(s => h("option", { value: s }, s)));
   const out = h("div");
   const target = () => caseSel.value || (cases[0] && cases[0].case_id);
+  const hasTarget = () => {
+    const t = target();
+    return typeof t === "string" && t.length > 0;
+  };
+  const noTargetNote = () => h("div", { class: "err-box" },
+    "no eligible case in this workspace — create a case from the wizard "
+    + "(or resume one) before running a rehearsal action.");
 
   async function run(action, body) {
+    if (!hasTarget()) { out.replaceChildren(noTargetNote()); return; }
     out.replaceChildren(loadingRow("scripted action"));
     const rr = await guard(() => Api.post(`/api/cases/${target()}/demo/${action}`, body || {}),
       `${action} failed`);
@@ -1671,9 +1821,10 @@ Views.demo = async function demo(view) {
   }
 
   const demoCard = (title, body, btnLabel, action, payloadFn) => {
+    const btn = h("button", { class: "btn", onclick: () => run(action, payloadFn && payloadFn()) }, btnLabel);
+    if (!hasTarget()) { btn.disabled = true; btn.title = "no eligible target case"; }
     const el = h("fieldset", null, h("legend", null, title), body,
-      h("div", { class: "actions" },
-        h("button", { class: "btn", onclick: () => run(action, payloadFn && payloadFn()) }, btnLabel)));
+      h("div", { class: "actions" }, btn));
     return el;
   };
 
@@ -1698,11 +1849,17 @@ Views.demo = async function demo(view) {
           demoCard("kill-stage  — evidence run 3 (resume)",
             h("p", { class: "hint" }, "kills the pending stage mid-run; verified checkpoints are kept and only the pending role is re-dispatched on resume."),
             h("div", { class: "row" }, h("span", { class: "hint" }, "stage to kill"), stageSel,
-              h("button", { class: "btn small", onclick: () => Route.nav(`#/case/${target()}`) }, "inspect case")),
+              (() => { const b = h("button", { class: "btn small", onclick: () => {
+                const t = target(); if (typeof t === "string" && t) Route.nav(`#/case/${t}`);
+              } }, "inspect case");
+                if (!hasTarget()) { b.disabled = true; b.title = "no eligible target case"; }
+                return b; })()),
             "Kill stage", "kill-stage", () => ({ stage: stageSel.value })),
           demoCard("watch live",
             h("p", { class: "hint" }, "after seeding, open the case trace: FINDING_OPENED lands at the round boundary and the repair packet appears on the wire."),
-            h("a", { class: "btn small", href: "#/case/intc-fy2026q4-20270129/trace" }, "trace of the running case →"),
+            hasTarget()
+              ? h("a", { class: "btn small", href: `#/case/${target()}/trace` }, "trace of the running case →")
+              : h("span", { class: "hint" }, "no eligible case to watch — create one first"),
             null, "seed-finding"))),
       out));
 };
@@ -1778,6 +1935,122 @@ Views.replay = async function replay(view) {
 };
 
 /* ----------------------------------------------------------- backends --- */
+
+/* --------------------------------------------------------- terminal ---- */
+
+/* Live tail of a caseʼs trace.jsonl — a terminal view onto what the agent
+ * team is doing RIGHT NOW. The orchestrator appends trace events as it
+ * runs (even while the synchronous /run request is still in flight), so
+ * polling /trace?from=<cursor> every 2s shows dispatches, results, gates
+ * and transitions in near-real time. */
+
+function termLine(ev) {
+  const t = (ev.ts || "").split("T")[1] || "";
+  const time = t.replace(/Z$/, "").split(".")[0];
+  const bad = /FAIL|ERROR|BLOCKED|EXHAUSTED|INVALID|REJECT/i.test(ev.event) ||
+    (ev.detail && ev.detail.ok === false);
+  const cls = bad ? "tl bad"
+    : /AGENT_DISPATCHED|REQUEST_BOUND/.test(ev.event) ? "tl disp"
+    : /AGENT_RESULT|GATE_PASS|APPROVED|CLEAN|PASS/.test(ev.event) ? "tl ok"
+    : /STATE_TRANSITION|BUDGET/.test(ev.event) ? "tl tr"
+    : "tl";
+  let detail = ev.detail && Object.keys(ev.detail).length
+    ? JSON.stringify(ev.detail) : "";
+  if (detail.length > 150) detail = detail.slice(0, 150) + "…";
+  const where = [ev.role ? ev.role : null, ev.round ? `r${ev.round}` : null]
+    .filter(Boolean).join("@");
+  const tok = ev.tokens_out != null
+    ? ` · ${ev.tokens_in ?? "?"}→${ev.tokens_out} tok` : "";
+  return h("div", { class: cls },
+    h("span", { class: "ts" }, time || "--:--:--"),
+    h("span", { class: "ev" }, ev.event),
+    where ? h("span", { class: "who" }, where) : null,
+    h("span", { class: "meta" }, `${ev.backend || ""}${tok}`, detail));
+}
+
+Views.terminal = async function (view, caseId) {
+  const r = await guard(() => Api.get("/api/cases"), "case list failed");
+  if (!r.ok) { view.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+  const cases = r.data.cases || [];
+  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
+  document.title = "Live terminal — CoverageFlow";
+  if (!cases.length) {
+    view.replaceChildren(emptyState("No cases yet",
+      "create a case first — the terminal tails one caseʼs agent activity."));
+    return;
+  }
+  const target = cases.find(c => caseId && c.case_id === caseId)
+    || cases.find(c => ["RUNNING", "CREATED"].includes(c.status))
+    || [...cases].sort((a, b) =>
+        String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0];
+
+  const token = TERMINAL_TOKEN;
+  const term = h("div", { class: "term" });
+  const count = h("span", { class: "hint mono" }, "");
+  let cursor = 0, follow = true;
+
+  const stick = () => {
+    if (!follow) return;
+    term.scrollTop = term.scrollHeight;
+  };
+  term.addEventListener("scroll", () => {
+    follow = term.scrollTop + term.clientHeight >= term.scrollHeight - 32;
+    pin.classList.toggle("show", !follow);
+  });
+  const pin = h("button", { class: "term-pin", title: "jump to latest",
+    onclick: () => { follow = true; term.scrollTop = term.scrollHeight;
+                     pin.classList.remove("show"); } }, "↓ latest");
+
+  const load = async first => {
+    const rr = await guard(() =>
+      Api.get(`/api/cases/${target.case_id}/trace?from=${cursor}`), null);
+    if (token !== TERMINAL_TOKEN) return;   // view was replaced
+    if (!rr.ok) { if (first) term.append(h("div", { class: "tl bad" },
+      `trace unavailable: ${rr.err.message}`)); return; }
+    const evs = rr.data.events || [];
+    cursor = rr.data.next_cursor ?? cursor + evs.length;
+    for (const ev of evs) term.append(termLine(ev));
+    while (term.children.length > 1500) term.firstElementChild.remove();
+    count.textContent = `${cursor} events · tailing…`;
+    stick();
+  };
+
+  await load(true);
+  if (token !== TERMINAL_TOKEN) return;
+  TERMINAL_TIMER = setInterval(() => void load(false), 2000);
+
+  const sel = h("select", { onchange: () => Route.nav(`#/terminal/${sel.value}`) });
+  for (const c of [...cases].sort((a, b) =>
+      ["RUNNING", "CREATED"].includes(b.status) - ["RUNNING", "CREATED"].includes(a.status) ||
+      String(b.updated_at || "").localeCompare(String(a.updated_at || "")))) {
+    const opt = h("option", { value: c.case_id },
+      `${c.case_id} · ${c.ticker} · ${c.status}`);
+    if (c.case_id === target.case_id) opt.selected = true;
+    sel.append(opt);
+  }
+
+  view.replaceChildren(
+    h("div", { class: "page-head" },
+      h("h1", null, "Live terminal"),
+      h("span", { class: "sub" },
+        "tails the agent trace every 2s — role dispatches, results, gates, transitions"),
+      h("span", { class: "spacer" }),
+      h("span", { class: "hint mono" }, count.textContent ? count.textContent : "")),
+    h("section", { class: "block term-shell" },
+      h("div", { class: "term-bar" },
+        sel,
+        h("span", { class: "grow" }),
+        statusChip(target.status),
+        h("span", { class: "term-live" }, "● live"),
+        h("button", { class: "btn small", onclick: () =>
+          Route.nav(`#/case/${target.case_id}`) }, "case page →")),
+      term,
+      pin,
+      h("p", { class: "hint mt2 mb0" },
+        "a real-backend run is synchronous: the REST call returns only after the whole round "
+        + "finishes — but the orchestrator writes this trace live, so this is where you watch it work.")));
+  count.textContent = `${cursor} events · tailing…`;
+};
 
 Views.backends = async function backends(view) {
   CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;

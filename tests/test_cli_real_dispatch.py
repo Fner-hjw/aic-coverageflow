@@ -101,7 +101,13 @@ class TestLoadDispatch:
     def test_default_is_the_offline_stub(self):
         dispatch, backend = cli.load_dispatch()
         assert isinstance(dispatch, stubmod.StubDispatch)
-        assert backend == "replay-stub (offline)"
+        assert backend == "stub (offline)"
+
+    def test_explicit_stub_and_offline_aliases(self):
+        for name in ("stub", "offline"):
+            dispatch, backend = cli.load_dispatch(backend=name)
+            assert isinstance(dispatch, stubmod.StubDispatch)
+            assert backend == "stub (offline)"
 
     def test_replay_backend_requires_replay_dir(self):
         with pytest.raises(ValueError):

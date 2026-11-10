@@ -9,3 +9,7 @@ coverage.xml
 .export-stub/
 export/dossier.aux
 export/dossier.log
+# launcher: saved answers + API credentials (never commit)
+.coverageflow-launch.json
+.coverageflow.json
+workspace/

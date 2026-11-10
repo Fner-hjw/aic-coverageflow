@@ -85,6 +85,7 @@ try:  # pragma: no cover - exercised via the wiring toggle tests
     from coverageflow import statestore as _real_statestore
     from coverageflow import gates as _real_gates
     from coverageflow import bundle as _real_bundle
+    from coverageflow import export_dossier as _real_export_dossier
     from coverageflow.backends import (detect_available_backends
                                        as _real_detect_backends)
     from coverageflow.backends import make_backend as _real_make_backend
@@ -93,6 +94,7 @@ try:  # pragma: no cover - exercised via the wiring toggle tests
 except Exception:  # package not present: pure demo service
     _real_cli = None  # type: ignore[assignment]
     _real_export_xlsx = None  # type: ignore[assignment]
+    _real_export_dossier = None  # type: ignore[assignment]
     _real_ledger = None  # type: ignore[assignment]
     _real_orchestrator = None  # type: ignore[assignment]
     _real_statestore = None  # type: ignore[assignment]
@@ -1248,6 +1250,10 @@ _BACKENDS: list[dict] = [
      "detail": "'kimi' not found in PATH (stub detection)",
      "api_config": None, "healthy": None, "selected": False,
      "usage_note": "headless CLI login"},
+    {"name": "vibe", "kind": "cli", "detected": False,
+     "detail": "'vibe' not found in PATH (stub detection)",
+     "api_config": None, "healthy": None, "selected": False,
+     "usage_note": "headless Mistral CLI login (vibe -p)"},
     {"name": "api", "kind": "openai-compatible", "detected": False,
      "detail": "no COVERAGEFLOW_API_BASE / key configured in this "
                "environment (see A3 api_backend)",
@@ -1258,6 +1264,11 @@ _BACKENDS: list[dict] = [
                "always available, used by the test suite",
      "api_config": None, "healthy": True, "selected": True,
      "usage_note": "recorded responses, deterministic"},
+    {"name": "stub", "kind": "offline", "detected": True,
+     "detail": "scripted offline role responses — canned gate-satisfying "
+               "outputs, always available (demo default)",
+     "api_config": None, "healthy": True, "selected": False,
+     "usage_note": "canned role responses, no LLM, no recordings needed"},
 ]
 
 # controller-mode selection (made via POST /api/backends/select); the demo
@@ -1364,8 +1375,8 @@ def _realt_backend_rows() -> list[dict]:
     rows = []
     for tmpl in _BACKENDS:
         row = dict(tmpl)
-        if row["name"] == "replay":
-            rows.append(row)  # always-available template row stands
+        if row["name"] in ("replay", "stub"):
+            rows.append(row)  # always-available rows stand as-is
             continue
         ok = row["name"] in detected
         if ok:
@@ -1422,7 +1433,7 @@ def select_backend(name: str) -> dict:
         raise ValidationError(
             f"unknown backend: {name}; available: {', '.join(sorted(known))}")
     if _using_real():
-        if name not in ("replay", "auto"):
+        if name not in ("replay", "auto", "stub"):
             detected = {r["name"] for r in _realt_backend_rows()
                          if r["detected"]}
             if name not in detected:
@@ -1706,12 +1717,50 @@ def get_case(case_id: str) -> dict:
                             v.split("-", 1)[1] if "-" in v else None})
         rounds = []
         if (cd / "rounds").is_dir():
-            for rd in sorted((cd / "rounds").iterdir()):
-                if rd.is_dir():
-                    arts = [a for a in _rartifacts(rd)
-                            if not a.startswith("repair-packet")]
-                    rounds.append({"round": rd.name, "dir": rd.name,
-                                   "artifacts": arts})
+            rdirs = sorted(d for d in (cd / "rounds").iterdir() if d.is_dir())
+            for ri, rd in enumerate(rdirs):
+                arts = [a for a in _rartifacts(rd)
+                        if not a.startswith("repair-packet")]
+                # deserialize the frozen per-round artifacts into the same
+                # shape the demo branch serves: gates summary, critic
+                # verdicts, generator artifacts, repair-packet flag.
+                # Mid-run rounds may be partial — absent pieces stay empty.
+                gates_j = _real_statestore.read_json_or_none(
+                    rd / "numerical" / "gates.json")
+                results = (gates_j or {}).get("results") or []
+                gates_summary = (None if gates_j is None else {
+                    "total": len(results),
+                    "passed": sum(1 for r in results if r.get("ok")),
+                    "failed": sum(1 for r in results
+                                  if not r.get("ok"))})
+                critics = []
+                if (rd / "critic").is_dir():
+                    for cf in sorted((rd / "critic").glob("critic_*.json")):
+                        cr = (_real_statestore.read_json_or_none(cf) or {})
+                        if cr:
+                            critics.append({
+                                "role": cr.get("role"),
+                                "verdict": cr.get("verdict"),
+                                "findings": cr.get("findings") or [],
+                            })
+                gen_arts = (sorted(p.name for p in (rd / "generator").iterdir()
+                                   if p.is_file())
+                            if (rd / "generator").is_dir() else [])
+                try:
+                    round_no = int(rd.name.removeprefix("round-"))
+                except ValueError:
+                    round_no = rd.name
+                rounds.append({
+                    "round": round_no, "dir": rd.name,
+                    "status": "superseded" if ri < len(rdirs) - 1 else "built",
+                    "artifacts": arts,
+                    "gates": gates_summary,
+                    "critics": critics,
+                    "generator_artifacts": gen_arts,
+                    "repair_packet": ("rounds/" + rd.name +
+                                      "/repair-packet.json")
+                    if (rd / "repair-packet.json").is_file() else None,
+                })
         return {
             "case_id": case_id, "state": state, "mandate": mandate,
             "manifest": manifest, "rounds": rounds,
@@ -1853,6 +1902,10 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
                 f"case {case_id} is terminal ({state['status']}); start a "
                 "new case instead")
         run_backend = "replay" if replay else (backend or "auto")
+        # an explicitly selected backend (Backends page) wins over "auto"
+        # so runs launched from the case page use the operator's choice
+        if run_backend == "auto" and _REAL_SELECTED_BACKEND not in ("", "auto"):
+            run_backend = _REAL_SELECTED_BACKEND
         try:
             dispatch, backend_name = _rdispatch_for(case_id, run_backend)
         except ConflictError:
@@ -1872,7 +1925,7 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
               {"backend": backend_name, "replay": replay, "real": True})
         return {"case_id": case_id, "ok": True,
                 "status": new_state["status"],
-                "backend": "replay" if replay else backend,
+                "backend": backend_name,
                 "pending_role": (new_state.get("pending") or {}).get("role"),
                 "trace_tail": len(events)}
     c = _get(case_id)
@@ -2474,8 +2527,15 @@ def export_case(case_id: str, fmt: str) -> dict:
                  f"verified evidence | {case_id} | {latest} | real "
                  f"workspace</p></body></html>").encode("utf-8"))
         else:
-            out_path = export_dir / f"{case_id}-{latest}.pdf"
-            out_path.write_bytes(_stub_pdf(title, md_lines))
+            built = _real_export_dossier.build_dossier(cd,
+                                                       out_dir=export_dir)
+            dossier_pdf = Path(built["pdf"]) if built["pdf"] else None
+            if dossier_pdf is not None and dossier_pdf.is_file():
+                out_path = dossier_pdf
+            else:
+                # pdflatex unavailable/mis-compiled: the rendered .tex is
+                # the deliverable (same renderer as the CLI export verb)
+                out_path = Path(built["tex"])
         data = out_path.read_bytes()
         _emit(case_id, "EXPORT_DONE", {"format": fmt, "bytes": len(data),
                                        "real": True})
@@ -2544,7 +2604,7 @@ def export_download(case_id: str, filename: str) -> dict:
         raise ValidationError("invalid file name")
     if _using_real():
         if not filename.startswith(case_id + "-") \
-                and filename != "model.xlsx":
+                and filename not in ("model.xlsx", "dossier.pdf", "dossier.tex"):
             raise ValidationError(
                 f"export file name must start with '{case_id}-': {filename}")
         found = _rcase_dir(case_id) / "export" / filename
@@ -2555,6 +2615,8 @@ def export_download(case_id: str, filename: str) -> dict:
                 "media_type": ("application/pdf" if filename.endswith(".pdf")
                                else "text/html"
                                if filename.endswith(".html") else
+                               "application/x-latex"
+                               if filename.endswith(".tex") else
                                "application/vnd.openxmlformats-officedocument"
                                ".spreadsheetml.sheet"),
                 "bytes": found.read_bytes()}

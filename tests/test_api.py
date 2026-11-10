@@ -459,7 +459,8 @@ class TestBackends:
     def test_list_and_usage(self, client):
         body = client.get("/api/backends").json()
         names = [b["name"] for b in body["backends"]]
-        assert names == ["claude", "codex", "kimi", "api", "replay"]
+        assert names == ["claude", "codex", "kimi", "vibe", "api",
+                         "replay", "stub"]
         assert body["caps"]["role_tokens_max"] == 60_000
         assert body["usage_by_role"]["extractor"] > 30_000
 

@@ -12,7 +12,7 @@ from typing import Any
 
 from .base import AgentResult, Backend, CostEstimate, HealthReport  # noqa: F401
 
-_KNOWN_BACKENDS = ("claude", "codex", "kimi", "api", "replay")
+_KNOWN_BACKENDS = ("claude", "codex", "kimi", "vibe", "api", "replay")
 
 
 def make_backend(name: str, **kwargs: Any):
@@ -35,6 +35,10 @@ def make_backend(name: str, **kwargs: Any):
         from .cli_backends import KimiBackend
 
         return KimiBackend(**kwargs)
+    if name == "vibe":
+        from .cli_backends import VibeBackend
+
+        return VibeBackend(**kwargs)
     if name == "api":
         from .api_backend import ApiBackend
 
@@ -56,7 +60,7 @@ def detect_available_backends() -> list[str]:
     'api' when configured. Never launches an interactive session.
     """
     available: list[str] = []
-    for name in ("claude", "codex", "kimi"):
+    for name in ("claude", "codex", "kimi", "vibe"):
         backend = make_backend(name)
         if backend.healthcheck().ok:
             available.append(name)

@@ -361,3 +361,27 @@ class KimiBackend(_CliBackendBase):
                 ok=False, error="backend kimi: empty stdout", backend=self.name
             )
         return AgentResult(ok=True, output_text=text, backend=self.name)
+
+
+class VibeBackend(_CliBackendBase):
+    """`vibe -p <prompt> --output text` — headless Mistral Vibe CLI.
+
+    The Mistral CLI runs in programmatic mode (`-p`): one fresh invocation
+    per role call, answer printed to stdout as plain text, exit code
+    reflects success. Uses the CLI's own login (no API key handling here).
+    """
+
+    name = "vibe"
+    cli_binary = "vibe"
+
+    def _build_args(self, prompt: str) -> list[str]:
+        return ["-p", prompt, "--output", "text",
+                "--max-price", "1.5"]  # hard per-call cost cap
+
+    def _normalize_output(self, stdout: str) -> AgentResult:
+        text = (stdout or "").strip("\n")
+        if not text.strip():
+            return AgentResult(
+                ok=False, error="backend vibe: empty stdout", backend=self.name
+            )
+        return AgentResult(ok=True, output_text=text, backend=self.name)

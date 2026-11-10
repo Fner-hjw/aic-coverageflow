@@ -57,7 +57,8 @@ def load_dispatch(offline: bool = False, backend: str | None = None,
     - ``backend="replay"``: the offline deterministic path —
       ``ReplayBackend(replay_dir)`` answering from recorded responses
       (missing recordings are hard errors by design, never silent replay).
-    - ``backend="claude"|"codex"|"kimi"|"api"``: that live backend.
+    - ``backend="claude"|"codex"|"kimi"|"vibe"|"api"``: that live
+      backend.
     - when the agent layer is not importable at all: offline stub.
     """
     try:
@@ -87,9 +88,9 @@ def load_dispatch(offline: bool = False, backend: str | None = None,
                     "detail": report.detail}
 
     name = str(backend or "").strip().lower()
-    if not name:
+    if not name or name in ("stub", "offline"):
         from . import _dispatch_test_stub
-        return _dispatch_test_stub.StubDispatch(), "replay-stub (offline)"
+        return _dispatch_test_stub.StubDispatch(), "stub (offline)"
     if name == "replay":
         if replay_dir is None:
             raise ValueError("replay backend requires a replay_dir "
@@ -495,7 +496,8 @@ def cmd_backends_health(args, ws: Path) -> int:
     _print({
         "controller_backend": backend,
         "health": health,
-        "known_backends": ["claude", "codex", "kimi", "api", "replay"],
+        "known_backends": ["claude", "codex", "kimi", "vibe", "api",
+                         "replay"],
         "note": "backend management/selection is owned by stream A3 "
                 "(coverageflow/backends); the controller only reports status",
     })
@@ -549,7 +551,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = add("run", cmd_run)
     run.add_argument("--case", default=None)
     run.add_argument("--backend", default=None,
-                     help="auto | replay | claude | codex | kimi | api; "
+                     help="auto | replay | claude | codex | kimi | vibe | api; "
                           "omit for the offline stub (dev/test default)")
     run.add_argument("--replay", action="store_true")
     run.add_argument("--record", action="store_true")

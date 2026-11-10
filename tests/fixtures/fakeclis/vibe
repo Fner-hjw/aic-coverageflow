@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Fake `vibe` CLI for offline backend tests.
+
+Accepts: vibe --help | vibe -p PROMPT [--output text] [--max-price N]
+Prints FAKE_RESULT_TEXT (plain text) to stdout, mirroring headless
+programmatic mode.  Same FAKE_BEHAVIOR protocol as the other fake CLIs.
+"""
+import os
+import sys
+import time
+
+argv_log = os.environ.get("FAKE_ARGV_LOG")
+if argv_log:
+    import json
+    with open(argv_log, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(sys.argv) + "\n")
+
+if "--help" in sys.argv:
+    print("Vibe CLI")
+    print("Usage: vibe            start interactive session")
+    print("       vibe -p, --prompt [<PROMPT>]   run in headless mode")
+    print("       vibe --output <OUTPUT>   text | json | streaming")
+    sys.exit(0)
+
+behavior = os.environ.get("FAKE_BEHAVIOR", "ok")
+
+if behavior == "sleep":
+    time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
+if behavior == "fail":
+    sys.stderr.write("vibe: login expired\n")
+    sys.exit(4)
+if behavior == "garbage":
+    print("pong! (not json)")
+    sys.exit(0)
+
+result_text = os.environ.get(
+    "FAKE_RESULT_TEXT", '{"schematic": "good", "trace": "demonstration"}'
+)
+print(result_text)

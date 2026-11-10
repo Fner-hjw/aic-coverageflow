@@ -79,6 +79,7 @@ BACKEND_FACTORIES = [
     ("claude", cli.ClaudeBackend),
     ("codex", cli.CodexBackend),
     ("kimi", cli.KimiBackend),
+    ("vibe", cli.VibeBackend),
 ]
 BACKEND_IDS = [name for name, _ in BACKEND_FACTORIES]
 
@@ -130,6 +131,16 @@ class TestCliHappyPaths:
         assert str(argv[0]).endswith("codex")
         assert "exec" in argv
         assert "--json" in argv
+
+    def test_vibe_uses_contract_flags(self, tmp_path, monkeypatch):
+        log = tmp_path / "argv.jsonl"
+        monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
+        cli.VibeBackend().invoke(make_call(), "hello")
+        argv = json.loads(log.read_text().strip().splitlines()[-1])
+        assert str(argv[0]).endswith("vibe")
+        assert "-p" in argv
+        assert "--output" in argv and "text" in argv
+        assert "--max-price" in argv  # per-call cost cap always applied
 
     def test_claude_real_usage_surfaced(self, monkeypatch):
         monkeypatch.setenv("FAKE_RESULT_TEXT", "x" * 40)
@@ -198,7 +209,7 @@ class TestCliFailureModes:
         res = make_backend(name).invoke(make_call(), "hello")
         assert res.ok is True, res.error
 
-    @pytest.mark.parametrize("name,expect_json", [("claude", True), ("codex", True), ("kimi", False)])
+    @pytest.mark.parametrize("name,expect_json", [("claude", True), ("codex", True), ("kimi", False), ("vibe", False)])
     def test_nonjson_stdout(self, name, expect_json, monkeypatch):
         # claude/codex promised JSON envelopes: garbage stdout must fail.
         # kimi's protocol is plain stdout text: raw text passes through

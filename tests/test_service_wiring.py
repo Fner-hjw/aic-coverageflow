@@ -166,7 +166,8 @@ class TestControllerMode:
     def test_backends_manager_uses_real_detection(self, controller):
         body = controller.get("/api/backends").json()
         names = {row["name"] for row in body["backends"]}
-        assert names == {"claude", "codex", "kimi", "api", "replay"}
+        assert names == {"claude", "codex", "kimi", "vibe", "api",
+                         "replay", "stub"}
         detected = {row["name"] for row in body["backends"]
                     if row["detected"]}
         # replay is always available (offline); anything else came from
@@ -294,3 +295,25 @@ def client_perturb(c, cid):
 def client_bundle(c, bundle_id):
     return any(b["bundle_id"] == bundle_id for b in
                c.get("/api/bundles").json()["bundles"])
+
+
+class TestControllerModeRunOverStub:
+    """Selected 'stub' backend drives UI runs offline, no recordings needed."""
+
+    def test_selected_stub_backend_drives_ui_run(self, real_ws, controller):
+        case_id = "intc-fy2026q3-20261030"
+        case_dir = real_ws / "cases" / case_id
+
+        sel = controller.post("/api/backends/select", json={"backend": "stub"})
+        assert sel.status_code == 200, sel.text
+
+        r = controller.post(f"/api/cases/{case_id}/run",
+                            json={"backend": "auto"})
+        assert r.status_code == 200, r.text
+        out = r.json()
+        assert out["ok"] is True
+        assert out["status"] == "PENDING_APPROVAL"
+        assert out["backend"] == "stub (offline)"
+        events = statestore.read_trace(case_dir)
+        dispatched = [e for e in events if e["event"] == "AGENT_RESULT"]
+        assert dispatched and "stub" in dispatched[0]["backend"]
