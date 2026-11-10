@@ -193,8 +193,9 @@ class TestRepoCards:
         for role, produces in self.EXPECTED_CARDS.items():
             meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
             # 1.0 baseline; edited cards bump (extractor 1.2: period labels
-            # for year-to-date columns; model/critic_lead 1.1: request_id)
-            assert meta["version"] in ("1.0", "1.1", "1.2"), role
+            # for year-to-date columns; model/critic_lead 1.1: request_id;
+            # writer 1.3: a marker cites the clause it closes)
+            assert meta["version"] in ("1.0", "1.1", "1.2", "1.3"), role
             assert meta["role"] == role
             assert meta["produces"] == produces
 

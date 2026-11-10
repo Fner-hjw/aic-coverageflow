@@ -415,7 +415,7 @@ def gate_candidate_manifest_integrity(manifest: dict, case_dir: Path | str) -> t
 # `segments.Intel Foundry.revenue`, and a marker the regex cannot see makes
 # every number on the line look unlinked.
 EV_MARKER = re.compile(r"\[EV:([^\]]+)\]", re.IGNORECASE)
-NUMERIC_TOKEN = re.compile(r"(?<![\w])\d[\d,\.]*")
+NUMERIC_TOKEN = re.compile(r"(?<![\w])\d[\d,]*(?:\.\d+)?")
 
 # Labels that are not claims and therefore need no evidence link. Without
 # these exemptions "10-Q" and "2026-10-30" tokenize as numbers and no report
@@ -427,7 +427,61 @@ _EXEMPT_SPAN = re.compile(
     r"|\bQ[1-4]\b"              # quarter labels
     r"|\b(?:19|20)\d{2}\b"      # a bare year is a label, not a claim
     r"|'\d{2}\b"                # Q3'26 shorthand
+    r"|\bItem\s+\d+[A-Z]?\b"    # SEC item references: Item 2, Item 1A
+    r"|^\s*\d+(?=[.)]\s)"        # markdown ordered-list marker: "1. **Risk**"
+    # Identifiers are labels too. The provenance header block carries a
+    # request id, a candidate id, a bundle id and a sha256; without these the
+    # header the writer is required to emit fails the gate on its own metadata.
+    r"|\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b"   # req-0676, cand-bb62, intc-2026-10
+    r"|\b[0-9a-f]{16,}\b"                   # hex digests
 )
+
+
+# A clause ends at a sentence period or a semicolon. The period must be
+# followed by whitespace so a decimal point is not a break. Commas are not
+# breaks: a note states a current and a prior figure in one sentence and cites
+# them together, and splitting on the comma made that unciteable.
+_CLAUSE_BREAK = re.compile(r";|\.(?=\s|$)")
+
+
+def _clause_start(line: str, pos: int, skip_spans: list[tuple[int, int]]) -> int:
+    """Offset where the clause containing *pos* begins."""
+    start = 0
+    for m in _CLAUSE_BREAK.finditer(line, 0, pos):
+        if any(s <= m.start() < e for s, e in skip_spans):
+            continue
+        start = m.end()
+    return start
+
+
+def _provenance_header_end(lines: list[str]) -> int:
+    """1-based line number of the last line of the provenance header block.
+
+    The header is the run of blockquote lines at the top of the document,
+    before the first ``##`` section. Returns 0 when the report has no header.
+    """
+    end = 0
+    for ln, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            break
+        if stripped.startswith(">"):
+            end = ln
+    return end
+
+
+def _suggest_keys(key: str, evidence_index: dict, limit: int = 3) -> list[str]:
+    """Index keys that plausibly mean the same thing as an unknown *key*.
+
+    A writer that shortens ``dcf.terminal.gordon.terminal_value`` to
+    ``dcf.terminal_value`` gets told the real keys, so the repair is one round
+    instead of another guess.
+    """
+    tail = key.rsplit(".", 1)[-1]
+    hits = [k for k in evidence_index if k == tail or k.endswith("." + tail)]
+    if not hits:
+        hits = [k for k in evidence_index if tail in k]
+    return sorted(hits)[:limit]
 
 
 def _evidence_key(key: str, evidence_index: dict) -> str | None:
@@ -459,20 +513,16 @@ def gate_report_evidence_links(report_md: str,
     if not report_md:
         return True, findings
     lines = report_md.splitlines()
+    header_end = _provenance_header_end(lines)
     for ln, line in enumerate(lines, start=1):
+        if ln <= header_end:
+            # The provenance header is metadata the writer is required to emit
+            # (cutoff, bundle, candidate, request, card versions). Its numbers
+            # identify the run, they do not assert anything about the company,
+            # so there is nothing for an evidence marker to attach to.
+            continue
         markers = [(m.start(), m.end(), m.group(1).strip())
                    for m in EV_MARKER.finditer(line)]
-        if evidence_index is not None:
-            for _, _, key in markers:
-                if _evidence_key(key, evidence_index) is None:
-                    findings.append(_finding(
-                        "report_evidence_links", f"unknown-ev:{key}",
-                        f"evidence marker [EV:{key}] on line {ln} is not in the candidate "
-                        f"evidence index",
-                        [REPORT_ARTIFACT],
-                        required_evidence=f"a marker key present in the candidate "
-                                          f"evidence index",
-                    ))
         marker_spans = [(s, e) for s, e, _ in markers]
         exempt_spans = [(m.start(), m.end()) for m in _EXEMPT_SPAN.finditer(line)]
         tokens = [
@@ -482,21 +532,51 @@ def gate_report_evidence_links(report_md: str,
             and not any(s <= m.start() < e for s, e in exempt_spans)  # form/date label
         ]
         if not tokens:
+            # A line with no claims has nothing to link. A marker here is prose
+            # -- writers quote the rule itself -- not a citation, so it cannot
+            # be an unknown key.
             continue
+        if evidence_index is not None:
+            for _, _, key in markers:
+                if _evidence_key(key, evidence_index) is None:
+                    near = _suggest_keys(key, evidence_index)
+                    hint = (f"; the index has {', '.join(near)}" if near else "")
+                    findings.append(_finding(
+                        "report_evidence_links", f"unknown-ev:{key}",
+                        f'evidence marker on line {ln} names "{key}", which is not in '
+                        f"the candidate evidence index{hint}",
+                        [REPORT_ARTIFACT],
+                        required_evidence=(
+                            f"one of {', '.join(near)}" if near else
+                            "a marker key present in the candidate evidence index"),
+                    ))
+        # A marker cites the sentence it closes: every number from the last
+        # sentence break to the marker. Requiring a marker after *each* number
+        # made a cited range ("10.0x to 16.0x implies 27.97 to 44.31 USD
+        # [EV:comps.own_band]") impossible to write, and a band cannot be
+        # cited any other way. The break keeps a marker from reaching back
+        # into a previous sentence's claim.
         marker_starts = [s for s, _, _ in markers]
+        covered: set[int] = set()
+        for ms in marker_starts:
+            # a thousands separator is not a clause break
+            start = _clause_start(line, ms, marker_spans + exempt_spans
+                                  + [(ts, te) for ts, te, _ in tokens])
+            for i, (ts, _, _) in enumerate(tokens):
+                if start <= ts < ms:
+                    covered.add(i)
         for i, (ts, te, tok) in enumerate(tokens):
-            boundary = tokens[i + 1][0] if i + 1 < len(tokens) else len(line)
-            covered = any(ms >= te and ms < boundary for ms in marker_starts)
-            if not covered:
-                findings.append(_finding(
-                    # the column keeps two identical numbers on one line
-                    # from collapsing into a single dedup_key
-                    "report_evidence_links", f"unlinked-number:{ln}:{ts}:{tok}",
-                    f'numeric token "{tok}" on line {ln} lacks an evidence reference '
-                    f"[EV:key] before the next number",
-                    [REPORT_ARTIFACT],
-                    required_evidence=f'an [EV:...] evidence reference for "{tok}"',
-                ))
+            if i in covered:
+                continue
+            findings.append(_finding(
+                # the column keeps two identical numbers on one line
+                # from collapsing into a single dedup_key
+                "report_evidence_links", f"unlinked-number:{ln}:{ts}:{tok}",
+                f'numeric token "{tok}" on line {ln} lacks an evidence marker '
+                f"before the next number",
+                [REPORT_ARTIFACT],
+                required_evidence=f'an evidence marker for "{tok}"',
+            ))
     return (not findings, findings)
 
 

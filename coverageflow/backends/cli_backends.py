@@ -525,7 +525,12 @@ class VibeBackend(_CliBackendBase):
     # agentic CLI, and left to itself it spends its turns listing directories
     # and reading files, turning one role call into a five-to-seven minute
     # exploration instead of a completion.
-    TOOL_ROLES = frozenset({"ingest"})
+    #
+    # Ingest is not here: its card says it does not read whole filings, and
+    # the request now carries the slicer's anchor candidates. With tools it
+    # opened all twelve documents and hit the CLI's own deadline every round
+    # without ever emitting output.
+    TOOL_ROLES = frozenset()
 
     # Replaces Vibe's own agent system prompt. Without this the model is told
     # it is an agent that inspects and edits a workspace — and it does.

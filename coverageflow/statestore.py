@@ -22,6 +22,7 @@ TRACE_FILE = "trace.jsonl"
 HISTORY_DIR = "history"
 RESULT_FILE = "result.json"
 REQUEST_FILE = "request.json"
+LOCK_FILE = "run.lock"
 
 # ---------------------------------------------------------------------------
 # time (injectable for determinism; callers may pass their own clock callable)
@@ -253,6 +254,7 @@ TRACE_EVENT_NAMES = frozenset({
     "GATE_RUN", "GATE_PASS", "GATE_FAIL", "STATE_TRANSITION",
     "FINDING_OPENED", "FINDING_VERIFIED_CLOSED", "REPAIR_PACKET_ISSUED",
     "BUDGET_CHECK", "APPROVAL_REQUESTED", "APPROVAL_RECORDED", "CASE_CLOSED",
+    "INGEST_REUSED",
 })
 
 
@@ -287,3 +289,53 @@ def write_request(case_dir: Path | str, request: dict) -> str:
 def read_request(case_dir: Path | str) -> dict | None:
     """Read the currently bound request.json; None when absent."""
     return read_json_or_none(Path(case_dir) / REQUEST_FILE)
+
+
+# ---------------------------------------------------------------------------
+# single-writer lock
+# ---------------------------------------------------------------------------
+
+class CaseLocked(RuntimeError):
+    """Another live process already owns this case."""
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True          # exists, owned by someone else
+    return True
+
+
+def acquire_case_lock(case_dir: Path | str) -> Path:
+    """Take the case's single-writer lock, or raise :class:`CaseLocked`.
+
+    Two orchestrators on one case corrupt it: each writes state and artifacts
+    the other does not know about, and the second one's resume discards the
+    first one's work as unverified. A stale lock (dead pid) is taken over.
+    """
+    path = Path(case_dir) / LOCK_FILE
+    for _ in range(2):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            holder = read_json_or_none(path) or {}
+            pid = int(holder.get("pid") or 0)
+            if _pid_alive(pid):
+                raise CaseLocked(
+                    f"case is already being run by pid {pid} "
+                    f"(lock {path}); stop it before starting another run")
+            path.unlink(missing_ok=True)     # stale: the holder is gone
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"pid": os.getpid(), "ts": utc_now_iso()}, handle)
+        return path
+    raise CaseLocked(f"could not acquire {path}")
+
+
+def release_case_lock(path: Path | str) -> None:
+    Path(path).unlink(missing_ok=True)

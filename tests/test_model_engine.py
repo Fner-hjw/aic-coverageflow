@@ -168,6 +168,23 @@ def test_derived_net_debt_hand_math(model):
     assert d["series"]["derived.net_debt"]["2026-Q3"] == 27000.0
 
 
+def test_net_debt_nets_out_short_term_investments(payload):
+    """Short-term investments are cash-like; ignoring them overstates leverage.
+
+    Intel holds a large liquid portfolio, so a net-debt figure that nets only
+    cash understates equity value in the DCF bridge.
+    """
+    payload = dict(payload)
+    payload["facts"] = list(payload["facts"]) + [
+        fh.fact("balance_sheet.short_term_investments", "2026-Q3", 8000.0,
+                idx=999)]
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    # 2,000 + 50,000 - 25,000 - 8,000 = 19,000
+    assert d["series"]["derived.net_debt"]["2026-Q3"] == 19000.0
+    # a period without the fact keeps the cash-only figure
+    assert d["series"]["derived.net_debt"]["2025-Q3"] == 29000.0
+
+
 def test_growth_yoy_qoq_hand_math(model):
     d = model.to_dict()
     rev = d["series"]["income_statement.revenue"]

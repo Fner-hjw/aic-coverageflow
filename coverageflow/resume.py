@@ -35,8 +35,12 @@ ARTIFACT_STAGE = {
     "facts.json": "extractor",
     "forecast_assumptions.json": "model",
     "report.md": "writer",
-    "model.json": "engine",
-    "valuation.json": "engine",
+    # the deterministic engines run as a side effect of the model stage, so a
+    # broken engine artifact must rewind to model -- mapping it to the later
+    # "engine" index rewound past its producer and left the writer with no
+    # model.json or valuation.json to cite
+    "model.json": "model",
+    "valuation.json": "model",
     "candidate-manifest.json": "candidate",
     "merged-findings.json": "merge",
 }
@@ -119,6 +123,18 @@ def plan_resume(state: dict, case_dir: Path,
         s = artifact_stage(rel)
         if s in STAGE_INDEX:
             stages.append(STAGE_INDEX[s])
+    # A stage can also be missing without being "broken": an artifact written
+    # by a process that died before its checkpoint never entered the verified
+    # map, so nothing above notices it. Resuming past it hands the next role an
+    # empty input and it fails every retry. Anything absent from `intact` is
+    # about to be discarded, so its stage must re-run.
+    if round_no > 0:
+        for name, owner in ARTIFACT_STAGE.items():
+            if owner not in STAGE_INDEX:
+                continue
+            rel = f"rounds/round-{round_no:03d}/generator/{name}"
+            if rel not in intact:
+                stages.append(STAGE_INDEX[owner])
     earliest = min(stages)
     earliest_stage = next(k for k, v in STAGE_INDEX.items() if v == earliest)
 

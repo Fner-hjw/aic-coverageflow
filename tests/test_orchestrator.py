@@ -128,6 +128,24 @@ class TestFindingsLedger:
         assert led.by_id(a)["last_seen_round"] == 2
         assert len(led.all_findings()) == 1
 
+    def test_a_round_in_the_dedup_key_does_not_open_a_new_row(self, tmp_path):
+        """Critics put the round in their keys; the round is not identity.
+
+        `c4|round-008-artifacts|version-pinning-unverifiable` and the round-014
+        spelling are the same complaint. Left alone, every recurrence opened a
+        new row and the ledger only grew, so the candidate never converged.
+        """
+        led = ledger.FindingsLedger(tmp_path)
+        a = led.open_finding({"summary": "x", "severity": "minor",
+                              "dedup_key": "c4|round-008-artifacts|pinning"},
+                             round=8)
+        b = led.open_finding({"summary": "x", "severity": "minor",
+                              "dedup_key": "c4|round-014-artifacts|pinning"},
+                             round=14)
+        assert a == b
+        assert len(led.all_findings()) == 1
+        assert led.by_id(a)["last_seen_round"] == 14
+
     def test_closed_finding_reopens_as_new_entry(self, tmp_path):
         led = ledger.FindingsLedger(tmp_path)
         a = led.open_finding({"summary": "x", "severity": "major", "dedup_key": "k"}, round=1)
@@ -413,6 +431,261 @@ class TestCandidateChangeResetsStreak:
         assert cand_a and cand_b and cand_a != cand_b
 
 
+class TestUnreproducedCriticFindingsClose:
+    """A critic that stops raising a finding has verified it fixed.
+
+    Real critics reword a complaint every round, so the dedup_key drifts
+    (``valuation-section-empty-vs-manifest-artifacts`` becomes
+    ``valuation-section-declares-artifacts-absent``) and the row it replaces
+    never closes. They also reject their own closures on artifact+sha256
+    mismatches, so nothing else drains the ledger and acceptance -- which
+    requires every carried finding closed -- is unreachable.
+    """
+
+    @staticmethod
+    def _clean_without_resolutions(role: str) -> dict:
+        return {
+            "role": role, "round": None, "verdict": "clean", "findings": [],
+            "verified_resolutions": [],
+            "coverage": {"rubric_version": "1.0",
+                         "areas_checked": ["citation_integrity"]},
+            "conformance": "schema 1.0", "prompt_version": "1.0",
+        }
+
+    def test_finding_closes_when_its_critic_does_not_raise_it_again(self, tmp_path):
+        clean = self._clean_without_resolutions
+
+        def c1(payload):
+            return (_critic_findings() if payload.get("round") == 2
+                    else clean("critic_c1"))
+
+        scripts = {"critic_c1": c1}
+        for i in range(2, 5):
+            role = f"critic_c{i}"
+            scripts[role] = (lambda r: lambda payload: clean(r))(role)
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "PENDING_APPROVAL"
+        rows = ledger.FindingsLedger(case_dir).all_findings()
+        raised = [r for r in rows if r["source_critic"] == "critic_c1"]
+        assert len(raised) == 1
+        assert raised[0]["status"] == "closed"
+        assert raised[0]["closed_by"]["critic"] == "critic_c1"
+        assert raised[0]["closed_by"]["verified_evidence"]["artifact"].endswith(
+            "critic_c1.json")
+
+    def test_a_critic_that_reports_no_coverage_closes_nothing(self, tmp_path):
+        # silence from a critic that did not review is not evidence of a fix
+        clean = self._clean_without_resolutions
+        blind = clean("critic_c1")
+        blind["coverage"] = {}
+
+        def c1(payload):
+            return _critic_findings() if payload.get("round") == 2 else blind
+
+        scripts = {"critic_c1": c1}
+        for i in range(2, 5):
+            role = f"critic_c{i}"
+            scripts[role] = (lambda r: lambda payload: clean(r))(role)
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        rows = ledger.FindingsLedger(case_dir).all_findings()
+        raised = [r for r in rows if r["source_critic"] == "critic_c1"]
+        assert raised and raised[0]["status"] == "open"
+
+
+class TestIngestReuseAcrossRounds:
+    """Ingest is a pure function of the frozen input manifest.
+
+    Re-dispatching it every round re-reads every filing and spends the whole
+    role deadline on tool calls without emitting output, so a rebuild could
+    never get past its first stage.
+    """
+
+    def _two_build_scripts(self):
+        writer_alt = {"__stale": False, "role": "writer",
+                      "report_md": _stub.ALT_REPORT_MD,
+                      "conformance": "schema 1.0", "prompt_version": "1.0"}
+        return {
+            "critic_c1": [None, _critic_findings()],
+            "writer": [_writer_output(_stub.DEFAULT_REPORT_MD), writer_alt],
+        }
+
+    def test_second_build_reuses_the_verified_ingest_report(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts=self._two_build_scripts())
+        orch.run()
+        st = load_state(case_dir)
+        assert st["budget"]["used"]["rounds"] == 2      # two builds happened
+        assert len(dispatch.calls_of("ingest")) == 1    # ingest ran once
+        first = statestore.read_json(
+            case_dir / "rounds" / "round-001" / "generator" / "ingest-report.json")
+        second = statestore.read_json(
+            case_dir / "rounds" / "round-003" / "generator" / "ingest-report.json")
+        # the classification and slices are carried; the request binding is not
+        for key in ("request_id", "candidate_id"):
+            first.pop(key), second.pop(key)
+        assert second == first
+        # the reuse is traced, not silent
+        events = [json.loads(line) for line in
+                  (case_dir / "trace.jsonl").read_text().splitlines() if line.strip()]
+        reused = [e for e in events if e.get("event") == "INGEST_REUSED"]
+        assert reused and reused[0]["detail"]["from_round"] == 1
+
+    def test_a_changed_input_manifest_forces_a_fresh_ingest(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        manifest_sha = statestore.sha256_json(orch.input_manifest())
+        assert orch._ingest_report_reusable(1, manifest_sha) is not None
+        assert orch._ingest_report_reusable(1, "0" * 64) is None
+
+    def test_a_missing_slice_forces_a_fresh_ingest(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        report = statestore.read_json(
+            case_dir / "rounds" / "round-001" / "generator" / "ingest-report.json")
+        victim = case_dir / report["slices"][0]["path"]
+        victim.unlink()
+        assert orch._ingest_report_reusable(
+            1, statestore.sha256_json(orch.input_manifest())) is None
+
+
+class TestManifestHeader:
+    """The manifest must tie every artifact to the cutoff, bundle and versions.
+
+    Critics check exactly that. Asking the lead to echo it produced a manifest
+    with none of it, so the same "header incomplete" finding came back every
+    round and the candidate could never converge.
+    """
+
+    def test_manifest_carries_the_provenance_header(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        manifest = statestore.read_json(
+            case_dir / "rounds" / "round-001" / "generator" /
+            "candidate-manifest.json")
+        assert manifest["cutoff_date"] == casekit.MANDATE["cutoff_date"]
+        assert manifest["input_manifest_sha256"] == statestore.sha256_json(
+            orch.input_manifest())
+        assert manifest["bundle_id"] == casekit.MANIFEST.get("bundle_id")
+        assert manifest["bundle_sha256"] == casekit.MANIFEST.get("bundle_sha256")
+        # every role that produced an artifact is pinned to a card version
+        for role in ("ingest", "extractor", "model", "writer"):
+            assert manifest["prompt_versions"][role]
+        assert manifest["engine_versions"]["engine"]
+        assert manifest["engine_versions"]["mapping"]
+
+    def test_scope_statement_reports_reuse_instead_of_claiming_a_full_rebuild(
+            self, tmp_path):
+        """The lead asserted "full rebuild" every round; ingest is reused now.
+
+        A critic that checks the claim finds the rebuild unevidenced, so the
+        statement has to come from the artifact hashes.
+        """
+        writer_alt = {"__stale": False, "role": "writer",
+                      "report_md": _stub.ALT_REPORT_MD,
+                      "conformance": "schema 1.0", "prompt_version": "1.0"}
+        scripts = {
+            "critic_c1": [None, _critic_findings()],
+            "writer": [_writer_output(_stub.DEFAULT_REPORT_MD), writer_alt],
+        }
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        second = statestore.read_json(
+            case_dir / "rounds" / "round-003" / "generator" /
+            "candidate-manifest.json")
+        statement = second["scope_statement"]
+        assert "ingest classification and slices carried from round 001" in statement
+        assert "re-emitted" in statement
+
+    def test_every_critic_receives_every_candidate_artifact(self, tmp_path):
+        """A digest is not evidence.
+
+        Critics handed only sha256 digests reported "header uncheckable" every
+        round, so the candidate could never converge.
+        """
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        for role in ("critic_c1", "critic_c2", "critic_c3", "critic_c4"):
+            payload = dispatch.calls_of(role)[0].payload
+            supplied = payload["artifacts"]
+            for name in ("ingest-report.json", "facts.json",
+                         "forecast_assumptions.json", "report.md",
+                         "model.json", "valuation.json"):
+                assert any(k.endswith("/" + name) for k in supplied), (role, name)
+
+    def test_writer_is_given_the_bundle_provenance(self, tmp_path):
+        """The note's header block cites a bundle id the writer must be given."""
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        payload = dispatch.calls_of("writer")[0].payload
+        assert payload["bundle"]["cutoff_date"] == casekit.MANDATE["cutoff_date"]
+        assert payload["bundle"]["bundle_id"] == casekit.MANIFEST.get("bundle_id")
+        assert payload["bundle"]["bundle_sha256"]
+
+    def test_report_header_carries_the_computed_candidate_id(self, tmp_path):
+        """The writer cannot know the id: it is a digest over every artifact.
+
+        Leaving the writer to guess put "not assigned" in the header a
+        reviewer checks.
+        """
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"writer": [_writer_output(
+                "> **Cutoff:** 2026-10-30 · **Bundle:** intc-2026-10 / abc\n"
+                "> **Candidate:** not assigned · **Request:** req-0001\n\n"
+                + _stub.DEFAULT_REPORT_MD)]})
+        orch.run()
+        report = (case_dir / "rounds" / "round-001" / "generator" /
+                  "report.md").read_text()
+        cand = load_state(case_dir)["candidate"]["candidate_id"]
+        assert f"**Candidate:** {cand}" in report
+        assert "not assigned" not in report
+
+    def test_reused_ingest_and_engines_still_appear_in_the_token_ledger(
+            self, tmp_path):
+        """A zero-cost role must still be named, or its cap check cannot run."""
+        writer_alt = {"__stale": False, "role": "writer",
+                      "report_md": _stub.ALT_REPORT_MD,
+                      "conformance": "schema 1.0", "prompt_version": "1.0"}
+        scripts = {
+            "critic_c1": [None, _critic_findings()],
+            "writer": [_writer_output(_stub.DEFAULT_REPORT_MD), writer_alt],
+        }
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        used = load_state(case_dir)["budget"]["used"]["tokens_by_role"]
+        assert "ingest" in used and "engines" in used
+
+
+class TestSingleWriterLock:
+    """Two orchestrators on one case corrupt it.
+
+    The second one's resume discards the first one's artifacts as unverified,
+    and the round then proceeds on empty inputs -- which is exactly how a
+    healthy case started failing its extractor on every retry.
+    """
+
+    def test_a_second_run_is_refused_while_the_first_holds_the_case(
+            self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        lock = statestore.acquire_case_lock(case_dir)
+        try:
+            with pytest.raises(statestore.CaseLocked):
+                orch.run()
+        finally:
+            statestore.release_case_lock(lock)
+        # the lock is gone, so the case runs normally again
+        assert orch.run()["status"] == "PENDING_APPROVAL"
+
+    def test_a_stale_lock_from_a_dead_process_is_taken_over(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        (case_dir / statestore.LOCK_FILE).write_text(
+            json.dumps({"pid": 999_999_999, "ts": "2026-01-01T00:00:00Z"}))
+        assert orch.run()["status"] == "PENDING_APPROVAL"
+        assert not (case_dir / statestore.LOCK_FILE).exists()
+
+
 class TestBudgetExhaustion:
     def test_rounds_exhaustion_ends_exhausted_with_precise_reason(self, tmp_path):
         mandate = json.loads(json.dumps(casekit.MANDATE))
@@ -442,9 +715,9 @@ class TestBudgetExhaustion:
         st = load_state(case_dir)
         assert st["status"] == "EXHAUSTED"
         assert st["reason"]["code"] == "role_tokens"
-        # the R2 rebuild breaches at the first re-dispatched role (ingest,
-        # which already burned 1300 of the 1000-token cap in R1)
-        assert st["reason"]["detail"]["role"] == "ingest"
+        # the R2 rebuild breaches at the first re-dispatched role. Ingest is
+        # reused across rounds (frozen inputs), so that role is the extractor.
+        assert st["reason"]["detail"]["role"] == "extractor"
         assert st["reason"]["detail"]["tokens"] == 1300
         result = statestore.read_json(case_dir / "result.json")
         assert result["terminal"] == "EXHAUSTED"
@@ -500,6 +773,36 @@ class TestBudgetExhaustion:
         # and the case is not a dead end: a further grant is still possible
         orch.run(extend=True)
         assert len(load_state(case_dir)["budget"]["used"]["grants"]) == 2
+
+    def test_grant_also_restarts_the_retry_counters(self, tmp_path):
+        """A case that exhausted on retries must not stop on its next dispatch.
+
+        Retries are spent like tokens. Reopening without resetting them made
+        the grant a no-op: the run resumed and immediately exhausted again on
+        the same counter.
+        """
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["retries_max"] = 1
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"extractor": [{"__invalid": True}] * 10},
+            mandate=mandate)
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "EXHAUSTED"
+        assert st["reason"]["code"] == "retries"
+        assert st["budget"]["used"]["retries_by_role"]["extractor"] >= 1
+        calls_before = len(dispatch.calls_of("extractor"))
+
+        orch.run(extend=True)
+        st = load_state(case_dir)
+        grant = st["budget"]["used"]["grants"][-1]
+        # the grant record must not carry the pre-grant retry counts: a critic
+        # reading them sees a live breach of retries_max that the grant already
+        # forgave, and raises it as a finding every round
+        assert "retries_at_grant" not in grant
+        # the grant was spendable: the role was dispatched again instead of
+        # stopping on the counter it had already exhausted
+        assert len(dispatch.calls_of("extractor")) > calls_before
 
     def test_exhaustion_never_grants_acceptance(self, tmp_path):
         mandate = json.loads(json.dumps(casekit.MANDATE))
@@ -1080,6 +1383,19 @@ class TestExtractorPromptIsSelfContained:
         for entry in slices:
             assert entry.get("text"), entry.get("slice_id")
             assert "text" in entry
+
+    def test_writer_payload_carries_the_computed_valuation(self, tmp_path):
+        """The writer card's read scope includes the model and valuation.
+
+        Withholding them left the note able to say only that the computed DCF
+        and comps were "absent from the bound request" -- which was true of
+        the request, and made every valuation section unciteable.
+        """
+        orch, dispatch, case_dir = self._case_with_slices(tmp_path)
+        writer = dispatch.calls_of("writer")[0].payload["prior_artifacts"]
+        assert writer["model"]["series"]["income_statement.revenue"]
+        assert writer["valuation"]["dcf"]["per_diluted_share"] is not None
+        assert writer["forecast"]
 
     def test_other_roles_do_not_carry_the_slice_text(self, tmp_path):
         orch, dispatch, case_dir = self._case_with_slices(tmp_path)

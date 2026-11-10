@@ -220,11 +220,25 @@ class TestReportEvidenceGate:
         assert any("13,500" in f["summary"] for f in findings)
         assert findings[0]["affected_artifacts"] == ["report.md"]
 
-    def test_marker_after_next_number_does_not_cover_it(self):
-        md = "Revenue was 13,500 and EBITDA 4,000 [EV:x]."
+    def test_marker_does_not_reach_back_across_a_clause_break(self):
+        """A marker cites the clause it closes, not the previous sentence."""
+        md = "Revenue was 13,500. EBITDA was 4,000 [EV:x]."
         ok, findings = gates.gate_report_evidence_links(md)
         assert not ok
         assert any("13,500" in f["summary"] for f in findings)
+        assert not any("4,000" in f["summary"] for f in findings)
+
+    def test_one_marker_cites_a_whole_band(self):
+        """A cited range is one clause: the band and its implied values.
+
+        Per-number markers made this unwritable -- "10.0x [EV:k] to 16.0x
+        [EV:k]" -- so the writer could not cite a multiple band at all.
+        """
+        md = ("The own-band multiples are the only anchor: EV/EBITDA of 10.0x "
+              "to 16.0x implies 27.97 to 44.31 USD [EV:comps.own_band].\n")
+        ok, findings = gates.gate_report_evidence_links(
+            md, evidence_index={"comps.own_band": "valuation.json"})
+        assert ok, findings
 
     def test_line_with_no_numbers_passes_trivially(self):
         ok, findings = gates.gate_report_evidence_links("Qualitative commentary only.")
@@ -518,6 +532,117 @@ class TestEvidenceLinkLabels:
         ok, findings = gates.gate_report_evidence_links(
             md, evidence_index={"income_statement.revenue": "facts.json"})
         assert not ok
+
+
+def test_provenance_header_block_needs_no_markers():
+    """The header the writer must emit is metadata, not claims.
+
+    Without this the required header fails the gate on its own request id,
+    bundle id and sha256, and no report can ever pass.
+    """
+    md = ("> **Cutoff:** 2026-10-30 · **Bundle:** intc-2026-10 / "
+          "40fc08efbf985dfd0b842acc61c31e553fc08eb17f29887246b578464840bbc4\n"
+          "> **Candidate:** cand-bb62cc42579d · **Request:** req-0676\n"
+          "\n## Summary\n"
+          "Revenue was 13,500 [EV:income_statement.revenue].\n")
+    ok, findings = gates.gate_report_evidence_links(
+        md, evidence_index={"income_statement.revenue": "facts.json"})
+    assert ok, findings
+
+
+def test_provenance_header_versions_are_metadata_not_claims():
+    """The header's card/conformance versions identify the run, not the company.
+
+    The writer is required to emit the header block; its ``1.2`` and ``1.0``
+    are version labels, so demanding an evidence marker for them made every
+    conforming report fail the gate.
+    """
+    md = ("# INTC — Q3 2026 Quarterly Update\n"
+          "\n"
+          "> **Cutoff:** 2026-10-30 · **Bundle:** intc-2026-10 / "
+          "40fc08efbf985dfd0b842acc61c31e553fc08eb17f29887246b578464840bbc4\n"
+          "> **Candidate:** cand-8b9f3b963817 · **Request:** req-0696\n"
+          "> **Prompt card:** 1.2 · **Conformance:** schema 1.0\n"
+          "\n## Summary\n"
+          "Revenue was 13,500 [EV:income_statement.revenue].\n")
+    ok, findings = gates.gate_report_evidence_links(
+        md, evidence_index={"income_statement.revenue": "facts.json"})
+    assert ok, findings
+
+
+def test_header_exemption_does_not_reach_the_body():
+    """Only the header block is metadata; a blockquote in the body is prose."""
+    md = ("> **Cutoff:** 2026-10-30\n"
+          "\n## Summary\n"
+          "> Revenue was 13,500 in the quarter.\n")
+    ok, findings = gates.gate_report_evidence_links(md)
+    assert not ok
+    assert any("13,500" in f["summary"] for f in findings)
+
+
+def test_unknown_key_finding_names_the_keys_that_do_resolve():
+    """A shortened key must come back with the real ones, not another guess."""
+    md = "Terminal value is 144,315 [EV:dcf.terminal_value].\n"
+    index = {"dcf.terminal.gordon.terminal_value": "valuation.json",
+             "dcf.terminal.exit_multiple.terminal_value": "valuation.json"}
+    ok, findings = gates.gate_report_evidence_links(md, evidence_index=index)
+    assert not ok
+    unknown = [f for f in findings if "unknown-ev" in f["dedup_key"]]
+    assert len(unknown) == 1
+    assert "dcf.terminal.gordon.terminal_value" in unknown[0]["summary"]
+    assert "dcf.terminal.exit_multiple.terminal_value" in unknown[0]["required_evidence"]
+
+
+def test_ordered_list_markers_are_labels_not_claims():
+    """A numbered risk list is structure; its numbers assert nothing."""
+    md = ("1. **Foundry economics.** Revenue of 6,697 USDmm "
+          "[EV:segments.foundry.revenue].\n"
+          "2. **Cash conversion.** OCF was 13,184 USDmm "
+          "[EV:cash_flow.operating_cash_flow].\n")
+    ok, findings = gates.gate_report_evidence_links(md)
+    assert ok, findings
+
+
+def test_identifiers_are_exempt_but_claims_are_not():
+    md = "Request req-0676 for bundle intc-2026-10 reported 13,500.\n"
+    ok, findings = gates.gate_report_evidence_links(md)
+    assert not ok
+    assert [f["summary"] for f in findings] == [
+        'numeric token "13,500" on line 1 lacks an evidence marker '
+        "before the next number"]
+
+
+def test_marker_in_prose_with_no_number_is_not_a_citation():
+    """A methodology line quoting the marker syntax has no claim to link.
+
+    The writer copied the placeholder out of the gate's own finding text, and
+    the gate then failed the round on the writer's echo of it. A line with no
+    numeric token cannot carry an unknown evidence key.
+    """
+    md = ("Every numeric token in this note carries an [EV:key] marker "
+          "resolving to a canonical field id.\n")
+    ok, findings = gates.gate_report_evidence_links(
+        md, evidence_index={"income_statement.revenue": "facts.json"})
+    assert ok, findings
+
+
+def test_placeholder_marker_beside_a_real_number_still_fails():
+    """The exemption is for claim-free lines, not for the placeholder itself."""
+    md = "Revenue was 13,500 [EV:key].\n"
+    ok, findings = gates.gate_report_evidence_links(
+        md, evidence_index={"income_statement.revenue": "facts.json"})
+    assert not ok
+    assert any("unknown-ev:key" in f["dedup_key"] for f in findings)
+
+
+def test_finding_text_carries_no_copyable_marker():
+    """The finding must not hand the writer a literal marker to paste back."""
+    md = "In 2026 revenue was 13,500.\n"
+    ok, findings = gates.gate_report_evidence_links(md)
+    assert not ok
+    for f in findings:
+        assert "[EV:" not in f["summary"]
+        assert "[EV:" not in f["required_evidence"]
 
 
 def test_marker_key_may_contain_spaces():

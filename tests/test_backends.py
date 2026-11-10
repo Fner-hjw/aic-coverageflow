@@ -171,15 +171,19 @@ class TestCliHappyPaths:
         assert "Do not use tools" in cli.VibeBackend.SYSTEM_PROMPT
         assert argv[argv.index("--system-prompt-file") + 1].endswith(".md")
 
-    def test_vibe_keeps_tools_for_ingest(self, tmp_path, monkeypatch):
-        """Ingest must read the filing to find the statements: tools stay on."""
+    def test_vibe_runs_ingest_single_shot(self, tmp_path, monkeypatch):
+        """Ingest answers from the request's anchor candidates, not the filings.
+
+        With tools it opened all twelve documents and hit the CLI's own
+        deadline every round without ever emitting output.
+        """
         log = tmp_path / "argv.jsonl"
         monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
         cli.VibeBackend().invoke(make_call(role="ingest"), "hello")
         argv = json.loads(log.read_text().strip().splitlines()[-1])
-        assert "--system-prompt-file" not in argv
-        assert "--enabled-tools" not in argv
-        assert "--max-turns" not in argv
+        assert "--system-prompt-file" in argv
+        assert argv[argv.index("--max-turns") + 1] == "1"
+        assert argv[argv.index("--enabled-tools") + 1] == "__none__"
 
     def test_vibe_passes_case_workdir(self, tmp_path, monkeypatch):
         log = tmp_path / "argv.jsonl"

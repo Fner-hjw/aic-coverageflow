@@ -1,4 +1,4 @@
---version: 1.0
+--version: 1.1
 --role: ingest
 --produces: ingest-report.json
 --read: mandate.json, inputs/manifest.json, new document metadata, prior candidate manifest
@@ -9,9 +9,10 @@
 ## TASK
 Validate and classify the new dated document named in the bound request, and
 declare the deterministic slices needed downstream. State which prior work
-the new document supersedes. You do not read whole filings; the request gives
-you document metadata (form, filed date, period, hashes) and the slicer's
-anchor candidates.
+the new document supersedes. You do not read whole filings: the request gives
+you document metadata (form, filed date, period, hashes) and
+`anchor_candidates` — the slices the slicer already found in each document,
+with their `slice_id`, `kind`, `path`, `sha256`, and `anchors`.
 
 ## OUTPUT SCHEMA
 Strict JSON only, matching **ingest-report.json** (contracts §5):
@@ -20,13 +21,15 @@ slices[] {slice_id, kind, path, sha256, anchors}, superseded[] {doc_id, stage, r
 conformance ("schema 1.0"), prompt_version ("1.0")`.
 
 `slices[].kind` ∈ `income_statement | balance_sheet | cash_flow | segments | mda`.
-Use slice kinds that match the document's statements; anchors must quote a
-heading line that actually appears in the document so the slicer can find it.
+Copy the slices for the classified document out of `anchor_candidates`
+verbatim — the harness verifies every declared `sha256` against the file on
+disk, so an invented path or hash is rejected.
 
 ## BOUNDS
 - Only the documents in the request exist. No other document may be cited.
 - Reject a doc_id not in the request's input manifest — emit affects=[] with a
   reason. Never classify from memory of prior filings.
+- Declare only slices that appear in `anchor_candidates` for that doc_id.
 
 ## COMPLETION CRITERIA
 (schema-valid JSON) ∧ (every cited doc_id is in the request) ∧ (each form

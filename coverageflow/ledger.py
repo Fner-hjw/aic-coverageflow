@@ -9,6 +9,7 @@ per finding with machine-readable fields. Ledger rules (design-decisions §3):
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,27 @@ from . import statestore
 LEDGER_FILE = "findings.json"
 
 _OK = {"artifact", "sha256"}
+
+# Critics invent their own dedup keys, and they put the round in them:
+# `c4|round-008-artifacts|version-pinning-unverifiable` and
+# `c4|round-014-artifacts|version-pinning-unverifiable` are the same complaint.
+# Left alone, every recurrence opens a new row and the ledger only grows, so
+# the candidate can never converge. The round is not part of a finding's
+# identity; the complaint is.
+_ROUND_IN_KEY = re.compile(
+    r"\b(?:round[-_ ]?|r)(\d{1,4})\b"      # round-014, round_14, r14
+    r"|\b(\d{3})-artifacts\b"              # 014-artifacts
+    r"|\bround\s+\d{1,4}\b",
+    re.IGNORECASE,
+)
+
+
+def normalize_dedup_key(key: str) -> str:
+    """Strip the round from a dedup key so a recurrence maps to one row."""
+    if not isinstance(key, str) or not key:
+        return key
+    out = _ROUND_IN_KEY.sub("round-N", key)
+    return re.sub(r"\s+", " ", out).strip().lower()
 
 
 class FindingsLedger:
@@ -63,7 +85,8 @@ class FindingsLedger:
         Returns the finding_id. Append-only: a dedup_key matching a CLOSED row
         starts a new row.
         """
-        key = finding.get("dedup_key") or finding.get("finding_id")
+        key = normalize_dedup_key(finding.get("dedup_key")
+                                  or finding.get("finding_id"))
         for r in self._rows:
             if r["status"] == "open" and r.get("dedup_key") == key:
                 r["last_seen_round"] = round

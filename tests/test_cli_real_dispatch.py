@@ -225,7 +225,7 @@ class TestRealDispatchRunOverRecordings:
                                               replay_dir=case_dir / "replay")
         call = RoleCall(role="ingest", request_id="req-9999", candidate_id=None,
                         role_card={"path": "prompts/ingest.md",
-                                   "version": "1.0", "sha256": None},
+                                   "version": None, "sha256": None},
                         payload={"case_id": case_id, "round": 1},
                         output_schema="ingest-report.json",
                         budget={"tokens_max": 60000, "timeout_seconds": 5},

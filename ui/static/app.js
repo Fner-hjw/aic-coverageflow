@@ -98,7 +98,7 @@ const fmt = {
   time(ts) {
     if (!ts) return "Not set";
     const d = new Date(ts);
-    return d.toLocaleTimeString("en-GB", { hour12: false });
+    return Number.isNaN(d.getTime()) ? "Not set" : d.toLocaleTimeString("en-GB", { hour12: false });
   },
   date(ts) {
     if (!ts) return "Not set";
@@ -114,7 +114,6 @@ const fmt = {
 /* ====================================================== shared widgets == */
 
 const STATUS_ORDER = ["CREATED", "RUNNING", "PENDING_APPROVAL", "APPROVED", "CLOSED"];
-const TERMINAL_ALT = ["REJECTED", "BLOCKED", "EXHAUSTED", "STOPPED"];
 
 const ICONS = {
   briefcase: ["M4 7.5h16v11H4z", "M8 7.5V5h8v2.5", "M4 11.5h16", "M10 11.5v2h4v-2"],
@@ -124,6 +123,10 @@ const ICONS = {
   arrow: ["M5 12h14", "M14 7l5 5-5 5"],
   source: ["M5 3h11l3 3v15H5z", "M16 3v4h4", "M8 11h8", "M8 15h8"],
   layers: ["M4 8l8-4 8 4-8 4z", "M4 12l8 4 8-4", "M4 16l8 4 8-4"],
+  create: ["M12 5v14", "M5 12h14"],
+  review: ["M5 4h14v16H5z", "M8 9h8", "M8 13h5"],
+  archive: ["M4 7h16v13H4z", "M3 4h18v3H3z", "M9 11h6"],
+  alert: ["M12 3 2.5 20h19z", "M12 9v4", "M12 16h.01"],
 };
 
 function icon(name, label) {
@@ -141,7 +144,7 @@ function icon(name, label) {
 }
 
 function statusChip(status) {
-  return h("span", { class: `chip st-${status}` }, status.replace(/_/g, " "));
+  return h("span", { class: `chip status-chip st-${status}` }, readableStatus(status));
 }
 
 function severityChip(sev) {
@@ -149,29 +152,47 @@ function severityChip(sev) {
   return h("span", { class: `chip ${value}` }, value[0].toUpperCase() + value.slice(1));
 }
 
-/** horizontal state-machine strip: hit nodes filled, current outlined */
-function stateStrip(status, pendingRole) {
-  const wrap = h("div", { class: "state-strip" });
-  let hit = true;
-  const seq = STATUS_ORDER.includes(status) ? STATUS_ORDER : TERMINAL_ALT;
-  STATUS_ORDER.forEach((st, i) => {
-    const isNow = st === status || (status === "REJECTED" && st === "PENDING_APPROVAL");
-    if (isNow && status === "REJECTED") hit = false;
-    const node = h("div", { class: `state-node ${isNow ? "now" : ""} ${hit ? "hit" : ""}` },
-      h("span", { class: "pid" }),
-      h("span", { class: "nm" },
-        i === 1 && hit ? `${st} · ${pendingRole || "…"}` : st));
-    wrap.append(node);
-    if (i < seq.length - 1) {
-      const onward = !isNow && hit;
-      wrap.append(h("div", { class: `state-link ${hit && !isNow ? "hit" : ""}` }));
-    }
-    if (isNow) hit = false;
+const STATUS_LABELS = {
+  CREATED: "Created", RUNNING: "In progress", PENDING_APPROVAL: "Awaiting approval",
+  APPROVED: "Approved", CLOSED: "Closed", REJECTED: "Rejected",
+  BLOCKED: "Blocked", EXHAUSTED: "Limits reached", STOPPED: "Stopped",
+};
+
+function readableStatus(status) {
+  return STATUS_LABELS[status] || String(status || "Unknown").replace(/_/g, " ").toLowerCase();
+}
+
+function readableRole(role) {
+  const names = { generator: "Generating the draft", critic: "Reviewing the draft", approval: "Awaiting a decision", writer: "Writing the report" };
+  return names[role] || (role ? String(role).replace(/_/g, " ") : "Preparing the next step");
+}
+
+/** Show only progress supported by the current state and recorded decision. */
+function stateStrip(status, pendingRole, terminal) {
+  const rejected = status === "REJECTED" || (status === "CLOSED" && terminal === "REJECTED");
+  const stages = [
+    { key: "CREATED", label: "Created", icon: "create" },
+    { key: "RUNNING", label: "In progress", icon: "pulse" },
+    { key: "PENDING_APPROVAL", label: "Awaiting approval", icon: "review" },
+    { key: "APPROVED", label: rejected ? "Rejected" : status === "CLOSED" && terminal !== "APPROVED" ? "Decision recorded" : "Approved", icon: rejected ? "alert" : "check" },
+    { key: "CLOSED", label: "Closed", icon: "archive" },
+  ];
+  const exceptional = !STATUS_ORDER.includes(status);
+  const current = status === "REJECTED" ? 3 : STATUS_ORDER.indexOf(status);
+  const wrap = h("div", { class: "state-strip", "aria-label": "Case progress" });
+  stages.forEach((stage, i) => {
+    const state = exceptional && status !== "REJECTED" ? (i === 0 ? "complete" : "upcoming")
+      : i < current ? "complete" : i === current ? "current" : "upcoming";
+    const detail = state === "current" && status === "RUNNING" ? readableRole(pendingRole)
+      : state === "current" ? "Current step" : state === "complete" ? "Complete" : "Upcoming";
+    wrap.append(h("div", { class: `state-node ${state}${rejected && i === 3 ? " rejected" : ""}`, ...(state === "current" ? { "aria-current": "step" } : {}) },
+      h("span", { class: "pid" }, icon(stage.icon)),
+      h("span", { class: "nm" }, stage.label),
+      h("span", { class: "state-detail" }, detail)));
   });
-  if (!STATUS_ORDER.includes(status)) {
-    wrap.append(h("div", { class: "state-link hit" }),
-      h("div", { class: "state-node now" }, h("span", { class: "pid" }),
-        h("span", { class: "nm" }, status)));
+  if (exceptional && status !== "REJECTED") {
+    wrap.append(h("div", { class: "state-exception", role: "status" }, icon("alert"),
+      h("span", null, h("strong", null, readableStatus(status)), ". Check the case details for the next action.")));
   }
   return wrap;
 }
@@ -201,8 +222,8 @@ function routeHead(section, title, subtitle, ...actions) {
     actions.length ? h("div", { class: "route-actions" }, ...actions) : null);
 }
 
-function emptyState(what, explanation) {
-  return h("div", { class: "empty" }, h("b", null, what),
+function emptyState(what, explanation, extraClass = "") {
+  return h("div", { class: `empty ${extraClass}`.trim() }, h("b", null, what),
     h("p", { class: "mt2 mb0" }, explanation));
 }
 
@@ -283,8 +304,8 @@ async function downloadExport(caseId, format) {
   const blob = await res.blob();
   const a = h("a", { href: URL.createObjectURL(blob), download: body.download_url.split("/").pop() });
   document.body.append(a); a.click(); a.remove();
-  toast(`Export ready: ${format.toUpperCase()} · ${fmt.int(body.bytes)} bytes`,
-    `Version ${body.version} · Rendered from the verified evidence record`);
+  toast(`Export ready: ${format.toUpperCase()}, ${fmt.int(body.bytes)} bytes`,
+    `Version ${body.version}. Rendered from the verified evidence record`);
 }
 
 /* ============================================= live feed: ws + polling == */
@@ -344,8 +365,8 @@ const Live = {
     const bad = !this.ok && !this.pollTimer && !state;
     const polling = !this.ok && this.pollTimer;
     el.classList.toggle("down", !this.ok);
-    $("#conn-label").textContent = this.ok ? "Live · WS"
-      : polling ? "Polling · 3s" : "Offline";
+    $("#conn-label").textContent = this.ok ? "Live (WebSocket)"
+      : polling ? "Polling every 3s" : "Offline";
   },
 };
 
@@ -572,7 +593,7 @@ function deskOverview(rows, active, pending, openFindings, health) {
       h("p", null, "Coverage files in this workspace"),
       h("div", { class: "service-line" },
         h("span", { class: "signal" }),
-        `${health.active_backend} routing · ${health.mode}`)),
+        `${health.active_backend} routing, ${health.mode}`)),
     h("div", { class: "flow-graphic", role: "img", "aria-label": "Cases moving from source bundle through review to sign-off" },
       h("div", { class: "flow-title" }, "Queue by stage", h("span", null, "Live workspace")),
       h("div", { class: "flow-bars" }, ...segments.map(([label, count, cls]) =>
@@ -610,7 +631,7 @@ function statRow(rows, active, pending, openFindings) {
   const closed = rows.filter(c => ["CLOSED", "APPROVED"].includes(c.status)).length;
   return h("section", { class: "stats" },
     statTile("Cases on desk", String(rows.length),
-      [`${closed} published · ${pending.length} at sign-off`], "briefcase"),
+      [`${closed} published, ${pending.length} at sign-off`], "briefcase"),
     statTile("In motion", String(active.length),
       [active.length
         ? `Now with ${active.map(c => c.pending_role || "generator").join(", ")}`
@@ -817,10 +838,10 @@ function renderCaseOverview(body, c) {
     h("div", { class: "two-col" },
       h("div", null,
       labeledPanel("Case status",
-          stateStrip(st.status, st.pending.role),
+          stateStrip(st.status, st.pending.role, c.result && c.result.terminal),
           kv([
-            ["status", st.status.replace(/_/g, " ")],
-            ["pending role", st.pending.role || "Not set"],
+            ["status", readableStatus(st.status)],
+            ["current activity", st.status === "RUNNING" ? readableRole(st.pending.role) : "Not applicable"],
             ["request", st.pending.request_id],
             ["round", String(st.pending.round)],
             ["retries at role", `${st.pending.retry_count}/${b.retries_max}`],
@@ -840,37 +861,41 @@ function renderCaseOverview(body, c) {
           kv([
             ["case clock started", fmt.datetime(st.pending.case_clock_started)],
             ["approval deadline", st.pending.deadline ? fmt.datetime(st.pending.deadline) : "Not set"],
-            ["config versions", `cards ${Object.values(st.config_versions.prompt_cards || {}).slice(0, 4).join(" / ")} · engines ${st.config_versions.engines}`],
+            ["config versions", `cards ${Object.values(st.config_versions.prompt_cards || {}).slice(0, 4).join(" / ")}, engines ${st.config_versions.engines}`],
             ["verified checkpoints", String(st.checkpoints.length)],
           ])),
         labeledPanel("Controls",
-          h("div", { class: "actions" },
-            canRun(st)
-              ? h("button", { class: "btn primary",
-                  onclick: () => doRun(c.case_id, false) },
-                  st.status === "BLOCKED" ? "▶ Re-run (clears the block)"
-                    : st.status === "EXHAUSTED" ? "▶ Grant budget and re-run"
-                    : "▶ Run (active backend)")
-              : null,
-            canRun(st)
-              ? h("button", { class: "btn",
-                  onclick: () => doRun(c.case_id, true) },
-                  "▶ Dry run (replay)")
-              : null,
-            (st.status === "RUNNING")
-              ? h("button", { class: "btn", onclick: () => doResume(c.case_id) }, "↻ Resume pending work") : null,
-            ![ "CLOSED", "APPROVED", "REJECTED"].includes(st.status)
-              ? h("button", { class: "btn danger", onclick: () => doKill(c.case_id) }, "✖ Kill stage (rehearsal)") : null,
-            ![ "CLOSED", "APPROVED", "REJECTED"].includes(st.status)
-              ? h("a", { class: "btn", href: `#/demo?case=${c.case_id}` }, "Rehearsal →") : null,
-            h("a", { class: "btn", href: `#/terminal/${c.case_id}` },
-              "Tail in Terminal →"),
-          ),
-          blockedGuidance(c, st),
-          h("p", { class: "hint" },
-            "“Run” dispatches to the backend selected on the ", h("a", { href: "#/backends" }, "Backends page"),
-            "; “Dry run” uses canned replay recordings and refuses mandates with no matching recording. ",
-            "Every action goes through the orchestrator. The interface only calls API endpoints, and the existing gates still apply.")),
+          canRun(st) && st.status !== "EXHAUSTED" ? h("div", { class: "control-group" },
+            h("h3", null, "Run with selected backend"),
+            h("p", null, "Runs this case with the backend selected in ",
+              h("a", { href: "#/backends" }, "Model routing"),
+              ". The selected backend may be a live model or replay; the demo workspace simulates dispatch."),
+            h("div", { class: "control-actions" },
+              h("button", { class: "btn primary", onclick: () => doRun(c.case_id, false) },
+                st.status === "BLOCKED" ? "Rerun with selected backend" : "Run with selected backend"))) : null,
+          st.status === "RUNNING" ? h("div", { class: "control-group" },
+            h("h3", null, "Resume interrupted work"),
+            h("p", null, "Continue from the last verified checkpoint using the selected backend."),
+            h("div", { class: "control-actions" },
+              h("button", { class: "btn", onclick: () => doResume(c.case_id) }, "Resume pending work"))) : null,
+          canRun(st) && st.status !== "EXHAUSTED" ? h("div", { class: "control-group" },
+            h("h3", null, "Test with recorded responses"),
+            h("p", null, "Replay uses saved responses instead of a live model and can change this case. In a real workspace, missing matching recordings stop the run."),
+            h("div", { class: "control-actions" },
+              h("button", { class: "btn", onclick: () => doRun(c.case_id, true) }, "Run with replay"))) : null,
+          !["CLOSED", "APPROVED", "REJECTED"].includes(st.status)
+            ? h("div", { class: "control-group" },
+              h("h3", null, "Rehearsal"),
+              h("p", null, "Test interruption and recovery. Stopping a stage affects this case."),
+              h("div", { class: "control-actions" },
+                h("button", { class: "btn danger", onclick: () => doKill(c.case_id) }, "Interrupt a stage"),
+                h("a", { class: "btn", href: `#/demo?case=${c.case_id}` }, "Open rehearsal"))) : null,
+          h("div", { class: "control-group" },
+            h("h3", null, "Monitor activity"),
+            h("p", null, "Follow dispatches, results, and case changes."),
+            h("div", { class: "control-actions" },
+              h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log"))),
+          blockedGuidance(c, st)),
       ),
       h("div", null,
         labeledPanel("Frozen mandate",
@@ -1001,7 +1026,7 @@ async function doRun(caseId, replay, extend) {
   if (r.ok) {
     toast(extend ? "Budget granted, run dispatched" : "Run dispatched",
       `${replay ? "Replay dry run with saved responses"
-      : "Active backend. Watch the activity log"} · Pending ${r.data.pending_role}`);
+      : "Active backend. Watch the activity log"}. Pending ${r.data.pending_role}`);
     render();
   }
 }
@@ -1051,7 +1076,7 @@ function renderCaseBuild(body, c) {
           h("th", null, "Generated files"),
           h("th", null, "Hash check"))),
         h("tbody", null, h("tr", null,
-          h("td", null, (rnd.generator_artifacts || rnd.artifacts || []).join(" · ")),
+          h("td", null, (rnd.generator_artifacts || rnd.artifacts || []).join(", ")),
           h("td", { class: "muted small" },
             "SHA-256 values are stored in candidate-manifest.json.")))),
       h("label", { class: "label mt3" }, "Critic verdicts"),
@@ -1068,32 +1093,69 @@ function renderCaseBuild(body, c) {
 /* -------- findings ledger ----------------------------------------------- */
 
 async function renderCaseFindings(body, c) {
-  body.replaceChildren(
-    h("p", { class: "hint" },
-      "Findings stay in this append-only ledger until a critic verifies the repair evidence."),
-    labeledPanel("Finding ledger", c.findings.length ? gridTable(
+  const findings = c.findings || [];
+  const search = h("input", { type: "search", placeholder: "Search findings, evidence, or files", "aria-label": "Search findings" });
+  const status = h("select", { "aria-label": "Filter findings by status" },
+    h("option", { value: "" }, "All statuses"));
+  const statuses = [...new Set(findings.map(f => f.status).filter(Boolean))].sort();
+  for (const value of statuses) {
+    const label = value.replace(/_/g, " ").replace(/^./, ch => ch.toUpperCase());
+    status.append(h("option", { value }, label));
+  }
+  const count = h("span", { class: "hint findings-count", "aria-live": "polite" });
+  const results = h("div", { class: "findings-results" });
+  const clear = h("button", { type: "button", class: "btn small", onclick: () => {
+    search.value = ""; status.value = ""; update();
+  } }, "Clear");
+
+  function update() {
+    const query = search.value.trim().toLowerCase();
+    const filtered = findings.filter(f => {
+      const content = [f.finding_id, f.summary, f.severity, f.status, f.source_critic,
+        ...(f.affected_artifacts || []), f.required_evidence,
+        f.closed_by ? JSON.stringify(f.closed_by) : ""].filter(Boolean).join(" ").toLowerCase();
+      return (!status.value || f.status === status.value) && (!query || content.includes(query));
+    });
+    count.textContent = `${filtered.length} of ${findings.length} findings`;
+    if (!filtered.length) {
+      results.replaceChildren(emptyState(findings.length ? "No matching findings" : "No findings recorded",
+        findings.length ? "Change or clear the filters to see more findings." : "Critic findings appear here with their closure evidence."));
+      return;
+    }
+    results.replaceChildren(gridTable(
       ["finding", "severity", "status", "rounds", "summary", "closure evidence"],
-      c.findings.map(f => [
-        h("span", { class: "mono muted" }, f.finding_id),
-        severityChip(f.severity),
-        f.status === "closed"
-          ? h("span", { class: "verified" }, "Closed")
-          : h("span", { class: "chip major open" }, "Carried / open"),
-        `${f.first_seen_round} → ${f.last_seen_round}`,
-        f.summary + (f.affected_artifacts ? h("div", { class: "hint mono" }, f.affected_artifacts.join(" · ")) : ""),
-        f.status === "closed"
-          ? h("span", { class: "mono small" }, `${f.closed_by.critic} @round ${f.closed_by.round}`, h("div", { class: "hint mono" }, f.closed_by.verified_evidence))
-          : "Not set",
-      ]),
-      { emptyWhat: "No findings", emptyNote: "Critics found nothing worth raising." })
-    : emptyState("No findings recorded",
-      "Critic findings appear here with their closure evidence.")));
-  if (c.findings.some(f => f.seeded)) {
+      filtered.map(f => {
+        const closure = f.closed_by || {};
+        const evidence = typeof closure.verified_evidence === "object" && closure.verified_evidence !== null
+          ? [closure.verified_evidence.artifact, closure.verified_evidence.sha256].filter(Boolean).join(", ")
+          : closure.verified_evidence;
+        const statusLabel = String(f.status || "Unknown").replace(/_/g, " ").replace(/^./, ch => ch.toUpperCase());
+        return [
+          h("span", { class: "mono muted" }, f.finding_id),
+          severityChip(f.severity),
+          h("span", { class: f.status === "closed" ? "verified" : "" }, statusLabel),
+          `${f.first_seen_round ?? "Not set"} → ${f.last_seen_round ?? "Not set"}`,
+          h("div", null, f.summary || "Not set", f.affected_artifacts && f.affected_artifacts.length
+            ? h("div", { class: "hint mono" }, f.affected_artifacts.join(", ")) : null),
+          f.status === "closed" && f.closed_by
+            ? h("span", { class: "mono small" }, `${closure.critic || "Unknown reviewer"}, round ${closure.round ?? "Not set"}`,
+              evidence ? h("div", { class: "hint mono" }, evidence) : null)
+            : "Not set",
+        ];
+      })));
+  }
+  search.addEventListener("input", update);
+  status.addEventListener("change", update);
+  body.replaceChildren(
+    h("p", { class: "hint" }, "Findings stay in this append-only ledger until a critic verifies the repair evidence."),
+    labeledPanel("Finding ledger",
+      h("div", { class: "findings-filterbar" }, search, status, count, clear), results));
+  if (findings.some(f => f.seeded)) {
     body.append(h("p", { class: "hint" }, h("strong", null, "Note: "),
       "Seeded findings come from the rehearsal panel. They test the repair loop and are not reviewer findings."));
   }
+  update();
 }
-
 
 /* -------- trace timeline (filterable) ----------------------------------- */
 
@@ -1103,56 +1165,100 @@ async function renderCaseTrace(body, c) {
   const events = full.data.events;
   const EVENT_TYPES = [...new Set(events.map(e => e.event))].sort();
   const ROLES = [...new Set(events.map(e => e.role).filter(Boolean))].sort();
+  const readableTraceName = value => String(value).toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ")
+    .replace(/\b\w/g, letter => letter.toUpperCase()).replace(/\bC(\d+)\b/gi, "C$1");
+  const traceRounds = new Set(events.map(e => Number(e.round)).filter(n => Number.isInteger(n) && n > 0));
+  // Real-workspace "built" can be partial, so only count it when the case
+  // has reached a completed review or terminal state.
+  const reviewComplete = ["PENDING_APPROVAL", "APPROVED", "CLOSED", "REJECTED"].includes(c.state.status);
+  const completedRounds = [...new Set((c.rounds || []).filter(r =>
+    ["accepted", "superseded", "completed", "complete"].includes(String(r.status).toLowerCase()) ||
+    (r.status === "built" && reviewComplete)
+  ).map(r => Number(r.round)).filter(n => Number.isInteger(n) && n > 0 && traceRounds.has(n)))].sort((a, b) => a - b);
 
-  const fEvent = h("select", { onchange: apply });
-  const fRole = h("select", { onchange: apply });
-  const fRound = h("input", { type: "number", min: "0", placeholder: "Round",
-                              class: "num", style: "width:90px", onchange: apply,
-                              oninput: apply });
-  fEvent.append(h("option", { value: "" }, `Event type (${EVENT_TYPES.length})`),
-    ...EVENT_TYPES.map(t => h("option", { value: t }, t)));
-  fRole.append(h("option", { value: "" }, `Role (${ROLES.length})`),
-    ...ROLES.map(t => h("option", { value: t }, t)));
+  const fEvent = h("select", { onchange: apply, "aria-label": "Filter by event type" });
+  const fRole = h("select", { onchange: apply, "aria-label": "Filter by role" });
+  const fRound = h("select", { "aria-label": "Filter by completed round", onchange: apply });
+  fEvent.append(h("option", { value: "" }, "All event types"),
+    ...EVENT_TYPES.map(t => h("option", { value: t }, readableTraceName(t))));
+  fRole.append(h("option", { value: "" }, "All roles"),
+    ...ROLES.map(t => h("option", { value: t }, readableTraceName(t))));
+  fRound.append(h("option", { value: "" }, "All rounds"),
+    ...completedRounds.map(n => h("option", { value: String(n) }, `Round ${n}`)));
 
-  const listEl = h("div", { class: "trace" });
-  const countEl = h("span", { class: "hint mono" });
+
+  const listEl = h("div", { class: "trace-groups" });
+  const countEl = h("span", { class: "hint mono", "aria-live": "polite" });
+  const expanded = new Set();
+  const category = event => {
+    if (/APPROVAL/.test(event)) return "Approval";
+    if (/FINDING|REPAIR/.test(event)) return "Findings and repairs";
+    if (/GATE/.test(event)) return "Checks and gates";
+    if (/AGENT|REQUEST|DISPATCH/.test(event)) return "Agent activity";
+    if (/BUDGET|LIMIT/.test(event)) return "Budget and limits";
+    if (/CASE|STATE|RESUM|STOP/.test(event)) return "Case lifecycle";
+    return "Other activity";
+  };
+  const order = ["Case lifecycle", "Agent activity", "Checks and gates", "Findings and repairs", "Budget and limits", "Approval", "Other activity"];
+
+  function eventRow(e, i) {
+    const isFail = e.event === "GATE_FAIL" || e.event === "FINDING_OPENED";
+    const isKey = ["CASE_CREATED", "CASE_CLOSED", "APPROVAL_RECORDED",
+      "APPROVAL_REQUESTED", "FINDING_VERIFIED_CLOSED"].includes(e.event);
+    const parts = [];
+    if (e.role) parts.push(h("b", null, readableTraceName(e.role)));
+    if (e.detail) {
+      const fs = Object.entries(e.detail).filter(([k]) =>
+        ["finding_id", "decision", "by", "killed_stage", "passed",
+         "findings", "severity", "re_dispatch_role", "resumed"].includes(k));
+      for (const [k, v] of fs) parts.push(`${k}=${Array.isArray(v) ? v.join(",") : v}`);
+    }
+    return h("div", { class: `tev ${isFail ? "fail" : isKey ? "hit" : ""}` },
+      h("span", { class: "ts" }, fmt.time(e.ts)),
+      h("div", { class: "what" }, readableTraceName(e.event), " ", ...parts),
+      h("div", { class: "meta" },
+        h("span", { class: "mono" },
+          `#${String(i + 1).padStart(3, "0")}  |  Request ${e.request_id || "Not set"}  |  Round ${e.round ?? "Not set"}`),
+        e.artifact ? h("span", null, `  |  Artifact ${e.artifact}`) : null,
+        (e.tokens_in || e.tokens_out) ? h("span", null,
+          `  |  Tokens ${e.tokens_in || 0}→${e.tokens_out || 0}`) : null,
+        e.detail && e.detail.terminal ? h("span", null, `  |  Outcome ${e.detail.terminal}`) : null));
+  }
 
   function apply() {
     const ev = fEvent.value, ro = fRole.value, rn = fRound.value;
-    let shown = 0;
-    listEl.replaceChildren();
+    const groups = new Map();
     events.forEach((e, i) => {
-      if (ev && e.event !== ev) return;
-      if (ro && e.role !== ro) return;
-      if (rn && String(e.round) !== String(rn)) return;
-      shown++;
-      const isGate = e.event.includes("GATE_PASS") || e.event === "REQUEST_BOUND";
-      const isFail = e.event === "GATE_FAIL" || e.event === "FINDING_OPENED";
-      const isKey = ["CASE_CREATED", "CASE_CLOSED", "APPROVAL_RECORDED",
-        "APPROVAL_REQUESTED", "FINDING_VERIFIED_CLOSED"].includes(e.event);
-      const parts = [];
-      if (e.role) parts.push(h("b", null, e.role));
-      if (e.detail) {
-        const fs = Object.entries(e.detail).filter(([k, v]) =>
-          ["finding_id", "decision", "by", "killed_stage", "passed",
-           "findings", "severity", "re_dispatch_role", "resumed"].includes(k));
-        for (const [k, v] of fs) parts.push(`${k}=${Array.isArray(v) ? v.join(",") : v}`);
-      }
-      listEl.append(h("div", { class: `tev ${isFail ? "fail" : isKey ? "hit" : ""}` },
-        h("span", { class: "ts" }, fmt.time(e.ts)),
-        h("div", { class: "what" }, e.event, " ", ...parts),
-        h("div", { class: "meta" },
-          h("span", { class: "mono" },
-            `#${String(i + 1).padStart(3, "0")} · Req ${e.request_id || "Not set"} · Round ${e.round}`),
-          e.artifact ? h("span", null, ` · artifact ${e.artifact}`) : null,
-          (e.tokens_in || e.tokens_out) ? h("span", null,
-            ` · tokens ${e.tokens_in || 0}→${e.tokens_out || 0}`) : null,
-          e.detail && e.detail.terminal ? h("span", null, ` · terminal ${e.detail.terminal}`) : null,
-        )));
+      if ((ev && e.event !== ev) || (ro && e.role !== ro) || (rn && String(e.round) !== rn)) return;
+      const name = category(e.event);
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push([e, i]);
     });
-    countEl.textContent = `${shown}/${events.length} shown`;
-    if (!shown) listEl.append(h("div", { class: "empty" },
-      "No events match these filters."));
+    const shown = [...groups.values()].reduce((n, rows) => n + rows.length, 0);
+    countEl.textContent = `${shown} of ${events.length} events match`;
+    listEl.replaceChildren();
+    for (const name of order) {
+      const rows = groups.get(name);
+      if (!rows) continue;
+      const details = h("details", { class: "trace-group", ...(expanded.has(name) ? { open: "" } : {}) },
+        h("summary", null, h("span", null, name), h("span", { class: "trace-count" }, `${rows.length} ${rows.length === 1 ? "event" : "events"}`)));
+      let loaded = false;
+      const load = () => {
+        if (!loaded) {
+          const timeline = h("div", { class: "trace" });
+          for (const [event, i] of rows) timeline.append(eventRow(event, i));
+          details.append(timeline);
+          loaded = true;
+        }
+      };
+      if (details.open) load();
+      details.addEventListener("toggle", () => {
+        if (details.open) { expanded.add(name); load(); }
+        else expanded.delete(name);
+      });
+      listEl.append(details);
+    }
+    if (!shown) listEl.append(emptyState("No matching events", "Change or clear the filters to see more activity."));
   }
 
   body.replaceChildren(
@@ -1165,7 +1271,7 @@ async function renderCaseTrace(body, c) {
         fEvent.value = ""; fRole.value = ""; fRound.value = ""; apply();
       } }, "Clear")),
     h("p", { class: "hint" },
-      "The orchestrator writes this append-only JSONL trace. Filters only change what is shown."),
+      "Events are grouped by category. Expand a group to see its events in their original order."),
     listEl);
   apply();
 }
@@ -1174,11 +1280,6 @@ async function renderCaseTrace(body, c) {
 
 async function renderCaseArtifacts(body, c) {
   const paths = c.artifacts || [];
-  const groups = {};
-  for (const p of paths) {
-    const seg = p.includes("/") ? p.split("/")[0] + "/" : "(root)";
-    (groups[seg] = groups[seg] || []).push(p);
-  }
   const detail = h("div", { id: "artifact-view" },
     emptyState("Select an artifact",
       "Choose a staged file on the left. Rendered content and raw bytes come from read-only endpoints."));
@@ -1225,16 +1326,74 @@ async function renderCaseArtifacts(body, c) {
       pane);
   }
 
-  const list = h("div", { class: "replay-steps" },
+  const search = h("input", { type: "search", placeholder: "Search file paths", "aria-label": "Search staged files" });
+  const entries = h("div", { class: "artifact-entries" });
+  const resultCount = h("div", { class: "artifact-count", "aria-live": "polite" });
+  let selectedPath = null;
+  const fileButton = (path, label) => {
+    const button = h("button", { type: "button", class: `step art-btn${selectedPath === path ? " on" : ""}`,
+      title: path, "aria-pressed": String(selectedPath === path) }, label);
+    button.addEventListener("click", () => {
+      selectedPath = path;
+      $$(".art-btn", entries).forEach(b => { b.classList.remove("on"); b.setAttribute("aria-pressed", "false"); });
+      button.setAttribute("aria-pressed", "true");
+      show(path, button);
+    });
+    return button;
+  };
+
+  function folderTree(filePaths) {
+    const root = { folders: new Map(), files: [], count: 0 };
+    for (const path of filePaths) {
+      const segments = path.split("/");
+      let node = root;
+      node.count++;
+      for (const segment of segments.slice(0, -1)) {
+        if (!node.folders.has(segment)) node.folders.set(segment, { folders: new Map(), files: [], count: 0 });
+        node = node.folders.get(segment);
+        node.count++;
+      }
+      node.files.push(path);
+    }
+    function children(node) {
+      const out = [];
+      for (const [name, folder] of [...node.folders].sort(([a], [b]) => a.localeCompare(b))) {
+        const group = h("details", { class: "artifact-folder" },
+          h("summary", null, h("span", { class: "artifact-folder-name" }, name),
+            h("span", { class: "artifact-folder-count" }, String(folder.count))));
+        let loaded = false;
+        group.addEventListener("toggle", () => {
+          if (group.open && !loaded) {
+            group.append(h("div", { class: "artifact-folder-children" }, ...children(folder)));
+            loaded = true;
+          }
+        });
+        out.push(group);
+      }
+      for (const path of node.files.sort((a, b) => a.localeCompare(b)))
+        out.push(fileButton(path, path.split("/").pop()));
+      return out;
+    }
+    return children(root);
+  }
+
+  function updateFiles() {
+    const query = search.value.trim().toLowerCase();
+    const matches = query ? paths.filter(path => path.toLowerCase().includes(query)) : paths;
+    resultCount.textContent = query ? `${matches.length} of ${paths.length} files` : `${paths.length} files`;
+    if (!matches.length) {
+      entries.replaceChildren(h("p", { class: "artifact-no-results" }, query ? "No matching files." : "No staged files."));
+    } else if (query) {
+      entries.replaceChildren(...matches.map(path => fileButton(path, path)));
+    } else {
+      entries.replaceChildren(...folderTree(matches));
+    }
+  }
+  search.addEventListener("input", updateFiles);
+  const list = h("div", { class: "replay-steps artifact-list" },
     h("label", { class: "label" }, `Staged files (${paths.length})`),
-    ...Object.entries(groups).sort().flatMap(([grp, ps]) => [
-      h("div", { class: "hint mono", style: "padding:6px 12px;background:var(--paper-2);border-bottom:1px solid var(--hairline)" }, grp),
-      ...ps.map(p => {
-        const b = h("button", { class: "step art-btn" }, p.split("/").pop() || p);
-        b.addEventListener("click", () => show(p, b));
-        return b;
-      }),
-    ]));
+    h("div", { class: "artifact-search" }, search, resultCount), entries);
+  updateFiles();
 
   body.replaceChildren(h("div", { class: "replay-stage" }, list, detail));
 }
@@ -1275,7 +1434,7 @@ async function renderCaseReport(body, c) {
         h("span", { class: "chip" }, `Round ${data.round}`),
         h("span", { class: "chip" }, `Candidate ${(data.candidate_id || "").slice(0, 10)}`),
         h("span", { class: "chip " + (data.within_bounds ? "ok" : "major") },
-          `${data.word_count} words · policy ${data.word_bounds[0]}–${data.word_bounds[1]}`),
+          `${data.word_count} words, policy ${data.word_bounds[0]}–${data.word_bounds[1]}`),
         h("span", { class: "grow" }),
         data.evidence.length ? h("span", { class: "chip" },
           `${data.evidence.length} Evidence links`) : null),
@@ -1461,12 +1620,12 @@ async function renderCaseApproval(body, c) {
   const b = st.budget;
   if (!["PENDING_APPROVAL", "CLOSED", "APPROVED", "REJECTED"].includes(st.status)) {
     body.replaceChildren(emptyState("Not at the human gate",
-      `The case is ${st.status.replace(/_/g, " ")}. Publication requires all gates, two clean reviews, closed findings, and this dossier.`));
+      `The case is ${readableStatus(st.status).toLowerCase()}. Publication requires all gates, two clean reviews, closed findings, and this dossier.`, "approval-empty"));
     if (rep.ok) {
       body.append(labeledPanel("Current draft (not yet signable)",
         renderNote(rep.data),
         h("p", { class: "hint" },
-          `Draft ${rep.data.version} · ${rep.data.word_count} words. This draft cannot authorize publication.`)));
+          `Draft ${rep.data.version}, ${rep.data.word_count} words. This draft cannot authorize publication.`)));
     }
     return;
   }
@@ -1478,16 +1637,16 @@ async function renderCaseApproval(body, c) {
   const cover = h("div", { class: "dossier-cover" },
     h("h2", null, "Approval dossier"),
     h("div", { class: "ticker" }, c.mandate.ticker),
-    h("div", { class: "sub" }, `${case_id_title(c.case_id)} · ${c.mandate.report_policy.note_type.replace(/_/g, " ")}`),
+    h("div", { class: "sub" }, `${case_id_title(c.case_id)}: ${c.mandate.report_policy.note_type.replace(/_/g, " ")}`),
     h("dl", null,
       h("dt", null, "Report version"), h("dd", null, latest.version),
       h("dt", null, "Cutoff"), h("dd", null, c.mandate.cutoff_date),
-      h("dt", null, "Engines"), h("dd", null, `Engines ${st.config_versions.engines} · Maps ${st.config_versions.mapping_tables}`),
+      h("dt", null, "Engines"), h("dd", null, `Engines ${st.config_versions.engines}, maps ${st.config_versions.mapping_tables}`),
       h("dt", null, "Candidate"), h("dd", null, st.candidate.candidate_id || "Not set"),
       h("dt", null, "Clean reviews"), h("dd", null, `${st.candidate.clean_review_rounds} / 2 consecutive`),
       h("dt", null, "Gates"), h("dd", null, "4 / 4 numerical gates pass"),
       h("dt", null, "Carried findings"), h("dd", null, String(openFindings.length)),
-      h("dt", null, "Budget drawn"), h("dd", null, `${b.used.rounds}/${b.rounds_max} rounds · ${b.used.elapsed_minutes.toFixed(1)}/${b.case_minutes} min`),
+      h("dt", null, "Budget drawn"), h("dd", null, `${b.used.rounds}/${b.rounds_max} rounds, ${b.used.elapsed_minutes.toFixed(1)}/${b.case_minutes} min`),
       h("dt", null, "Bundle"), h("dd", null, c.manifest.bundle_id),
       h("dt", null, "Approval expires"), h("dd", null, st.pending.deadline ? fmt.datetime(st.pending.deadline) : "Not set")),
     h("p", { class: "hint" },
@@ -1511,7 +1670,7 @@ async function renderCaseApproval(body, c) {
     const r = await guard(() => Api.post(`/api/cases/${c.case_id}/approval`, {
       decision, by: who.value, reasoning: why.value }), "approval failed");
     if (r.ok) {
-      toast(`recorded: ${decision}`, `decision ${r.data.decision_id} · auditable record stored`);
+      toast(`recorded: ${decision}`, `decision ${r.data.decision_id}, auditable record stored`);
       Route.nav(`#/case/${c.case_id}`);
       render();
     }
@@ -1522,10 +1681,10 @@ async function renderCaseApproval(body, c) {
     h("div", null,
       labeledPanel("Sign-off checklist",
         kv([
-          ["1 · Numerical gates", "4/4 pass. Thresholds locked."],
-          ["2 · Clean reviews", `${st.candidate.clean_review_rounds} of 2 consecutive, same candidate`],
-          ["3 · Carried findings", openFindings.length ? `${openFindings.length} still open` : "All closed with critic-verified evidence"],
-          ["4 · Human gate", st.status === "PENDING_APPROVAL" ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
+          ["1. Numerical gates", "4/4 pass. Thresholds locked."],
+          ["2. Clean reviews", `${st.candidate.clean_review_rounds} of 2 consecutive, same candidate`],
+          ["3. Carried findings", openFindings.length ? `${openFindings.length} still open` : "All closed with critic-verified evidence"],
+          ["4. Human gate", st.status === "PENDING_APPROVAL" ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
         ])),
       rep.ok ? labeledPanel(`Rendered note for sign-off (${rep.data.version})`,
         renderNote(rep.data),
@@ -1544,7 +1703,7 @@ async function renderCaseApproval(body, c) {
         ["at", fmt.datetime(apr.ts)],
         ["reasoning", apr.reasoning || "Not set"],
         ["decision id", apr.decision_id],
-        ["evidence refs", (apr.expected_evidence_refs || []).join(" · ")],
+        ["evidence refs", (apr.expected_evidence_refs || []).join(", ")],
       ]) : kv([["terminal", st.status], ["reason", reasonText(st.reason)]])));
   }
 }
@@ -1615,7 +1774,7 @@ Views.newCase = async function newCase(view, fromId) {
   if (bundles.ok) {
     for (const b of bundles.data.bundles)
       W.bundle.append(h("option", { value: b.bundle_id },
-        `${b.bundle_id} · ${b.documents.length} docs · cutoff ${b.as_of_cutoff}`));
+        `${b.bundle_id}, ${b.documents.length} documents, cutoff ${b.as_of_cutoff}`));
   }
 
   const segRows = h("tbody");
@@ -1844,7 +2003,7 @@ Views.newCase = async function newCase(view, fromId) {
     }
     const trig = W.trigger;
     trig.replaceChildren(...b.documents.filter(d => d.filed <= cutoff)
-      .map(d => h("option", { value: d.doc_id }, `${d.form} · ${d.doc_id}`)));
+      .map(d => h("option", { value: d.doc_id }, `${d.form}: ${d.doc_id}`)));
     /* auto-suggest the trigger: latest 10-Q, else latest 10-K, else the
      * most recent filing visible at the cutoff. The human almost never
      * needs to pick this by hand */
@@ -1876,14 +2035,14 @@ Views.newCase = async function newCase(view, fromId) {
           ...errs.map(e => h("li", null, e))) : ""));
       return;
     }
-    toast("Case created", `${r.data.case_id} · ${r.data.mandate_id}`);
+    toast("Case created", `${r.data.case_id}, ${r.data.mandate_id}`);
     Route.nav(`#/case/${r.data.case_id}`);
     render();
   }
 
   const secChips = h("div", { class: "row wrap" },
     ...SECTIONS.map(s => {
-      const chip = h("span", { class: "chip accent", style: "cursor:pointer",
+      const chip = h("span", { class: "chip section-chip accent", style: "cursor:pointer",
         dataset: { secchip: s } }, s);
       chip.classList.toggle("accent", sectionState.get(s));
       chip.style.opacity = sectionState.get(s) ? "" : ".45";
@@ -1911,7 +2070,7 @@ Views.newCase = async function newCase(view, fromId) {
         "To cover a company that has no frozen bundle yet, build one first on the ",
         h("a", { href: "#/bundles" }, "Bundle builder"), " searches EDGAR by ticker."),
       deskBox) : null,
-    h("fieldset", null, h("legend", null, "Identity · Bundle · Cutoff"),
+    h("fieldset", null, h("legend", null, "Identity, bundle, and cutoff"),
       h("div", { class: "form-grid" },
         label("ticker", W.ticker), label("period label", W.period),
         label("cik", W.cik), label("cutoff date", W.cutoff),
@@ -2041,7 +2200,7 @@ Views.bundles = async function bundles(view) {
       cik: cikIn.value, docs: [...chosen.keys()], name: nameIn.value || undefined,
     }), "snapshot failed");
     if (!r.ok) return;
-    toast("Bundle frozen", `${r.data.bundle_id} · ${r.data.documents.length} documents · ${r.data.bundle_sha256.slice(0, 18)}…`);
+    toast("Bundle frozen", `${r.data.bundle_id}, ${r.data.documents.length} documents, ${r.data.bundle_sha256.slice(0, 18)}…`);
     chosen.clear(); paintChosen();
     Views.bundles(view);
   }
@@ -2051,7 +2210,7 @@ Views.bundles = async function bundles(view) {
       "Find filings, choose the documents, and freeze a hashed snapshot."),
     h("div", { class: "two-col" },
       h("div", null,
-        labeledPanel("1 · Search EDGAR by ticker",
+        labeledPanel("1. Search EDGAR by ticker",
           h("div", { class: "form-grid" },
             h("label", { class: "f" }, h("span", null, "Ticker"), tickerIn),
             h("label", { class: "f" }, h("span", null, "Forms"), formsIn),
@@ -2059,14 +2218,14 @@ Views.bundles = async function bundles(view) {
           h("div", { class: "actions" },
             h("button", { class: "btn primary", onclick: search }, "Search filings")),
           note, results),
-        labeledPanel("2 · Snapshot selection",
+        labeledPanel("2. Snapshot selection",
           chosenBox,
           h("div", { class: "form-grid mt2" },
             h("label", { class: "f" }, h("span", null, "CIK"), cikIn),
             h("label", { class: "f" }, h("span", null, "Bundle name"), nameIn)),
           h("div", { class: "actions" },
             h("button", { class: "btn primary", onclick: snapshot }, "Freeze bundle →")))),
-      labeledPanel("3 · Frozen bundles on disk",
+      labeledPanel("3. Frozen bundles on disk",
         list.ok ? h("table", { class: "grid" },
           h("thead", null, h("tr", null, h("th", null, "Bundle"), h("th", null, "SHA-256"),
             h("th", { class: "num" }, "Documents"), h("th", null, "Cutoff"))),
@@ -2123,7 +2282,7 @@ Views.evolution = async function evolution(view) {
       scope: scopeSel.value, description: descIn.value, linked_case: linkedIn.value,
     }), "prepare rejected");
     if (!rr.ok) { prepResult.replaceChildren(); return; }
-    toast("Proposal prepared", `${rr.data.version} · Parent ${rr.data.parent}`);
+    toast("Proposal prepared", `${rr.data.version}, parent ${rr.data.parent}`);
     Views.evolution(view);
   }
 
@@ -2135,19 +2294,14 @@ Views.evolution = async function evolution(view) {
         ["version", "parent", "scope", "tested cases", "regressions", "approval", "rollback"],
         (reg ? reg.versions : []).map(v => [
           v.version === reg.active
-            ? h("span", null, h("span", { class: "chip accent" }, v.version), " ",
-               h("span", { class: "chip ok" }, "Active"))
+            ? h("span", null, v.version, " (Active)")
             : h("span", { class: "mono" }, v.version),
           v.parent || "Not set",
           v.scope,
           (v.tested.cases || []).join(", ") || "None",
-          v.review ? (v.review.regressions_all_pass ? h("span", { class: "chip ok" }, "All pass") :
-            h("span", { class: "chip major" }, "Fail")) :
-            h("span", { class: "chip" }, "Not run"),
-          v.approval ? h("span", { class: "chip " + (v.approval.decision === "APPROVED" ? "ok" : "major") },
-            `${v.approval.decision} · ${v.approval.by}`) :
-            h("span", { class: "chip minor" }, "Pending"),
-          v.rollback_to ? h("span", { class: "chip minor" }, `→ ${v.rollback_to}`) : "None",
+          v.review ? (v.review.regressions_all_pass ? "All pass" : "Fail") : "Not run",
+          v.approval ? `${readableStatus(v.approval.decision)} by ${v.approval.by}` : "Pending",
+          v.rollback_to ? `→ ${v.rollback_to}` : "None",
         ]),
         { emptyWhat: "No versions", emptyNote: "The registry starts from the pinned system." })),
     h("div", { class: "two-col" },
@@ -2233,7 +2387,7 @@ Views.evolution = async function evolution(view) {
         rollResult.replaceChildren(h("div", { class: "ok-box mt2" },
           `Rolled back ${rr.data.from_version} → ${rr.data.to_version}`,
           h("div", { class: "mono small mt2" },
-            `Verification run: ${rr.data.verification.case} · Outputs match history: ${rr.data.verification.outputs_match_history}`)));
+            `Verification run: ${rr.data.verification.case}, outputs match history: ${rr.data.verification.outputs_match_history}`)));
         toast("Rollback verified", rr.data.verification.note);
       } }, "Roll back")),
     rollResult));
@@ -2249,7 +2403,7 @@ Views.demo = async function demo(view) {
   const caseSel = h("select");
   for (const c of cases) {
     if (!["CLOSED", "APPROVED", "REJECTED"].includes(c.status))
-      caseSel.append(h("option", { value: c.case_id }, `${c.case_id} · ${c.status}`));
+      caseSel.append(h("option", { value: c.case_id }, `${c.case_id}: ${readableStatus(c.status)}`));
   }
   const stageSel = h("select", null,
     ...["generator", "ingest", "extractor", "model", "writer", "critic", "approval"]
@@ -2274,7 +2428,7 @@ Views.demo = async function demo(view) {
     out.append(h("div", { class: "panel inset" },
       h("label", { class: "label" }, "Result"),
       jsonTree(rr.data)));
-    toast("Rehearsal complete", `Case ${target()} · Action ${action}`);
+    toast("Rehearsal complete", `Case ${target()}, action ${action}`);
   }
 
   const demoCard = (title, body, btnLabel, action, payloadFn) => {
@@ -2345,7 +2499,7 @@ Views.replay = async function replay(view) {
     }
     rr.data.replays.forEach((p, i) => {
       const b = h("button", { class: "step" },
-        `${String(i + 1).padStart(2, "0")} · ${p.role}`);
+        `${String(i + 1).padStart(2, "0")}. ${p.role}`);
       b.addEventListener("click", () => show(p, b, i, rr.data.replays.length));
       steps.append(b);
     });
@@ -2399,27 +2553,24 @@ Views.replay = async function replay(view) {
  * and transitions in near-real time. */
 
 function termLine(ev) {
-  const t = (ev.ts || "").split("T")[1] || "";
-  const time = t.replace(/Z$/, "").split(".")[0];
+  const timestamp = ev.ts ? new Date(ev.ts) : null;
+  const validTime = timestamp && !Number.isNaN(timestamp.getTime());
+  const time = validTime ? fmt.time(ev.ts) : "Not set";
+  const timeTitle = validTime ? `${fmt.datetime(ev.ts)} (${Intl.DateTimeFormat().resolvedOptions().timeZone})` : "Timestamp unavailable";
   const bad = /FAIL|ERROR|BLOCKED|EXHAUSTED|INVALID|REJECT/i.test(ev.event) ||
     (ev.detail && ev.detail.ok === false);
-  const cls = bad ? "tl bad"
-    : /AGENT_DISPATCHED|REQUEST_BOUND/.test(ev.event) ? "tl disp"
-    : /AGENT_RESULT|GATE_PASS|APPROVED|CLEAN|PASS/.test(ev.event) ? "tl ok"
-    : /STATE_TRANSITION|BUDGET/.test(ev.event) ? "tl tr"
-    : "tl";
-  let detail = ev.detail && Object.keys(ev.detail).length
-    ? JSON.stringify(ev.detail) : "";
-  if (detail.length > 150) detail = detail.slice(0, 150) + "…";
-  const where = [ev.role ? ev.role : null, ev.round ? `r${ev.round}` : null]
-    .filter(Boolean).join("@");
-  const tok = ev.tokens_out != null
-    ? ` · ${ev.tokens_in ?? "?"}→${ev.tokens_out} tok` : "";
-  return h("div", { class: cls },
-    h("span", { class: "ts" }, time || "--:--:--"),
-    h("span", { class: "ev" }, ev.event),
-    where ? h("span", { class: "who" }, where) : null,
-    h("span", { class: "meta" }, `${ev.backend || ""}${tok}`, detail));
+  const label = value => String(value).toLowerCase().replace(/_/g, " ")
+    .replace(/^./, letter => letter.toUpperCase());
+  const detail = ev.detail && Object.keys(ev.detail).length ? JSON.stringify(ev.detail) : "";
+  const where = [ev.role ? label(ev.role) : null,
+    ev.round != null ? `Round ${ev.round}` : null].filter(Boolean).join(", ");
+  const usage = ev.tokens_out != null ? `${ev.tokens_in ?? "?"} → ${ev.tokens_out} tokens` : "";
+  const meta = [ev.backend || "", usage, detail].filter(Boolean).join(", ");
+  return h("div", { class: `tl${bad ? " bad" : ""}` },
+    h("span", { class: "ts", title: timeTitle }, time),
+    h("span", { class: "ev" }, label(ev.event)),
+    h("span", { class: "who" }, where || "Not specified"),
+    h("span", { class: "meta", title: meta }, meta || "No additional details"));
 }
 
 Views.terminal = async function (view, caseId) {
@@ -2465,7 +2616,7 @@ Views.terminal = async function (view, caseId) {
     cursor = rr.data.next_cursor ?? cursor + evs.length;
     for (const ev of evs) term.append(termLine(ev));
     while (term.children.length > 1500) term.firstElementChild.remove();
-    count.textContent = `${cursor} events · tailing…`;
+    count.textContent = `${cursor} events, following latest`;
     stick();
   };
 
@@ -2473,20 +2624,20 @@ Views.terminal = async function (view, caseId) {
   if (token !== TERMINAL_TOKEN) return;
   TERMINAL_TIMER = setInterval(() => void load(false), 2000);
 
-  const sel = h("select", { onchange: () => Route.nav(`#/terminal/${sel.value}`) });
+  const sel = h("select", { "aria-label": "Select case", onchange: () => Route.nav(`#/terminal/${sel.value}`) });
   for (const c of [...cases].sort((a, b) =>
       ["RUNNING", "CREATED"].includes(b.status) - ["RUNNING", "CREATED"].includes(a.status) ||
       String(b.updated_at || "").localeCompare(String(a.updated_at || "")))) {
     const opt = h("option", { value: c.case_id },
-      `${c.case_id} · ${c.ticker} · ${c.status}`);
+      `${c.case_id}, ${c.ticker}, ${readableStatus(c.status)}`);
     if (c.case_id === target.case_id) opt.selected = true;
     sel.append(opt);
   }
 
   view.replaceChildren(
     routeHead("Live operations", "Activity log",
-      "Agent dispatches, results, gates, and state changes. Refreshes every two seconds.",
-      h("span", { class: "hint mono" }, count.textContent ? count.textContent : "")),
+      "Agent dispatches, results, gates, and state changes. Times use your device’s time zone. Refreshes every two seconds.",
+      count),
     h("section", { class: "block term-shell" },
       h("div", { class: "term-bar" },
         sel,
@@ -2495,12 +2646,10 @@ Views.terminal = async function (view, caseId) {
         h("span", { class: "term-live" }, "● Live"),
         h("button", { class: "btn small", onclick: () =>
           Route.nav(`#/case/${target.case_id}`) }, "Case page →")),
-      term,
-      pin,
-      h("p", { class: "hint mt2 mb0" },
-        "A real-backend run is synchronous: the REST call returns only after the whole round "
-        + "finishes. The orchestrator writes trace events as they happen.")));
-  count.textContent = `${cursor} events · tailing…`;
+      h("div", { class: "activity-feed" }, term, pin),
+      h("p", { class: "hint activity-note" }, "The latest events appear as the case runs.")));
+  requestAnimationFrame(stick);
+  count.textContent = `${cursor} events, following latest`;
 };
 
 Views.backends = async function backends(view) {

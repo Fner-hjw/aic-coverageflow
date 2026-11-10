@@ -321,23 +321,21 @@ def _select_mda(blocks: list[_Block]) -> tuple[int, str, str] | None:
     return start, text, anchor
 
 
-def slice_document(doc_path: Path, form: str, out_dir: Path | None = None) -> list[Slice]:
-    """Slice one filing. Writes slice .txt files, returns list[Slice].
+def candidate_slices(doc_path: Path, form: str) -> list[Slice]:
+    """The slices this document yields, computed without writing anything.
 
-    ``out_dir`` is the case/bundle inputs directory; slice files land under
-    ``out_dir/slices/<doc_stem>/<TAG>.txt`` and ``Slice.path`` is relative to
-    ``out_dir``. Defaults to the document's own directory.
+    Ingest's whole job is to classify a document and declare its slices, and
+    both are a pure function of the filing. Handing it these candidates lets
+    it answer from the request instead of reading twelve filings with tools,
+    which is what its card already says it does.
     """
     doc_path = Path(doc_path)
     form = form.upper()
     stem = doc_path.stem
-    out_dir = Path(out_dir) if out_dir is not None else doc_path.parent
-    raw = doc_path.read_bytes()
-    text_html = raw.decode("utf-8", errors="replace")
+    text_html = doc_path.read_bytes().decode("utf-8", errors="replace")
     blocks = _blocks_from_html(text_html)
 
     results: list[tuple[str, str, str, str]] = []  # (tag, anchor_heading, text, relpath)
-
     if form == "8-K":
         body = "\n".join(
             b.text for b in blocks if b.text.strip()
@@ -361,22 +359,34 @@ def slice_document(doc_path: Path, form: str, out_dir: Path | None = None) -> li
     else:
         raise SliceError(f"unsupported form for slicing: {form!r}")
 
-    slices: list[Slice] = []
+    out: list[Slice] = []
     for tag, anchor, text, relpath in results:
         blob = (text.rstrip() + "\n").encode("utf-8")
-        target = out_dir / relpath
+        out.append(Slice(
+            slice_id=f"{stem}/{tag}",
+            kind=STATEMENT_KINDS[tag],
+            path=relpath,
+            sha256=hashlib.sha256(blob).hexdigest(),
+            anchors={"heading": anchor, "first_line": _first_nonempty(text)},
+            text=blob.decode("utf-8"),
+        ))
+    return out
+
+
+def slice_document(doc_path: Path, form: str, out_dir: Path | None = None) -> list[Slice]:
+    """Slice one filing. Writes slice .txt files, returns list[Slice].
+
+    ``out_dir`` is the case/bundle inputs directory; slice files land under
+    ``out_dir/slices/<doc_stem>/<TAG>.txt`` and ``Slice.path`` is relative to
+    ``out_dir``. Defaults to the document's own directory.
+    """
+    doc_path = Path(doc_path)
+    out_dir = Path(out_dir) if out_dir is not None else doc_path.parent
+    slices = candidate_slices(doc_path, form)
+    for sl in slices:
+        target = out_dir / sl.path
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = Path(str(target) + ".tmp")
-        tmp.write_bytes(blob)
+        tmp.write_bytes(sl.text.encode("utf-8"))
         os.replace(tmp, target)
-        slices.append(
-            Slice(
-                slice_id=f"{stem}/{tag}",
-                kind=STATEMENT_KINDS[tag],
-                path=relpath,
-                sha256=hashlib.sha256(blob).hexdigest(),
-                anchors={"heading": anchor, "first_line": _first_nonempty(text)},
-                text=blob.decode("utf-8"),
-            )
-        )
     return slices

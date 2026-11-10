@@ -47,6 +47,7 @@ budget.used.retries_by_role.
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -85,15 +86,37 @@ CANDIDATE_FILES = ["ingest-report.json", "facts.json",
                    "model.json", "valuation.json"]
 CANDIDATE_ROLES = ("ingest", "extractor", "model", "writer", "engines", "engines")
 
+# The note's header carries the candidate id, which is a digest over the note.
+# Blanking the value before hashing breaks that cycle the same way the JSON
+# artifacts exclude their own `candidate_id` key.
+_CANDIDATE_HEADER = re.compile(r"(\*\*Candidate:\*\*)[^·\n]*")
+
+
+def _blank_candidate(text: str) -> str:
+    return _CANDIDATE_HEADER.sub(r"\1 ", text, count=1)
+
+# Records the input-manifest hash an ingest report was produced against, so a
+# later round can prove the report still describes the same inputs.
+INGEST_INPUTS_SIDECAR = "ingest-inputs.sha256"
+
 # What each critic is contracted to read (see the --read line of its card).
 # A critic handed only sha256 digests cannot verify anything and reports
 # "unverifiable" findings every round, so the candidate never converges.
+# Every critic gets every candidate artifact: the header and provenance checks
+# span all six, and a digest is not evidence.
 CRITIC_ARTIFACTS = {
-    "critic_c1": ("facts.json", "report.md", "candidate-manifest.json"),
-    "critic_c2": ("facts.json", "forecast_assumptions.json", "model.json",
+    "critic_c1": ("ingest-report.json", "facts.json", "report.md",
+                  "candidate-manifest.json", "forecast_assumptions.json",
+                  "model.json", "valuation.json"),
+    "critic_c2": ("ingest-report.json", "facts.json",
+                  "forecast_assumptions.json", "model.json", "valuation.json",
+                  "report.md", "candidate-manifest.json"),
+    "critic_c3": ("ingest-report.json", "candidate-manifest.json", "report.md",
+                  "facts.json", "forecast_assumptions.json", "model.json",
                   "valuation.json"),
-    "critic_c3": ("candidate-manifest.json", "report.md"),
-    "critic_c4": ("candidate-manifest.json", "report.md"),
+    "critic_c4": ("ingest-report.json", "candidate-manifest.json", "report.md",
+                  "facts.json", "forecast_assumptions.json", "model.json",
+                  "valuation.json"),
 }
 
 DEFAULT_CONFIG_VERSIONS = {
@@ -111,6 +134,25 @@ def _iso_from_epoch(epoch: float) -> str:
 
 def _epoch_from_iso(iso: str) -> float:
     return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+
+
+def _dotted_paths(obj: Any, prefix: str = "") -> list[str]:
+    """Every addressable path in a nested artifact, as dotted keys.
+
+    ``{"dcf": {"base": {"ebitda_margin": 0.21}}}`` yields ``dcf``,
+    ``dcf.base`` and ``dcf.base.ebitda_margin`` so a note can cite the leaf
+    it actually states.
+    """
+    out: list[str] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            out.append(path)
+            out.extend(_dotted_paths(value, path))
+    elif isinstance(obj, list):
+        for i, value in enumerate(obj):
+            out.extend(_dotted_paths(value, f"{prefix}.{i}"))
+    return out
 
 
 def new_case_id(ticker: str, period: str, cutoff_date: str) -> str:
@@ -386,7 +428,14 @@ class Orchestrator:
         else:
             raise RuntimeError(f"cannot run a case in status {state['status']}")
 
-        return self.loop(state)
+        # One writer per case. Two orchestrators on the same case corrupt it:
+        # the second one's resume discards the first one's artifacts as
+        # unverified, and the round then proceeds on empty inputs.
+        lock = statestore.acquire_case_lock(self.case_dir)
+        try:
+            return self.loop(state)
+        finally:
+            statestore.release_case_lock(lock)
 
     def _saved_result(self, state: dict, message: str) -> dict:
         result = statestore.read_json_or_none(self.case_dir / "result.json")
@@ -680,6 +729,13 @@ class Orchestrator:
         role = STAGE_ROLE[stage]
         rel = arts.rel("generator", STAGE_ARTIFACT[stage])
 
+        # ingest is a pure function of the frozen input manifest. Re-dispatching
+        # it every round re-reads every filing and spends the whole role
+        # deadline on tool calls without emitting output, so a rebuild could
+        # never get past its first stage.
+        if stage == "ingest" and not self._artifact_intact(rel):
+            self._carry_ingest_forward(state, budget, arts)
+
         # resume fast-path: verified artifact on disk -> role NOT re-dispatched
         if self._artifact_intact(rel):
             self._stage_side_effects(state, budget, arts, stage)
@@ -691,6 +747,7 @@ class Orchestrator:
             payload = {"case_id": state["case_id"], "round": arts.round,
                        "input_manifest": self.input_manifest(),
                        "mandate": self.mandate(),
+                       "anchor_candidates": self._anchor_candidates(),
                        "carried_findings": self._carried()}
         else:
             payload = {"case_id": state["case_id"], "round": arts.round,
@@ -700,6 +757,9 @@ class Orchestrator:
                        # the forecast bounds. Withholding it made the writer
                        # report the bounds as "not supplied".
                        "mandate": self.mandate(),
+                       # provenance the note's header block must carry; the
+                       # writer cannot invent a bundle id it was never given
+                       "bundle": self._bundle_provenance(),
                        "prior_artifacts": self._stage_inputs(arts, stage)}
         if stage == "candidate":
             # the candidate id is only known once all artifacts exist:
@@ -725,6 +785,8 @@ class Orchestrator:
                                             result)
             if err is None and stage == "candidate":
                 err = self._check_lead_manifest(arts, result.parsed)
+                if err is None:
+                    result.parsed = self._stamp_manifest_header(arts, result.parsed)
             if err is None and stage == "ingest":
                 # the declared slices must exist on disk before the extractor
                 # is handed their paths
@@ -739,6 +801,12 @@ class Orchestrator:
         content = parsed["report_md"] if role == "writer" else parsed
         self._write_artifact(state, budget, arts, "generator",
                              STAGE_ARTIFACT[stage], content)
+        if stage == "ingest":
+            # bind the report to the inputs it was produced against, so a
+            # later round can prove it is still current
+            statestore.atomic_write_text(
+                self.case_dir / arts.rel("generator", INGEST_INPUTS_SIDECAR),
+                statestore.sha256_json(self.input_manifest()) + "\n")
         self._stage_side_effects(state, budget, arts, stage)
         self._stage_done(state, stage)
 
@@ -760,9 +828,13 @@ class Orchestrator:
         if stage in ("writer", "candidate"):
             out["forecast"] = self._lazy(arts, arts.rel("generator",
                                                         "forecast_assumptions.json"))
-        if stage == "candidate":
+            # The writer card's read scope is "verified facts, model, valuation
+            # artifacts" and it forbids a valuation stance without the computed
+            # DCF/comps. Withholding them left the note able to say only that
+            # the valuation artifacts were "absent from the bound request".
             out["model"] = self._lazy(arts, arts.rel("generator", "model.json"))
-            out["valuation"] = self._lazy(arts, arts.rel("generator", "valuation.json"))
+            out["valuation"] = self._lazy(arts, arts.rel("generator",
+                                                         "valuation.json"))
         return out
 
     def _slice_payload(self, slices: Any, *, inline_text: bool) -> list:
@@ -927,6 +999,9 @@ class Orchestrator:
             arts.files[rel] = sha
             arts.content[rel] = payload
             self._verified[rel] = sha
+        # deterministic engines spend no tokens, but the per-role ledger must
+        # still name the role or the cap check cannot be completed for it
+        budget.add_tokens("engines", 0, 0)
         self._sync_budget(state, budget)
         self._transition(state, "RUNNING", "RUNNING", verified=model_rel,
                          detail={"engine_artifacts": [model_rel, valuation_rel]})
@@ -967,6 +1042,11 @@ class Orchestrator:
                 stripped = {k: v for k, v in content.items()
                             if k != "candidate_id"}
                 digest_pairs.append([name, statestore.sha256_json(stripped)])
+            elif isinstance(content, str):
+                # the note's header carries the id we are about to compute;
+                # digest it with that value blanked or stamping changes the id
+                digest_pairs.append(
+                    [name, statestore.sha256_json(_blank_candidate(content))])
             else:
                 path = self.case_dir / rel
                 digest_pairs.append(
@@ -974,12 +1054,12 @@ class Orchestrator:
         return "cand-" + statestore.sha256_json(digest_pairs)[:12]
 
     def _stamp_candidate_id(self, state: dict, arts: Arts, cand_id: str) -> None:
-        """Write the candidate_id header into the JSON candidate artifacts."""
+        """Write the candidate_id header into the candidate artifacts."""
         for name in CANDIDATE_FILES:
             rel = arts.rel("generator", name)
             content = self._lazy(arts, rel)
             if not isinstance(content, dict):
-                continue    # report.md stays pure prose; header lives in manifest
+                continue
             if content.get("candidate_id") == cand_id and self._artifact_intact(rel):
                 continue
             new_content = dict(content)
@@ -988,7 +1068,28 @@ class Orchestrator:
             self._verified[rel] = sha
             arts.files[rel] = sha
             arts.content[rel] = new_content
+        self._stamp_report_candidate(arts, cand_id)
         self._persist(state)
+
+    def _stamp_report_candidate(self, arts: Arts, cand_id: str) -> None:
+        """Fill the candidate id into the note's header block.
+
+        The writer cannot know it: the id is a digest over every artifact, so
+        it only exists once the note itself is written. Leaving the writer to
+        guess produced "not assigned" in the header a reviewer checks.
+        """
+        rel = arts.rel("generator", "report.md")
+        text = self._lazy(arts, rel)
+        if not isinstance(text, str):
+            return
+        stamped, n = re.subn(r"\*\*Candidate:\*\*[^·\n]*",
+                             f"**Candidate:** {cand_id} ", text, count=1)
+        if not n or stamped == text:
+            return
+        sha = statestore.atomic_write_text(self.case_dir / rel, stamped)
+        self._verified[rel] = sha
+        arts.files[rel] = sha
+        arts.content[rel] = stamped
 
     def _evidence_index(self, arts: Arts) -> dict[str, str]:
         idx: dict[str, str] = {}
@@ -1003,10 +1104,12 @@ class Orchestrator:
                 idx[f["field"]] = facts_rel
         for key in model.get("series", {}):
             idx.setdefault(key, model_rel)
-        for key in (valuation.get("dcf") or {}):
-            idx[f"dcf.{key}"] = valuation_rel
-        for key in (valuation.get("comps") or {}):
-            idx[f"comps.{key}"] = valuation_rel
+        # The writer cites the computed valuation by dotted path
+        # (dcf.base.ebitda_margin, dcf.terminal.gordon.terminal_value,
+        # cross_check_delta). Exposing only the first level left every
+        # valuation number unciteable, so the note could not state a value.
+        for key in _dotted_paths(valuation):
+            idx.setdefault(key, valuation_rel)
         return idx
 
     def _check_lead_manifest(self, arts: Arts, manifest: dict) -> str | None:
@@ -1019,6 +1122,87 @@ class Orchestrator:
             return ("candidate manifest integrity mismatch: the lead did not "
                     "echo the verified artifact hashes")
         return None
+
+    def _stamp_manifest_header(self, arts: Arts, manifest: dict) -> dict:
+        """Write the provenance header the harness knows into the manifest.
+
+        Critics check that every artifact can be tied to the cutoff, the input
+        bundle, and the versions that produced it. Those are facts the harness
+        holds, not things to ask a model to echo -- asking produced a manifest
+        with none of them, and the same "header incomplete" finding every round.
+        """
+        from . import _prompt_assembly as pa
+        from . import __version__ as engine_version
+
+        inputs = self.input_manifest()
+        mandate = self.mandate()
+        prompt_versions: dict[str, str] = {}
+        for role in sorted(set(STAGE_ROLE.values()) | set(CRITIC_ROLES)
+                           | {"critic_lead"}):
+            card = pa.default_root() / "prompts" / f"{role}.md"
+            if card.is_file():
+                prompt_versions[role] = pa.parse_role_card(card)["version"]
+        model = self._lazy(arts, arts.rel("generator", "model.json")) or {}
+        out = dict(manifest)
+        out.update({
+            "cutoff_date": mandate.get("cutoff_date"),
+            "input_manifest_sha256": statestore.sha256_json(inputs),
+            "bundle_id": inputs.get("bundle_id"),
+            "bundle_sha256": inputs.get("bundle_sha256"),
+            "prompt_versions": prompt_versions,
+            "engine_versions": {
+                "mapping": model.get("mapping_tables") or "1.0",
+                "engine": engine_version,
+            },
+            "scope_statement": self._scope_statement(arts),
+        })
+        return out
+
+    def _scope_statement(self, arts: Arts) -> str:
+        """What this round actually did, from the artifact hashes.
+
+        The lead used to assert "full rebuild" every round. Once ingest is
+        reused across rounds that claim is false, and a critic that checks it
+        finds the rebuild unevidenced. The hashes are the evidence.
+        """
+        prev = 0
+        for n in range(arts.round - 1, 0, -1):
+            if (self.case_dir / Arts(round=n).rel("generator", "facts.json")).is_file():
+                prev = n
+                break
+        reused: list[str] = []
+        rebuilt: list[str] = []
+        for name in CANDIDATE_FILES:
+            rel = arts.rel("generator", name)
+            sha = self._verified.get(rel)
+            if sha is None:
+                continue
+            if prev and self._verified.get(Arts(round=prev).rel("generator", name)) == sha:
+                reused.append(name)
+            else:
+                rebuilt.append(name)
+        parts = []
+        if rebuilt:
+            parts.append("re-emitted " + ", ".join(rebuilt))
+        if reused:
+            parts.append("reused byte-identical from round "
+                         f"{prev:03d}: " + ", ".join(reused))
+        if prev and self._ingest_carried_from(arts, prev):
+            parts.append("ingest classification and slices carried from round "
+                         f"{prev:03d} under a fresh request binding")
+        return ("Round " + f"{arts.round:03d} build: " + "; ".join(parts) +
+                ". Reuse is a hash-match proof against the previous round, not "
+                "a skipped stage.")
+
+    def _ingest_carried_from(self, arts: Arts, prev: int) -> bool:
+        """True when this round's ingest report is the previous round's work."""
+        here = self._lazy(arts, arts.rel("generator", "ingest-report.json"))
+        there = self._lazy(Arts(round=prev),
+                           Arts(round=prev).rel("generator", "ingest-report.json"))
+        if not isinstance(here, dict) or not isinstance(there, dict):
+            return False
+        keys = ("doc_id", "classification", "slices", "superseded")
+        return all(here.get(k) == there.get(k) for k in keys)
 
     # ================================================================ gates
     def _run_gates(self, state: dict, budget: budget_mod.BudgetTracker,
@@ -1109,6 +1293,123 @@ class Orchestrator:
             if m and child.is_dir():
                 best = max(best, int(m.group(1)))
         return best
+
+    # ------------------------------------------------------- ingest reuse
+    def _bundle_provenance(self) -> dict:
+        """The cutoff and input-bundle identity every artifact header cites."""
+        inputs = self.input_manifest()
+        return {
+            "cutoff_date": self.mandate().get("cutoff_date"),
+            "bundle_id": inputs.get("bundle_id"),
+            "bundle_sha256": inputs.get("bundle_sha256"),
+            "input_manifest_sha256": statestore.sha256_json(inputs),
+        }
+
+    def _anchor_candidates(self) -> dict[str, list[dict]]:
+        """The slices each input document yields, computed by the slicer.
+
+        Ingest's card says it does not read whole filings -- the request gives
+        it the slicer's anchor candidates. Without them it opened all twelve
+        documents with tools and spent the whole role deadline doing it.
+        """
+        from . import slicer
+
+        out: dict[str, list[dict]] = {}
+        for doc in self.input_manifest().get("documents") or []:
+            if not isinstance(doc, dict):
+                continue
+            doc_id = doc.get("doc_id")
+            path = self.case_dir / str(doc.get("path") or "")
+            if not doc_id or not path.is_file():
+                continue
+            try:
+                slices = slicer.candidate_slices(path, str(doc.get("form") or ""))
+            except slicer.SliceError:
+                continue
+            out[doc_id] = [s.to_dict() for s in slices]
+        return out
+
+    def _ingest_report_reusable(self, prev: int, manifest_sha: str) -> dict | None:
+        """The previous round's ingest report, if it still describes our inputs.
+
+        Ingest classifies the frozen input manifest and declares slices; it
+        reads no round state. Re-running it every round re-reads all twelve
+        filings and spends the whole role deadline on tool calls without ever
+        emitting output, so a hash match is proof enough to carry it forward.
+        """
+        prev_arts = Arts(round=prev)
+        rel = prev_arts.rel("generator", "ingest-report.json")
+        path = self.case_dir / rel
+        if not path.is_file():
+            return None
+        report = statestore.read_json_or_none(path)
+        if not isinstance(report, dict):
+            return None
+        sidecar = self.case_dir / prev_arts.rel("generator", INGEST_INPUTS_SIDECAR)
+        if sidecar.is_file():
+            if sidecar.read_text(encoding="utf-8").strip() != manifest_sha:
+                return None
+        else:
+            # Rounds written before the sidecar existed: prove the report
+            # against the inputs we actually hold instead of a recorded hash.
+            docs = {d.get("doc_id") for d in self.input_manifest().get("documents") or []
+                    if isinstance(d, dict)}
+            if report.get("doc_id") not in docs:
+                return None
+        for entry in report.get("slices") or []:
+            if not isinstance(entry, dict):
+                return None
+            target = self.case_dir / str(entry.get("path") or "")
+            if not target.is_file():
+                return None
+            if entry.get("sha256") and statestore.sha256_file(target) != entry["sha256"]:
+                return None
+        return report
+
+    def _carry_ingest_forward(self, state: dict, budget: budget_mod.BudgetTracker,
+                              arts: Arts) -> bool:
+        """Seed this round's ingest report from a verified earlier round."""
+        rel = arts.rel("generator", "ingest-report.json")
+        if self._artifact_intact(rel):
+            return True
+        manifest_sha = statestore.sha256_json(self.input_manifest())
+        for prev in range(self._latest_round_dir(), 0, -1):
+            if prev >= arts.round:
+                continue
+            report = self._ingest_report_reusable(prev, manifest_sha)
+            if report is None:
+                continue
+            # the report answers a request; bind the one this round would have
+            # issued so the artifact does not echo a stale request_id
+            payload = {"case_id": state["case_id"], "round": arts.round,
+                       "input_manifest": self.input_manifest(),
+                       "mandate": self.mandate(),
+                       "carried_findings": self._carried()}
+            req_id = self._bind_request(state, "ingest", payload, None)
+            report = dict(report)
+            report["request_id"] = req_id
+            report["candidate_id"] = None   # stamped at the candidate stage
+            sha = statestore.atomic_write_json(self.case_dir / rel, report)
+            statestore.atomic_write_text(
+                self.case_dir / arts.rel("generator", INGEST_INPUTS_SIDECAR),
+                manifest_sha + "\n")
+            self._verified[rel] = sha
+            arts.files[rel] = sha
+            arts.content[rel] = report
+            # a reused report costs nothing, but the per-role ledger must still
+            # name the role or the cap check cannot be completed for it
+            budget.add_tokens("ingest", 0, 0)
+            self._sync_budget(state, budget)
+            # checkpoint the carried artifact: without this a crash before the
+            # next write leaves it unverified, and the next resume discards it
+            self._persist(state)
+            self._trace(event="INGEST_REUSED",
+                        detail={"from_round": prev, "artifact": rel,
+                                "request_id": req_id,
+                                "input_manifest_sha256": manifest_sha},
+                        round=arts.round)
+            return True
+        return False
 
     def _candidate_context(self, state: dict, arts: Arts) -> gates.CandidateContext:
         return gates.CandidateContext(
@@ -1285,6 +1586,8 @@ class Orchestrator:
                         candidate_id=candidate_id, round=round_no,
                         role=f.get("source_critic"),
                         detail={"finding_id": fid, "summary": f.get("summary")})
+        self._close_unreproduced_critic_findings(state, arts, reports, led,
+                                                 round_no)
         # orchestrator-verified cleanliness: never trust the lead alone
         # reviewer_count is model-supplied: a string or null must not raise
         raw_count = merged.get("reviewer_count")
@@ -1320,6 +1623,56 @@ class Orchestrator:
         # findings remain: repair packet; loop starts the next full build
         self._issue_repair_packet(state, arts, led,
                                   note="critic findings after full review")
+
+    def _close_unreproduced_critic_findings(self, state: dict, arts: Arts,
+                                            reports: list[dict],
+                                            led: ledger_mod.FindingsLedger,
+                                            round_no: int) -> None:
+        """Close a critic finding that its critic did not raise again.
+
+        Critics reword a complaint every round, so the dedup_key drifts
+        (``valuation-section-empty-vs-manifest-artifacts`` becomes
+        ``valuation-section-declares-artifacts-absent``) and the row it
+        replaces never closes. Without this rule the ledger can only grow and
+        acceptance -- which requires every carried finding closed -- is
+        unreachable. A critic that reviewed the rebuilt candidate and did not
+        raise the defect again has verified it fixed, which is the same rule
+        the gates already apply to their own findings.
+        """
+        reviewed: dict[str, tuple[str, str, set[str]]] = {}
+        for rep in reports:
+            role = rep.get("role")
+            if role not in CRITIC_ROLES:
+                continue
+            rel = arts.rel("critic", f"{role}.json")
+            sha = self._verified.get(rel)
+            # A critic that reported no coverage did not review; silence from
+            # it is not evidence that anything was fixed.
+            if not sha or not (rep.get("coverage") or {}).get("areas_checked"):
+                continue
+            keys = {ledger_mod.normalize_dedup_key(
+                        f.get("dedup_key") or f.get("finding_id") or "")
+                    for f in (rep.get("findings") or [])}
+            reviewed[role] = (rel, sha, keys)
+        if not reviewed:
+            return
+        for row in led.open_findings():
+            src = row.get("source_critic") or ""
+            if src.startswith("gate:") or src not in reviewed:
+                continue
+            if row.get("last_seen_round") == round_no:
+                continue          # raised this round: still live
+            rel, sha, keys = reviewed[src]
+            if row.get("dedup_key") in keys:
+                continue
+            led.close_finding(row["finding_id"], critic=src, round=round_no,
+                              verified_evidence={"artifact": rel, "sha256": sha})
+            self._trace(event="FINDING_VERIFIED_CLOSED", round=round_no,
+                        role=src,
+                        candidate_id=state["candidate"]["candidate_id"],
+                        artifact=rel, artifact_sha256=sha,
+                        detail={"finding_id": row["finding_id"],
+                                "reason": "critic did not reproduce it"})
 
     def _apply_critic_closures(self, state: dict, arts: Arts,
                                reports: list[dict],
@@ -1601,6 +1954,7 @@ class Orchestrator:
         budget = self._budget(state)
         record = budget.grant(role=role, by="human")
         self._sync_budget(state, budget)
+        state["pending"]["retry_count"] = 0
         state["reason"] = None
         target = ("RUNNING" if state["pending"].get("case_clock_started")
                   else "CREATED")

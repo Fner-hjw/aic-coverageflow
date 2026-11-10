@@ -269,6 +269,10 @@ class BudgetTracker:
         # role from the resume point, and a role sitting just under its old cap
         # would breach on its first dispatch and waste the grant.
         self.used["tokens_by_role"] = {}
+        # Retries are spent the same way. A case that exhausted on retries
+        # would otherwise reopen and stop on its very next dispatch, which is
+        # the "grant did nothing" failure.
+        self.used["retries_by_role"] = {}
         self.used.setdefault("grants", []).append(record)
         return record
 

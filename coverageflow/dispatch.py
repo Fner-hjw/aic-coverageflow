@@ -213,6 +213,13 @@ def check_token_cap(call: RoleCall, result: AgentResult) -> str | None:
     return None
 
 
+# Payload keys whose `path`/`sha256` pairs describe files the harness will
+# *produce*, not inputs the role must read. Ingest is handed the slicer's
+# anchor candidates before the slices exist, so checking them would block
+# every case at its first stage.
+_NON_REFERENCE_KEYS = frozenset({"anchor_candidates"})
+
+
 def _iter_file_refs(node: Any):
     """Yield dicts in *node* that look like case-relative file references."""
     if isinstance(node, dict):
@@ -221,7 +228,9 @@ def _iter_file_refs(node: Any):
             parts = Path(path).parts
             if not os.path.isabs(path) and ".." not in parts:
                 yield node
-        for value in node.values():
+        for key, value in node.items():
+            if key in _NON_REFERENCE_KEYS:
+                continue
             yield from _iter_file_refs(value)
     elif isinstance(node, list):
         for value in node:

@@ -215,6 +215,61 @@ class TestResumeAfterKill:
         assert "tampered" not in facts_path.read_text()
         assert statestore.load_state(case_dir)["status"] == "PENDING_APPROVAL"
 
+    def test_missing_upstream_artifact_rewinds_to_its_stage(self, tmp_path,
+                                                            fresh_case):
+        """A stage can be missing without being "broken".
+
+        An artifact written by a process that died before its checkpoint never
+        entered the verified map, so nothing flagged it. Resuming past it handed
+        the extractor an empty ingest report and it failed every retry.
+        """
+        case_dir, clk = fresh_case
+        orch = make_orch(case_dir, clk=clk)
+        orch.run()
+        # the ingest report vanishes without ever having been "broken"
+        (case_dir / "rounds/round-001/generator/ingest-report.json").unlink()
+        st = statestore.load_state(case_dir)
+        st["status"] = "RUNNING"
+        st["pending"] = {"role": "generator", "request_id": None, "round": 1,
+                         "retry_count": 0, "case_clock_started": clk.iso(),
+                         "deadline": None, "stage": "extractor"}
+        statestore.write_state(case_dir, st)
+
+        orch2 = make_orch(case_dir, clk=clk)
+        orch2.run()
+        # ingest re-ran instead of the extractor being handed nothing
+        assert len(orch2.dispatch.calls_of("ingest")) == 1
+        assert (case_dir / "rounds/round-001/generator/ingest-report.json").is_file()
+        assert statestore.load_state(case_dir)["status"] == "PENDING_APPROVAL"
+
+    def test_broken_engine_artifact_rewinds_to_the_model_stage(self, tmp_path,
+                                                               fresh_case):
+        """The engines run as a side effect of the model stage.
+
+        Mapping model.json to the later "engine" index rewound past its
+        producer, so the writer was dispatched with no model or valuation to
+        cite and every number it wrote was unciteable.
+        """
+        case_dir, clk = fresh_case
+        orch = make_orch(case_dir, clk=clk)
+        orch.run()
+        (case_dir / "rounds/round-001/generator/model.json").write_text("{}")
+        st = statestore.load_state(case_dir)
+        st["status"] = "RUNNING"
+        st["pending"] = {"role": "generator", "request_id": None, "round": 1,
+                         "retry_count": 0, "case_clock_started": clk.iso(),
+                         "deadline": None, "stage": "writer"}
+        statestore.write_state(case_dir, st)
+
+        orch2 = make_orch(case_dir, clk=clk)
+        orch2.run()
+        # the engines re-ran, so the writer had a model and a valuation
+        assert len(orch2.dispatch.calls_of("model")) == 1
+        model = statestore.read_json(
+            case_dir / "rounds/round-001/generator/model.json")
+        assert model.get("series") or model.get("mapping_tables")
+        assert statestore.load_state(case_dir)["status"] == "PENDING_APPROVAL"
+
     def test_completed_case_returns_saved_result_untouched(self, tmp_path,
                                                             fresh_case):
         case_dir, clk = fresh_case

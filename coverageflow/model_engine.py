@@ -375,8 +375,12 @@ def _derive_levels(model: Model) -> None:
         st = model.series.get("balance_sheet.short_term_debt", {}).get(p)
         lt = model.series.get("balance_sheet.long_term_debt", {}).get(p)
         cash = model.series.get("balance_sheet.cash_and_equivalents", {}).get(p)
+        # Short-term investments are cash-like. A net-debt figure that nets
+        # only cash overstates leverage for any issuer holding a large liquid
+        # portfolio, and the equity bridge then understates value.
+        sti = model.series.get("balance_sheet.short_term_investments", {}).get(p) or 0
         if None not in (st, lt, cash):
-            model.series.setdefault("derived.net_debt", {})[p] = st + lt - cash
+            model.series.setdefault("derived.net_debt", {})[p] = st + lt - cash - sti
 
 
 def _derive_margins(model: Model) -> None:
