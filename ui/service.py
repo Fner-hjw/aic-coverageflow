@@ -74,6 +74,10 @@ class ConflictError(ServiceError):
     status = 409
 
 
+class UpstreamError(ServiceError):
+    status = 502
+
+
 # ---------------------------------------------------------------------------
 # Real-package hook (integration stream A6: demo mode UNLESS
 # COVERAGEFLOW_WORKSPACE names a real workspace directory)
@@ -2998,67 +3002,52 @@ def edgar_search(ticker: str, forms: str | None = None,
                  window: str | None = None) -> dict:
     """GET /api/edgar/search — filing index for the bundle builder.
 
-    Controller mode attempts a real EDGAR submissions query via
-    coverageflow.bundle; offline (or unknown ticker) it degrades to the
-    built-in demo index with a clear fallback note.
+    Resolve the ticker through the SEC index and query recent submissions.
+    If the SEC is unavailable, show demo rows when available.
     """
     t = (ticker or "").strip().upper()
     if not t:
         raise ValidationError("ticker query parameter is required")
-    if _using_real():
-        rows = None
-        note = None
-        demo_rows = _EDGAR_DB.get(t) or []
-        cik = demo_rows[0].get("cik") if demo_rows else None
-        if cik:
-            try:
-                subs = _real_bundle.fetch_submissions(
-                    cik, _real_bundle.EdgarFetcher().get)
-                recent = _real_bundle._recent_index(subs)
-                rows = []
-                for acc, rec in recent.items():
-                    acc_dashed = rec.get("accessionNumber") or (
-                        f"{acc[:10]}-{acc[10:12]}-{acc[12:]}")
-                    primary = rec.get("primaryDocument") or ""
-                    rows.append({
-                        "doc_id": f"{t.lower()}-{acc}",
-                        "accession": acc_dashed,
-                        "form": rec.get("form") or "",
-                        "filed": rec.get("filingDate") or "",
-                        "period": rec.get("reportDate") or "",
-                        "cik": cik,
-                        "title": f"{t} {rec.get('form') or ''} "
-                                 f"{rec.get('reportDate') or ''}".strip(),
-                        "bytes": None,
-                        "primary_doc": primary or None,
-                        "source_url": (
-                            _real_bundle.archive_base(cik, acc_dashed)
-                            + "/" + primary if primary else None)})
-            except Exception as exc:  # offline: degrade, do not fail the UI
-                rows = None
-                note = ("offline fallback: EDGAR unreachable from this "
-                        f"environment ({exc.__class__.__name__}); showing "
-                        "the bundled demo index")
-        else:
-            note = ("offline fallback: ticker not in the bundled demo "
-                    "index; set a cik and try again")
-        if rows is None:
-            return _demo_edgar_rows(t, forms, window, note)
-        if forms:
-            wanted = {f.strip().upper() for f in forms.split(",") if f.strip()}
-            rows = [r for r in rows if r["form"] in wanted]
-        if window:
-            m = re.match(r"^(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$", window)
-            if not m:
-                raise ValidationError(
-                    "window must be YYYY-MM-DD:YYYY-MM-DD, e.g. "
-                    "2025-01-01:2026-12-31")
-            rows = [r for r in rows if m.group(1) <= r["filed"] <= m.group(2)]
-        return {"ticker": t, "count": len(rows),
-                "cik": rows[0]["cik"] if rows else None, "filings": rows,
-                "note": "live EDGAR submissions via coverageflow.bundle "
-                        "(frozen, hashed snapshots only)"}
-    return _demo_edgar_rows(t, forms, window)
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,19}", t):
+        raise ValidationError("enter a valid ticker symbol")
+    try:
+        fetch = _real_bundle.EdgarFetcher().get
+        cik = _real_bundle.resolve_ticker(t, fetch)
+        if cik is None:
+            return {"ticker": t, "count": 0, "cik": None, "filings": [],
+                    "note": "Ticker not found in the SEC company ticker index."}
+        subs = _real_bundle.fetch_submissions(cik, fetch)
+        recent = _real_bundle._recent_index(subs)
+        rows = []
+        for acc, rec in recent.items():
+            acc_dashed = rec.get("accessionNumber") or (
+                f"{acc[:10]}-{acc[10:12]}-{acc[12:]}")
+            primary = rec.get("primaryDocument") or ""
+            rows.append({
+                "doc_id": f"{t.lower()}-{acc}", "ticker": t,
+                "accession": acc_dashed, "form": rec.get("form") or "",
+                "filed": rec.get("filingDate") or "",
+                "period": rec.get("reportDate") or "", "cik": cik,
+                "title": f"{t} {rec.get('form') or ''} {rec.get('reportDate') or ''}".strip(),
+                "bytes": None, "primary_doc": primary or None,
+                "source_url": (_real_bundle.archive_base(cik, acc_dashed)
+                               + "/" + primary if primary else None)})
+    except _real_bundle.EdgarError as exc:
+        demo = _demo_edgar_rows(t, forms, window,
+            "SEC lookup unavailable. Showing the limited offline demo index.")
+        if demo["filings"]:
+            return demo
+        raise UpstreamError("SEC lookup unavailable. Check your connection and SEC user agent, then try again.") from exc
+    if forms:
+        wanted = {f.strip().upper() for f in forms.split(",") if f.strip()}
+        rows = [r for r in rows if r["form"] in wanted]
+    if window:
+        m = re.match(r"^(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$", window)
+        if not m:
+            raise ValidationError("window must be YYYY-MM-DD:YYYY-MM-DD, e.g. 2025-01-01:2026-12-31")
+        rows = [r for r in rows if m.group(1) <= r["filed"] <= m.group(2)]
+    return {"ticker": t, "count": len(rows), "cik": cik, "filings": rows,
+            "note": "Showing recent filings from the SEC."}
 
 
 def _demo_edgar_rows(t: str, forms: str | None = None,
@@ -3112,19 +3101,19 @@ def list_bundles() -> dict:
 def build_bundle(cik: str, docs: list[str], name: str) -> dict:
     """POST /api/bundles — snapshot selected docs into a new frozen bundle.
 
-    Controller mode: when every requested doc carries EDGAR accession data,
-    the real frozen-bundle builder (coverageflow.bundle.build_bundle — hashed
-    snapshot into the workspace bundles/ directory) runs; anything else
-    degrades to the offline demo manifest with a clear fallback note.
+    Live filings require accession data and a controller workspace.
+    Demo document IDs remain available in the in-memory demo mode.
     """
     if not cik:
         raise ValidationError("cik is required")
     if not docs:
         raise ValidationError("select at least one document to snapshot")
+    if any(isinstance(d, dict) for d in docs):
+        if not _using_real():
+            raise ValidationError("Freezing SEC filings requires a controller workspace. Start CoverageFlow with launch.py.")
+        return _real_build_bundle(cik, docs, name)
     if _using_real():
-        manifest = _real_build_bundle_or_none(cik, docs, name)
-        if manifest is not None:
-            return manifest
+        raise ValidationError("Live snapshots require SEC filing details. Search and select filings again.")
     ticker = next((t for t, rows in _EDGAR_DB.items()
                    if rows and rows[0]["cik"] == cik), "CUSTOM")
     known = {r["doc_id"]: r for r in _EDGAR_DB.get(ticker, [])}
@@ -3162,27 +3151,29 @@ def build_bundle(cik: str, docs: list[str], name: str) -> dict:
     return manifest
 
 
-def _real_build_bundle_or_none(cik: str, docs, name: str) -> dict | None:
-    """Real frozen-bundle snapshot when accession data is available.
-
-    Returns the written manifest dict, or None to signal the offline demo
-    fallback (offline environment / docs without accession data).
-    """
+def _real_build_bundle(cik: str, docs, name: str) -> dict:
+    """Write a verified SEC snapshot or report the failure to the caller."""
+    if name and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]*", name):
+        raise ValidationError("Bundle name must contain only letters, numbers, dots, underscores or hyphens.")
     try:
         specs = []
         for d in docs:
-            if not isinstance(d, dict) or not d.get("accession"):
-                return None
+            if not isinstance(d, dict) or not d.get("accession") or str(d.get("cik")) != cik:
+                raise ValidationError("Select filings from the same company and search again.")
             specs.append(_real_bundle.DocSpec(
                 doc_id=str(d["doc_id"]), accession=str(d["accession"]),
                 form=d.get("form"), filed=d.get("filed"),
                 period=d.get("period"), primary_doc=d.get("primary_doc"),
                 ticker=d.get("ticker")))
-        bundle_id = name or f"bundle-{len(list((_rws() / 'bundles').glob('*'))) if (_rws() / 'bundles').is_dir() else 0:02d}"
+        bundle_id = name or f"{specs[0].ticker.lower()}-{specs[0].filed[:7]}"
         dest = _rws() / "bundles" / bundle_id
+        if dest.exists():
+            raise ConflictError(f"bundle name already exists: {bundle_id}")
         manifest = _real_bundle.build_bundle(str(cik), specs, dest)
+        result = manifest.to_dict()
+        result["bundle_id"] = bundle_id
+        _real_statestore.atomic_write_json(dest / "manifest.json", result)
         _emit("*", "BUNDLE_CREATED", {"bundle_id": bundle_id, "real": True})
-        return manifest.to_dict()
-    except Exception:
-        # offline environment or EDGAR unreachable: caller falls back
-        return None
+        return result
+    except (ValueError, KeyError, _real_bundle.EdgarError) as exc:
+        raise ValidationError(f"Could not freeze SEC filings: {exc}") from exc

@@ -219,23 +219,23 @@ class TestControllerMode:
                controller.get("/api/bundles").json()["bundles"]}
         assert {"intc-2026-10"} <= ids  # repo data/intel-bundle
 
-    def test_edgar_offline_falls_back_with_a_clear_note(self, controller):
+    def test_edgar_offline_falls_back_with_a_clear_note(self, controller, monkeypatch):
+        from coverageflow.bundle import EdgarFetcher, FetchError
+        def offline(*args, **kwargs):
+            raise FetchError("offline")
+        monkeypatch.setattr(EdgarFetcher, "get", offline)
         body = controller.get("/api/edgar/search?ticker=INTC").json()
         assert body["ticker"] == "INTC"
-        assert ("offline fallback" in body["note"]
-                or "frozen, hashed snapshots" in body["note"])
+        assert "offline demo index" in body["note"]
 
-    def test_bundle_build_without_accesssions_uses_the_offline_fallback(
-            self, controller):
+    def test_bundle_build_without_accessions_is_rejected(self, controller):
         r = controller.post("/api/bundles", json={
             "cik": "0000050863",
             "docs": ["intc-10q-2026q3", "intc-8k-earnings-2026q3"],
             "name": "wired-bundle"})
-        assert r.status_code == 200
-        man = r.json()
-        assert man["bundle_id"] == "wired-bundle"
-        assert man["bundle_sha256"]
-        assert client_bundle(controller, "wired-bundle")
+        assert r.status_code == 422
+        assert "SEC filing details" in r.json()["error"]
+        assert not client_bundle(controller, "wired-bundle")
 
     def test_demo_mode_is_restored_when_env_cleared(self, controller,
                                                    monkeypatch):

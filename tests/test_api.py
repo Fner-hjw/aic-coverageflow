@@ -481,7 +481,11 @@ class TestBackends:
 
 
 class TestEdgarBundles:
-    def test_search_filters(self, client):
+    def test_search_filters(self, client, monkeypatch):
+        from coverageflow.bundle import EdgarFetcher, FetchError
+        def offline(*args, **kwargs):
+            raise FetchError("offline")
+        monkeypatch.setattr(EdgarFetcher, "get", offline)
         allr = client.get("/api/edgar/search?ticker=intc").json()
         assert allr["count"] == 4 and allr["cik"] == "0000050863"
         q10 = client.get("/api/edgar/search?ticker=INTC&forms=10-Q").json()
@@ -492,7 +496,7 @@ class TestEdgarBundles:
             "intc-10q-2026q3", "intc-8k-earnings-2026q3"}
         assert client.get("/api/edgar/search").status_code == 422
         assert client.get(
-            "/api/edgar/search?ticker=ZZZZ").json()["count"] == 0
+            "/api/edgar/search?ticker=ZZZZ").status_code == 502
 
     def test_bundle_lifecycle(self, client):
         assert client.get("/api/bundles").json()["count"] >= 2
@@ -558,3 +562,34 @@ class TestStatic:
         assert r.status_code == 200
         assert "text/html" in r.headers["content-type"]
         assert "<!doctype html>" in r.text.lower()
+
+
+def test_live_edgar_ticker_search_and_snapshot(client, monkeypatch, tmp_path):
+    import json
+    from coverageflow import bundle
+    from ui import service
+
+    index = {"0": {"ticker": "NVDA", "cik_str": 1045810}}
+    recent = {"accessionNumber": ["0001045810-25-000001"], "form": ["10-K"],
+              "filingDate": ["2025-02-26"], "reportDate": ["2025-01-26"],
+              "primaryDocument": ["nvda.htm"]}
+    def fetch(self, url, attempts=4):
+        if url.endswith("company_tickers.json"):
+            return json.dumps(index).encode()
+        if "/submissions/" in url:
+            return json.dumps({"filings": {"recent": recent}}).encode()
+        return b"<html>SEC filing</html>"
+    monkeypatch.setattr(bundle.EdgarFetcher, "get", fetch)
+    monkeypatch.setenv("COVERAGEFLOW_WORKSPACE", str(tmp_path))
+    result = client.get("/api/edgar/search?ticker=nvda&forms=10-K").json()
+    assert result["cik"] == "0001045810" and result["count"] == 1
+    assert client.get("/api/edgar/search?ticker=unknown").json()["count"] == 0
+    response = client.post("/api/bundles", json={"cik": result["cik"],
+        "docs": result["filings"], "name": "nvda-test"})
+    assert response.status_code == 200, response.text
+    manifest = response.json()
+    assert manifest["bundle_id"] == "nvda-test"
+    saved = json.loads((tmp_path / "bundles/nvda-test/manifest.json").read_text())
+    assert saved == manifest
+    assert (tmp_path / "bundles/nvda-test" / manifest["documents"][0]["path"]).read_bytes() == b"<html>SEC filing</html>"
+    assert client.post("/api/bundles", json={"cik": result["cik"], "docs": result["filings"], "name": "nvda-test"}).status_code == 409

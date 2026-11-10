@@ -128,6 +128,7 @@ const ICONS = {
   archive: ["M4 7h16v13H4z", "M3 4h18v3H3z", "M9 11h6"],
   alert: ["M12 3 2.5 20h19z", "M12 9v4", "M12 16h.01"],
   clock: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", "M12 7v5l3 2"],
+  calendar: ["M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z", "M8 3v4M16 3v4M4 9h16", "M8 12h2M14 12h2M8 16h2M14 16h2"],
   repeat: ["M4 8h13l-3-3", "M20 16H7l3 3", "M17 5l3 3-3 3", "M7 13l-3 3 3 3"],
   tokens: ["M5 5h14v14H5z", "M9 9h6v6H9z", "M9 2v3M15 2v3M9 19v3M15 19v3", "M2 9h3M2 15h3M19 9h3M19 15h3"],
 };
@@ -612,10 +613,10 @@ Views.dashboard = async function (view) {
 
 function dashboardOverview(rows, ordered) {
   const groups = [
-    { label: "Ready or in progress", states: ["CREATED", "RUNNING"], color: "active" },
-    { label: "Awaiting decision", states: ["PENDING_APPROVAL"], color: "review" },
-    { label: "Needs follow-up", states: ["BLOCKED", "EXHAUSTED", "STOPPED"], color: "followup" },
-    { label: "Closed or decided", states: ["CLOSED", "APPROVED", "REJECTED"], color: "done" },
+    { label: "Ready to start", states: ["CREATED"], color: "active" },
+    { label: "In progress", states: ["RUNNING"], color: "active" },
+    { label: "Needs attention", states: ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED"], color: "review" },
+    { label: "Closed", states: ["CLOSED", "APPROVED", "REJECTED"], color: "done" },
   ];
   const known = new Set(groups.flatMap(group => group.states));
   const segments = groups.map(group => ({ ...group, count: rows.filter(c => group.states.includes(c.status)).length }));
@@ -823,10 +824,14 @@ function caseNextAction(c) {
     title = "Review the case";
     message = "The case is waiting for an approval decision.";
     action = h("a", { class: "btn primary", href: `#/case/${caseId}/approval` }, "Review and decide");
-  } else if (["BLOCKED", "EXHAUSTED", "STOPPED"].includes(st.status)) {
+  } else if (["BLOCKED", "EXHAUSTED"].includes(st.status)) {
     title = "Attention needed";
     message = "Review the case status and available next steps.";
     action = blockedGuidance(c, st);
+  } else if (st.status === "STOPPED") {
+    title = "Start a new case";
+    message = "This case has ended. Reuse the same bundle and mandate to continue.";
+    action = h("a", { class: "btn primary", href: `#/new/${caseId}` }, "New case");
   } else {
     title = "Review the result";
     message = "Review the case outputs and activity.";
@@ -836,7 +841,8 @@ function caseNextAction(c) {
     h("div", { class: "case-next-copy" }, h("span", { class: "eyebrow" }, "Next step"),
       h("h2", null, title), h("p", null, message)),
     h("div", { class: "case-next-actions" }, action,
-      st.status === "CREATED" ? h("a", { class: "case-next-link", href: "#/backends" }, "Model routing") : null));
+      st.status === "CREATED" ? h("a", { class: "case-next-link", href: "#/backends" }, "Model routing") : null,
+      st.status === "STOPPED" ? h("a", { class: "case-next-link", href: `#/terminal/${caseId}` }, "View activity") : null));
 }
 
 function renderCaseOverview(body, c) {
@@ -845,7 +851,7 @@ function renderCaseOverview(body, c) {
   const docs = c.documents_visible_at_cutoff || [];
   const excludedDocs = c.manifest.documents.filter(d => d.filed > c.mandate.cutoff_date);
   const filingRow = (d, excluded = false) => h("div", { class: "case-filing" },
-    h("strong", null, d.form), h("span", null, d.doc_id), h("span", null, d.filed),
+    h("strong", null, d.form), h("span", null, d.doc_id), h("span", { class: "filing-date-text" }, d.filed),
     excluded ? h("span", { class: "chip minor" }, "After cutoff. Excluded.") : null);
   const overviewPanel = (name, className, ...content) => {
     const panel = labeledPanel(name, ...content); panel.classList.add(className); return panel;
@@ -900,8 +906,10 @@ function renderCaseOverview(body, c) {
               h("p", null, "Test interruption and recovery. Interrupting a stage affects this case."),
               h("div", { class: "control-actions" },
                 h("button", { class: "btn danger", onclick: () => doKill(c.case_id) }, "Interrupt a stage"),
-                h("a", { class: "btn", href: "#/demo" }, "Open rehearsal"))) : null,
-            h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log"))),
+                h("a", { class: "btn", href: "#/demo" }, "Open rehearsal"),
+                h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log"))) :
+              h("div", { class: "control-actions" },
+                h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log")))),
       ),
       h("div", null,
         overviewPanel("Source snapshot", "overview-sources",
@@ -962,13 +970,8 @@ async function doReapprove(caseId, byInput, whyInput) {
 }
 
 function blockedGuidance(c, st) {
-  if (!["BLOCKED", "EXHAUSTED", "STOPPED"].includes(st.status)) return null;
+  if (!["BLOCKED", "EXHAUSTED"].includes(st.status)) return null;
   const code = (st.reason || {}).code || st.status;
-  const freshLink = (note) => h("div", { class: "ok-box" },
-    h("b", null, "The way forward: a fresh case from the same bundle."),
-    h("p", { class: "mb0" }, note),
-    h("a", { class: "btn primary small", href: `#/new/${c.case_id}` },
-      "New case with this mandate →"));
   if (st.status === "BLOCKED" && code === "APPROVAL_EXPIRED") {
     const by = h("input", { type: "text", placeholder: "Approver name" });
     const why = h("input", { type: "text",
@@ -1013,9 +1016,7 @@ function blockedGuidance(c, st) {
         h("a", { class: "btn small", href: `#/terminal/${c.case_id}` },
           "Inspect the trace →")));
   }
-  return h("div", { class: "err-box mt2" },
-    h("b", null, `Case is ${st.status}.`),
-    freshLink("Start a new case from the same bundle."));
+  return null;
 }
 
 /* dispatch a run. replay=false -> the operator's ACTIVE backend (set on
@@ -1817,7 +1818,7 @@ Views.newCase = async function newCase(view, fromId) {
     ticker: h("input", { type: "hidden", value: "" }),
     period: h("input", { type: "text", placeholder: "FY2027Q1", value: "fy2027q1" }),
     cik: h("input", { type: "hidden", value: "" }),
-    cutoff: h("input", { type: "date", value: "2026-10-30" }),
+    cutoff: filingDatePicker("Cutoff date", "2026-10-30").root,
     bundle: h("select"),
     trigger: h("select"),
     docsBox: h("div"),
@@ -2088,7 +2089,7 @@ Views.newCase = async function newCase(view, fromId) {
       W.docsBox.append(h("div", { class: "row", style: vis ? "" : "opacity:.45" },
         h("span", { class: "chip " + (vis ? "ok" : "major") }, d.form),
         h("span", { class: "mono small grow" }, d.doc_id),
-        h("span", { class: "mono small muted" }, d.filed),
+        h("span", { class: "mono small muted filing-date-text" }, d.filed),
         vis ? null : h("span", { class: "chip major" }, "Post-cutoff")));
     }
     const trig = W.trigger;
@@ -2167,7 +2168,8 @@ Views.newCase = async function newCase(view, fromId) {
         h("div", null, h("dt", null, "CIK"), cikDisplay)),
       identityStatus,
       h("div", { class: "form-grid" },
-        label("period label", W.period), label("cutoff date", W.cutoff),
+        label("period label", W.period),
+        h("div", { class: "f filing-date-label" }, h("span", null, "Cutoff date"), W.cutoff),
         label("trigger document", W.trigger)),
       src ? W.idWarn : null,
       h("details", { class: "bundle-documents" },
@@ -2228,6 +2230,102 @@ Views.newCase = async function newCase(view, fromId) {
   }
 };
 
+/* A calendar that follows the same visual language as the rest of the desk. */
+function filingDatePicker(label, initialValue = "") {
+  const now = () => new Date();
+  let selected = "";
+  let displayed = new Date(now().getFullYear(), now().getMonth(), 1);
+  let outside = null;
+  const popup = h("div", { class: "filing-calendar", hidden: "", role: "dialog",
+    "aria-label": `${label} calendar` });
+  const trigger = h("button", { type: "button", class: "filing-date-trigger",
+    "aria-label": label, "aria-haspopup": "dialog", "aria-expanded": "false" },
+    h("span", { class: "filing-date-value" }, "Select date"),
+    h("span", { class: "filing-date-icon", "aria-hidden": "true" }, icon("calendar")));
+  const root = h("div", { class: "filing-date-field" }, trigger, popup);
+  const iso = d => `${String(d.getFullYear()).padStart(4, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const nice = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const parse = v => { const [y, m, d] = v.split("-").map(Number); return new Date(y, m - 1, d); };
+  function close(focus = false) {
+    popup.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    if (outside) { outside.abort(); outside = null; }
+    if (focus) trigger.focus();
+  }
+  Object.defineProperty(root, "value", {
+    get: () => selected,
+    set: value => {
+      selected = value || "";
+      $(".filing-date-value", trigger).textContent = selected ? nice(parse(selected)) : "Select date";
+      trigger.classList.toggle("has-value", Boolean(selected));
+    },
+  });
+  root.value = initialValue;
+  function choose(value) {
+    const changed = selected !== value;
+    root.value = value;
+    close(true);
+    if (changed) root.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  function draw() {
+    const year = displayed.getFullYear(), month = displayed.getMonth();
+    const monthSelect = h("select", { "aria-label": "Month", onchange: e => {
+      displayed = new Date(year, Number(e.target.value), 1); draw(); $("select", popup).focus();
+    } }, ...Array.from({ length: 12 }, (_, m) => h("option", { value: m },
+      new Date(2024, m, 1).toLocaleDateString("en-US", { month: "long" }))));
+    monthSelect.value = String(month);
+    const yearInput = h("input", { type: "number", min: "1900", max: "9999", value: year,
+      "aria-label": "Year", onchange: e => {
+        const y = Number(e.target.value);
+        if (Number.isInteger(y) && y >= 1900 && y <= 9999) displayed = new Date(y, month, 1);
+        draw(); $("input", popup).focus();
+      } });
+    const move = (n, name) => {
+      const next = new Date(year, month + n, 1);
+      if (next.getFullYear() < 1900 || next.getFullYear() > 9999) return;
+      displayed = next; draw(); $(`[aria-label="${name}"]`, popup).focus();
+    };
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const start = (new Date(year, month, 1).getDay() + 6) % 7;
+    const days = new Date(year, month + 1, 0).getDate();
+    const cells = Array.from({ length: start }, () => h("span", { "aria-hidden": "true" }));
+    for (let day = 1; day <= days; day++) {
+      const date = new Date(year, month, day), value = iso(date);
+      cells.push(h("button", { type: "button", class: "filing-calendar-day" +
+        (value === selected ? " selected" : "") + (value === iso(now()) ? " today" : ""),
+        "aria-label": date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }),
+        "aria-pressed": value === selected ? "true" : "false", onclick: () => choose(value) }, String(day)));
+    }
+    popup.replaceChildren(
+      h("div", { class: "filing-calendar-header" },
+        h("div", { class: "filing-calendar-selects" }, monthSelect, yearInput),
+        h("div", { class: "filing-calendar-nav" },
+          h("button", { type: "button", "aria-label": "Previous month", onclick: () => move(-1, "Previous month") }, "‹"),
+          h("button", { type: "button", "aria-label": "Next month", onclick: () => move(1, "Next month") }, "›"))),
+      h("div", { class: "filing-calendar-weekdays", "aria-hidden": "true" }, ...weekdays.map(d => h("span", null, d))),
+      h("div", { class: "filing-calendar-days" }, ...cells),
+      h("div", { class: "filing-calendar-footer" },
+        h("button", { type: "button", onclick: () => choose("") }, "Clear"),
+        h("button", { type: "button", onclick: () => choose(iso(now())) }, "Today")));
+  }
+  trigger.addEventListener("click", () => {
+    if (!popup.hidden) { close(); return; }
+    if (selected) { const d = parse(selected); displayed = new Date(d.getFullYear(), d.getMonth(), 1); }
+    else { const d = now(); displayed = new Date(d.getFullYear(), d.getMonth(), 1); }
+    draw(); popup.hidden = false; trigger.setAttribute("aria-expanded", "true");
+    popup.style.transform = "";
+    const bounds = popup.getBoundingClientRect();
+    const shift = bounds.right > window.innerWidth - 12 ? window.innerWidth - 12 - bounds.right
+      : bounds.left < 12 ? 12 - bounds.left : 0;
+    if (shift) popup.style.transform = `translateX(${shift}px)`;
+    outside = new AbortController();
+    document.addEventListener("pointerdown", e => { if (!root.contains(e.target)) close(); }, { signal: outside.signal });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") { e.preventDefault(); close(true); } }, { signal: outside.signal });
+    $("select", popup).focus();
+  });
+  return { root, get value() { return selected; } };
+}
+
 /* ----------------------------------------------- bundle builder ---------- */
 
 Views.bundles = async function bundles(view) {
@@ -2238,52 +2336,123 @@ Views.bundles = async function bundles(view) {
 
   const tickerIn = h("input", { type: "text", value: "INTC" });
   const formsIn = h("input", { type: "text", placeholder: "10-K, 10-Q, 8-K (blank = all)" });
-  const winIn = h("input", { type: "text", placeholder: "2025-01-01:2026-12-31" });
+  const filedFrom = filingDatePicker("Filed from");
+  const filedTo = filingDatePicker("Filed to");
   const nameIn = h("input", { type: "text", placeholder: "INTC-2026-10 frozen snapshot" });
   const results = h("div", { class: "mt2" });
   const note = h("div");
   const chosen = new Map();   // doc_id -> row
   let cikVal = null;
   const chosenBox = h("div", { class: "panel inset mt2" });
+  let filings = [], filingGroup = "all", filingPage = 0;
+  const pageSize = 8;
+  const groups = [
+    ["all", "All filings"], ["reports", "Annual and quarterly"],
+    ["current", "Current reports"], ["ownership", "Ownership"], ["other", "Other"],
+  ];
+  function groupFor(form) {
+    const value = String(form || "").toUpperCase();
+    if (/^(10-K|10-Q|20-F|40-F)(\/A)?$/.test(value)) return "reports";
+    if (/^(8-K|6-K)(\/A)?$/.test(value)) return "current";
+    if (/^(3|4|5|144|SC 13D|SC 13G)(\/A)?$/.test(value)) return "ownership";
+    return "other";
+  }
+  function filingName(form) {
+    const names = {"10-K": "Annual report", "10-Q": "Quarterly report", "8-K": "Current report",
+      "20-F": "Annual report", "40-F": "Annual report", "6-K": "Foreign issuer report",
+      "3": "Initial ownership", "4": "Ownership change", "5": "Annual ownership", "144": "Proposed securities sale",
+      "SC 13D": "Beneficial ownership", "SC 13G": "Beneficial ownership"};
+    const code = String(form || "").toUpperCase();
+    const base = code.replace(/\/A$/, "");
+    return (names[base] || "SEC filing") + (base !== code ? " amendment" : "");
+  }
+  function paintFilings() {
+    if (!filings.length) {
+      results.replaceChildren(emptyState(`No filings found for ${tickerIn.value}`, "Check the ticker, forms, and filed window."));
+      return;
+    }
+    const matching = filingGroup === "all" ? filings : filings.filter(d => groupFor(d.form) === filingGroup);
+    const pages = Math.max(1, Math.ceil(matching.length / pageSize));
+    filingPage = Math.min(filingPage, pages - 1);
+    const start = filingPage * pageSize;
+    const filters = h("div", { class: "filing-filters", role: "group", "aria-label": "Filter filings by type" },
+      ...groups.map(([key, label]) => {
+        const count = key === "all" ? filings.length : filings.filter(d => groupFor(d.form) === key).length;
+        return h("button", { type: "button", class: "filing-filter" + (filingGroup === key ? " active" : ""),
+          "aria-pressed": filingGroup === key ? "true" : "false", onclick: () => {
+            filingGroup = key; filingPage = 0; paintFilings();
+          } }, label, h("span", null, String(count)));
+      }));
+    const rows = matching.slice(start, start + pageSize).map(d => {
+      const selected = chosen.has(d.doc_id);
+      const meta = [`Filed ${d.filed || "Not available"}`];
+      if (d.period) meta.push(`Period ended ${d.period}`);
+      if (typeof d.bytes === "number") meta.push(fmt.mb(d.bytes));
+      return h("article", { class: "filing-result" },
+        h("div", { class: "filing-result-main" },
+          h("div", { class: "filing-result-heading" },
+            h("span", { class: "filing-result-form" }, d.form || "Filing"),
+            h("strong", null, filingName(d.form))),
+          h("div", { class: "filing-result-meta" }, ...meta.map(text => h("span", null, text))),
+          d.source_url ? h("a", { class: "filing-result-link", href: d.source_url, target: "_blank", rel: "noopener noreferrer" }, "View filing ↗") : null),
+        h("button", { type: "button", class: "btn small filing-select" + (selected ? " selected" : ""),
+          "aria-label": `${selected ? "Remove" : "Select"} ${d.form || "filing"} filed ${d.filed || "date unavailable"}`,
+          "aria-pressed": selected ? "true" : "false", onclick: () => {
+            if (selected) chosen.delete(d.doc_id); else chosen.set(d.doc_id, d);
+            paintChosen(); paintFilings();
+          } }, icon(selected ? "check" : "create"), h("span", null, selected ? "Selected" : "Select")));
+    });
+    const paging = matching.length ? h("div", { class: "filing-pagination" },
+      h("span", { "aria-live": "polite" }, `Showing ${start + 1}–${Math.min(start + pageSize, matching.length)} of ${matching.length}`),
+      h("div", { class: "filing-pagination-controls" },
+        h("button", { type: "button", class: "btn small", disabled: filingPage === 0 ? "" : null,
+          onclick: () => { filingPage--; paintFilings(); } }, "Previous"),
+        h("span", null, `${filingPage + 1} / ${pages}`),
+        h("button", { type: "button", class: "btn small", disabled: filingPage >= pages - 1 ? "" : null,
+          onclick: () => { filingPage++; paintFilings(); } }, "Next"))) :
+      h("p", { class: "hint" }, "No filings in this category.");
+    results.replaceChildren(h("div", { class: "filing-results-header" },
+      h("div", null, h("strong", null, "Search results"), h("span", null, "Most recent first"))),
+      filters, h("div", { class: "filing-result-list" }, ...rows), paging);
+  }
 
   function paintChosen() {
     chosenBox.replaceChildren(
       h("label", { class: "label" }, `Selected for snapshot (${chosen.size})`),
-      chosen.size ? h("table", { class: "grid bundle-table" },
+      chosen.size ? h("table", { class: "grid bundle-table selected-filings-table" },
         h("thead", null, h("tr", null, h("th", null, "Form"), h("th", null, "Document ID"),
           h("th", { class: "num" }, "Filed"), h("th", null, ""))),
         h("tbody", null, ...[...chosen.entries()].map(([docId, d]) =>
           h("tr", null, h("td", { "data-label": "Form" }, d.form), h("td", { class: "id", "data-label": "Document ID" }, docId),
-            h("td", { class: "num", "data-label": "Filed" }, d.filed),
-            h("td", { class: "bundle-table-action" }, h("button", { class: "btn small danger", "aria-label": `Remove ${docId}`,
-              onclick: () => { chosen.delete(docId); paintChosen(); } }, "✕"))))))
+            h("td", { class: "num filing-date-text", "data-label": "Filed" }, d.filed),
+            h("td", { class: "bundle-table-action" }, h("button", { class: "btn small danger selected-filing-remove", "aria-label": `Remove ${docId}`,
+              onclick: () => { chosen.delete(docId); paintChosen(); paintFilings(); } }, "✕"))))))
         : emptyState("No documents selected", "Search a ticker and add filings to the snapshot."));
   }
 
   async function search() {
+    if (filedFrom.value && filedTo.value && filedFrom.value > filedTo.value) {
+      results.replaceChildren(h("div", { class: "err-box", role: "alert" },
+        "The start date must be on or before the end date."));
+      return;
+    }
     results.replaceChildren(loadingRow("Filings"));
+    note.replaceChildren();
+    chosen.clear(); paintChosen(); W_cik().value = "";
     const q = new URLSearchParams({ ticker: tickerIn.value });
     if (formsIn.value) q.set("forms", formsIn.value);
-    if (winIn.value) q.set("window", winIn.value);
+    if (filedFrom.value || filedTo.value)
+      q.set("window", `${filedFrom.value || "0001-01-01"}:${filedTo.value || "9999-12-31"}`);
     const r = await guard(() => Api.get(`/api/edgar/search?${q}`), "search failed");
     if (!r.ok) { results.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
     cikVal = r.data.cik;
     if (r.data.cik) W_cik().value = r.data.cik;
-    note.replaceChildren(h("p", { class: "hint" }, r.data.note));
-    results.replaceChildren(
-      r.data.filings.length ? h("table", { class: "grid bundle-table" },
-        h("thead", null, h("tr", null, h("th", null, "Form"), h("th", null, "Title"),
-          h("th", { class: "num" }, "Filed"), h("th", { class: "num" }, "Size"),
-          h("th", null, ""))),
-        h("tbody", null, ...r.data.filings.map(d => h("tr", null,
-          h("td", { "data-label": "Form" }, h("span", { class: "chip" }, d.form)),
-          h("td", { "data-label": "Document" }, h("div", null, h("a", { href: d.source_url }, d.doc_id), h("div", { class: "hint" }, d.title))),
-          h("td", { class: "num", "data-label": "Filed" }, d.filed),
-          h("td", { class: "num", "data-label": "Size" }, fmt.mb(d.bytes)),
-          h("td", { class: "bundle-table-action" }, chosen.has(d.doc_id)
-            ? h("span", { class: "chip ok" }, "Selected")
-            : h("button", { class: "btn small", onclick: () => { chosen.set(d.doc_id, d); paintChosen(); } }, "Select"))))))
-        : emptyState(`No ${tickerIn.value} filings in index`, "Try another ticker or widen the window. The demo index covers Intel and AMD."));
+    const sourceNote = /^live (?:edgar|sec) submissions/i.test(r.data.note || "")
+      ? "Showing recent filings from the SEC." : r.data.note;
+    note.replaceChildren(sourceNote ? h("p", { class: "hint" }, sourceNote) : null);
+    filings = [...r.data.filings].sort((a, b) => String(b.filed || "").localeCompare(String(a.filed || "")));
+    filingGroup = "all"; filingPage = 0;
+    paintFilings();
   }
 
   function W_cik() { return view.querySelector("#cik-in"); }
@@ -2291,7 +2460,7 @@ Views.bundles = async function bundles(view) {
 
   async function snapshot() {
     const r = await guard(() => Api.post("/api/bundles", {
-      cik: cikIn.value, docs: [...chosen.keys()], name: nameIn.value || undefined,
+      cik: cikIn.value, docs: [...chosen.values()].map(d => d.accession ? d : d.doc_id), name: nameIn.value || undefined,
     }), "snapshot failed");
     if (!r.ok) return;
     toast("Bundle frozen", `${r.data.bundle_id}, ${r.data.documents.length} documents, ${r.data.bundle_sha256.slice(0, 18)}…`);
@@ -2308,7 +2477,8 @@ Views.bundles = async function bundles(view) {
           h("div", { class: "form-grid" },
             h("label", { class: "f" }, h("span", null, "Ticker"), tickerIn),
             h("label", { class: "f" }, h("span", null, "Forms"), formsIn),
-            h("label", { class: "f" }, h("span", null, "Filed window"), winIn)),
+            h("div", { class: "f filing-date-label" }, h("span", null, "Filed from"), filedFrom.root),
+            h("div", { class: "f filing-date-label" }, h("span", null, "Filed to"), filedTo.root)),
           h("div", { class: "actions" },
             h("button", { class: "btn primary", onclick: search }, "Search filings")),
           note, results),
@@ -2327,7 +2497,7 @@ Views.bundles = async function bundles(view) {
             h("td", { class: "id", "data-label": "Bundle" }, b.bundle_id),
             h("td", { class: "id muted", "data-label": "SHA-256" }, (b.bundle_sha256 || "").slice(0, 18) + "…"),
             h("td", { class: "num", "data-label": "Documents" }, String(b.documents.length)),
-            h("td", { class: "num", "data-label": "Cutoff" }, b.as_of_cutoff)))))
+            h("td", { class: "num filing-date-text", "data-label": "Cutoff" }, b.as_of_cutoff)))))
           : emptyState("No bundles", "Create one from the search results."))));
   paintChosen();
 };

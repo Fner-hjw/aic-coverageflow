@@ -143,9 +143,9 @@ class Manifest:
 class EdgarFetcher:
     """Rate-limited EDGAR GET client returning raw bytes."""
 
-    def __init__(self, min_interval: float = MIN_INTERVAL_SECONDS, user_agent: str = USER_AGENT):
+    def __init__(self, min_interval: float = MIN_INTERVAL_SECONDS, user_agent: str | None = None):
         self.min_interval = min_interval
-        self.user_agent = user_agent
+        self.user_agent = user_agent or os.environ.get("COVERAGEFLOW_SEC_USER_AGENT", USER_AGENT)
         self._last_request = 0.0
         self.urls: list[str] = []
 
@@ -175,6 +175,20 @@ class EdgarFetcher:
         if wait > 0:
             time.sleep(wait)
         self._last_request = time.monotonic()
+
+
+def resolve_ticker(ticker: str, fetch: Fetch) -> str | None:
+    """Resolve an exact ticker using the SEC's public company ticker index."""
+    try:
+        entries = json.loads(fetch("https://www.sec.gov/files/company_tickers.json").decode("utf-8"))
+        if not isinstance(entries, dict):
+            raise ValueError("unexpected ticker index format")
+        for entry in entries.values():
+            if str(entry.get("ticker", "")).upper() == ticker.upper():
+                return f"{int(entry['cik_str']):010d}"
+        return None
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise FetchError(f"SEC ticker index is invalid: {exc}") from exc
 
 
 def submissions_url(cik: str) -> str:
@@ -266,7 +280,7 @@ def build_bundle(
         form = _verify(spec.form, rec["form"], "form", spec.doc_id)
         filed = _verify(spec.filed, rec["filingDate"], "filed", spec.doc_id)
         period = _verify(spec.period, rec["reportDate"], "period", spec.doc_id)
-        primary = spec.primary_doc or rec["primaryDocument"]
+        primary = _verify(spec.primary_doc, rec["primaryDocument"], "primary_doc", spec.doc_id)
         if spec.doc_id in seen:
             raise ValueError(f"duplicate doc_id {spec.doc_id!r}")
         seen.add(spec.doc_id)

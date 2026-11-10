@@ -166,6 +166,20 @@ command above. The UI service ships with deterministic in-memory demo data and
 switches to a real workspace in controller mode via `COVERAGEFLOW_WORKSPACE`,
 wired by the integration stream.)
 
+## SEC filing search
+
+The source bundle search resolves ticker symbols through the SEC company ticker
+index and searches the recent filings in the SEC submissions feed. It does not
+include older filings stored in the SEC's historical submissions files. The
+SEC index does not cover every security or historical ticker. An unavailable SEC
+connection falls back to the small Intel/AMD demo index when possible; other
+lookups report an error. Set an identifying user agent before launching, for
+example `export COVERAGEFLOW_SEC_USER_AGENT="Your Name your@email.com"`.
+
+Live SEC filings can be searched in either mode. Freezing them requires a
+controller workspace, such as the workspace opened by `python3 launch.py`.
+The demo-only server cannot freeze live filings.
+
 ## Backend configuration
 
 Role dispatches (per fresh call) use one backend, selected per case:

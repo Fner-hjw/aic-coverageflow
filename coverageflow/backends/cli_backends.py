@@ -296,14 +296,19 @@ class _CliBackendBase:
 
 
 class ClaudeBackend(_CliBackendBase):
-    """`claude -p <prompt> --output-format json` (fresh invocation per call)."""
+    """`claude -p` pinned to Sonnet at medium effort (fresh invocation)."""
 
     name = "claude"
     cli_binary = "claude"
 
     def _build_args(self, prompt: str, call: "RoleCall",
                     timeout: float) -> tuple[list[str], Path | None]:
-        return ["-p", prompt, "--output-format", "json"], None
+        return [
+            "-p", prompt,
+            "--model", "sonnet",
+            "--effort", "medium",
+            "--output-format", "json",
+        ], None
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         try:
@@ -342,14 +347,19 @@ class ClaudeBackend(_CliBackendBase):
 
 
 class CodexBackend(_CliBackendBase):
-    """`codex exec <prompt> --json` (NDJSON event stream on stdout)."""
+    """`codex exec` pinned to GPT-6 Luna at high effort."""
 
     name = "codex"
     cli_binary = "codex"
 
     def _build_args(self, prompt: str, call: "RoleCall",
                     timeout: float) -> tuple[list[str], Path | None]:
-        return ["exec", prompt, "--json"], None
+        return [
+            "exec", prompt,
+            "--model", "gpt-6-luna",
+            "--config", 'model_reasoning_effort="high"',
+            "--json",
+        ], None
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         message: str | None = None
