@@ -431,6 +431,67 @@ class TestCandidateChangeResetsStreak:
         assert cand_a and cand_b and cand_a != cand_b
 
 
+class TestCandidateIdIgnoresPerRoundBookkeeping:
+    """The id digests what the artifacts SAY, not which round said it.
+
+    Every round stamps a fresh request_id into the artifacts and the note's
+    header. Digesting that made the same candidate look new every round, so
+    the clean-review streak reset forever and acceptance could never fire --
+    the case could only ever exhaust.
+    """
+
+    def test_a_rebuild_with_identical_content_keeps_the_candidate_id(self, tmp_path):
+        scripts = {"critic_c1": [None, _critic_findings()]}
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        ids = {c.candidate_id for c in dispatch.calls_of("critic_c1")}
+        assert len(ids) == 1, ids
+        st = load_state(case_dir)
+        assert st["candidate"]["clean_review_rounds"] == 2
+        assert st["status"] == "PENDING_APPROVAL"
+
+    def test_the_note_header_request_id_is_not_part_of_the_digest(self):
+        from coverageflow.orchestrator import _blank_candidate
+        a = ("> **Candidate:** cand-aaa · **Request:** req-0001\n"
+             "Revenue rose to 13,500 [EV:income_statement.revenue].\n")
+        b = ("> **Candidate:** cand-bbb · **Request:** req-9999\n"
+             "Revenue rose to 13,500 [EV:income_statement.revenue].\n")
+        assert _blank_candidate(a) == _blank_candidate(b)
+
+
+class TestCriticsRunConcurrently:
+    def test_the_four_critics_are_in_flight_together(self, tmp_path):
+        """Serializing them added ~6 minutes to every round.
+
+        The four critics are independent fresh-context reviews of the same
+        candidate, so nothing about the review depends on their order.
+        """
+        import threading
+        import time
+
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        original = dispatch.__call__
+        lock = threading.Lock()
+        live = {"now": 0, "peak": 0}
+
+        def slow(call):
+            if not call.role.startswith("critic_c"):
+                return original(call)
+            with lock:
+                live["now"] += 1
+                live["peak"] = max(live["peak"], live["now"])
+            try:
+                time.sleep(0.05)
+                return original(call)
+            finally:
+                with lock:
+                    live["now"] -= 1
+
+        orch.dispatch = slow
+        orch.run()
+        assert live["peak"] >= 2, live
+
+
 class TestUnreproducedCriticFindingsClose:
     """A critic that stops raising a finding has verified it fixed.
 
@@ -495,6 +556,95 @@ class TestUnreproducedCriticFindingsClose:
         assert raised and raised[0]["status"] == "open"
 
 
+class TestSeverityAwareAcceptance:
+    """Only a blocking finding stops acceptance.
+
+    Critics raise advisory nits (a wording preference, a missing nice-to-have
+    exhibit) that no amount of rebuilding removes. When every open finding
+    blocked, a case with one permanent minor could never be accepted -- it
+    could only burn its round budget and land in EXHAUSTED, which is not a
+    verdict on the work. A ``major``/``critical`` finding still blocks.
+    """
+
+    @staticmethod
+    def _finding(severity: str) -> dict:
+        return {
+            "role": "critic_c1", "round": None, "verdict": "findings",
+            "findings": [{
+                "finding_id": None, "severity": severity,
+                "summary": "exhibit 4 would read better as a waterfall",
+                "evidence": "report section 4 is a table",
+                "affected_artifacts": ["report.md"],
+                "required_evidence": "a waterfall exhibit",
+            }],
+            "coverage": {"rubric_version": "1.0",
+                         "areas_checked": ["narrative_quality"]},
+            "conformance": "schema 1.0", "prompt_version": "1.0",
+        }
+
+    def _scripts(self, severity: str) -> dict:
+        # critic_c1 raises the same nit every single round: a permanent
+        # advisory finding that no rebuild will ever remove
+        raised = self._finding(severity)
+
+        def c1(payload):
+            return raised
+
+        scripts = {"critic_c1": c1}
+        for i in range(2, 5):
+            role = f"critic_c{i}"
+            scripts[role] = (lambda r: lambda payload: {
+                "role": r, "round": None, "verdict": "clean", "findings": [],
+                "verified_resolutions": [],
+                "coverage": {"rubric_version": "1.0",
+                             "areas_checked": ["citation_integrity"]},
+                "conformance": "schema 1.0", "prompt_version": "1.0",
+            })(role)
+        return scripts
+
+    def test_a_minor_finding_does_not_block_acceptance(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts=self._scripts("minor"))
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "PENDING_APPROVAL"
+        # the nit is still open and rides along for the human approver
+        rows = ledger.FindingsLedger(case_dir).all_findings()
+        minor = [r for r in rows if r["severity"] == "minor"]
+        assert minor and minor[0]["status"] == "open"
+        # a permanent nit never even forces a repair round
+        assert not list((case_dir / "rounds").glob("*/repair-packet.json"))
+
+    def test_a_major_finding_still_blocks_acceptance(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts=self._scripts("major"))
+        orch.run()
+        st = load_state(case_dir)
+        # never accepted: the major is still open and the case needs a human
+        assert st["status"] == "PENDING_APPROVAL"
+        assert st["candidate"]["requires_acknowledgement"] is True
+        rows = ledger.FindingsLedger(case_dir).all_findings()
+        major = [r for r in rows if r["severity"] == "major"]
+        assert major and major[0]["status"] == "open"
+
+    def test_repair_packet_carries_the_major_and_not_the_minor(self, tmp_path):
+        # a minor must never become a repair obligation: feeding it back made
+        # the critics re-raise it verbatim, so the ledger could not drain
+        scripts = self._scripts("major")
+        minor = self._finding("minor")
+        minor["role"] = "critic_c2"
+        # distinct summary: the dedup_key is derived from it, and an identical
+        # one would bump the major's row instead of opening its own
+        minor["findings"][0]["summary"] = "the appendix would read better as a table"
+        scripts["critic_c2"] = lambda payload: minor
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        packet = json.loads((case_dir / "rounds" / "round-001" /
+                             "repair-packet.json").read_text())
+        assert [f["severity"] for f in packet["open_findings"]] == ["major"]
+        assert [f["severity"] for f in packet["advisory_findings"]] == ["minor"]
+
+
 class TestIngestReuseAcrossRounds:
     """Ingest is a pure function of the frozen input manifest.
 
@@ -533,6 +683,40 @@ class TestIngestReuseAcrossRounds:
         reused = [e for e in events if e.get("event") == "INGEST_REUSED"]
         assert reused and reused[0]["detail"]["from_round"] == 1
 
+    def test_second_build_reuses_the_verified_facts(self, tmp_path):
+        """The extractor reads the frozen ingest report and nothing else.
+
+        Re-running it every round cost ~150s of the round for no new
+        information.
+        """
+        finding = _critic_findings()
+        finding["findings"][0]["affected_artifacts"] = ["report.md"]
+        writer_alt = {"__stale": False, "role": "writer",
+                      "report_md": _stub.ALT_REPORT_MD,
+                      "conformance": "schema 1.0", "prompt_version": "1.0"}
+        scripts = {"critic_c1": [None, finding],
+                   "writer": [_writer_output(_stub.DEFAULT_REPORT_MD), writer_alt]}
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        st = load_state(case_dir)
+        assert st["budget"]["used"]["rounds"] == 2
+        assert len(dispatch.calls_of("extractor")) == 1
+        events = [json.loads(line) for line in
+                  (case_dir / "trace.jsonl").read_text().splitlines() if line.strip()]
+        reused = [e for e in events if e.get("event") == "EXTRACTOR_REUSED"]
+        assert reused and reused[0]["detail"]["from_round"] == 1
+
+    def test_a_finding_against_facts_forces_a_fresh_extraction(self, tmp_path):
+        """A repair packet that names facts.json must be honoured."""
+        writer_alt = {"__stale": False, "role": "writer",
+                      "report_md": _stub.ALT_REPORT_MD,
+                      "conformance": "schema 1.0", "prompt_version": "1.0"}
+        scripts = {"critic_c1": [None, _critic_findings()],   # names facts.json
+                   "writer": [_writer_output(_stub.DEFAULT_REPORT_MD), writer_alt]}
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
+        orch.run()
+        assert len(dispatch.calls_of("extractor")) == 2
+
     def test_a_changed_input_manifest_forces_a_fresh_ingest(self, tmp_path):
         orch, dispatch, clk, case_dir = build_env(tmp_path)
         orch.run()
@@ -549,6 +733,84 @@ class TestIngestReuseAcrossRounds:
         victim.unlink()
         assert orch._ingest_report_reusable(
             1, statestore.sha256_json(orch.input_manifest())) is None
+
+
+class TestArtifactProvenance:
+    """Every candidate artifact states the cutoff and the bundle it came from.
+
+    The critic checklist requires each artifact's header to carry both. Only
+    the writer's markdown had them, so the extractor described its own header
+    in prose and the checklist was unsatisfiable by any build.
+    """
+
+    def test_every_json_candidate_artifact_carries_the_bundle_header(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        gen = case_dir / "rounds" / "round-001" / "generator"
+        for name in ("facts.json", "forecast_assumptions.json",
+                     "model.json", "valuation.json"):
+            payload = json.loads((gen / name).read_text())
+            prov = payload.get("provenance") or {}
+            assert prov.get("cutoff_date") == "2026-10-30", name
+            assert prov.get("input_manifest_sha256"), name
+            assert prov.get("bundle_id"), name
+
+    def test_engine_input_digest_is_the_digest_of_the_file_on_disk(self, tmp_path):
+        # atomic_write_json pretty-prints, so sha256_json(obj) matches no file
+        # and the provenance chain from facts.json into model.json resolved to
+        # nothing -- a critic read that as a broken chain
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        gen = case_dir / "rounds" / "round-001" / "generator"
+        model = json.loads((gen / "model.json").read_text())
+        assert model["input_facts_sha256"] == statestore.sha256_file(
+            gen / "facts.json")
+        assert model["input_forecast_sha256"] == statestore.sha256_file(
+            gen / "forecast_assumptions.json")
+
+    def test_model_publishes_the_formula_behind_each_derived_series(self, tmp_path):
+        # the only description of net debt used to be the extractor's prose,
+        # which went stale and made a correct figure look unreproducible
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        model = json.loads((case_dir / "rounds" / "round-001" / "generator" /
+                            "model.json").read_text())
+        derivations = model.get("derivations") or {}
+        assert "short_term_investments" in derivations["derived.net_debt"]
+        assert "capital_expenditure" in derivations["derived.fcf"]
+
+
+class TestReuseIsRecordedInTheBudget:
+    """A carried-forward role spends no tokens; the zero must be explained.
+
+    A critic saw zero cumulative spend for ingest and engines and concluded the
+    per-role cap check could not be completed.
+    """
+
+    def test_a_carried_forward_role_is_named_in_the_budget(self, tmp_path):
+        # a round-1 finding forces a rebuild, and the rebuild reuses ingest and
+        # the extractor -- both then spend zero tokens
+        raised = _critic_findings()
+        # the finding must not name facts.json: an open finding against the
+        # extractor's output is exactly what forces it to be re-dispatched
+        raised["findings"][0]["affected_artifacts"] = ["report.md"]
+
+        def c1(payload):
+            return (raised if payload.get("round") == 1
+                    else {"role": "critic_c1", "round": None, "verdict": "clean",
+                          "findings": [], "verified_resolutions": [],
+                          "coverage": {"rubric_version": "1.0",
+                                       "areas_checked": ["citation_integrity"]},
+                          "conformance": "schema 1.0", "prompt_version": "1.0"})
+
+        orch, dispatch, clk, case_dir = build_env(tmp_path, scripts={"critic_c1": c1})
+        orch.run()
+        st = load_state(case_dir)
+        reused = st["budget"]["used"].get("reused_roles") or {}
+        assert reused.get("ingest", 0) >= 1
+        assert reused.get("extractor", 0) >= 1
+        # the engines are deterministic, not reused: they must not be labelled
+        assert "engines" not in reused
 
 
 class TestManifestHeader:
@@ -687,21 +949,36 @@ class TestSingleWriterLock:
 
 
 class TestBudgetExhaustion:
-    def test_rounds_exhaustion_ends_exhausted_with_precise_reason(self, tmp_path):
+    def test_rounds_exhaustion_escalates_a_complete_candidate(self, tmp_path):
+        # the candidate passed every gate and was fully reviewed; the only
+        # thing left is a critic objection the machine cannot settle, so the
+        # case goes to a human instead of dying as EXHAUSTED
         mandate = json.loads(json.dumps(casekit.MANDATE))
         mandate["limits"]["rounds_max"] = 2
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         orch.run()
         st = load_state(case_dir)
-        assert st["status"] == "EXHAUSTED"
-        assert st["reason"]["code"] == "rounds"
-        assert st["reason"]["detail"]["rounds"] == 2
-        assert st["reason"]["detail"]["max"] == 2
-        result = statestore.read_json(case_dir / "result.json")
-        assert result["terminal"] == "EXHAUSTED"
-        assert result["reason"]["code"] == "rounds"
-        assert result["budget_final"]["used"]["rounds"] == 2
+        assert st["status"] == "PENDING_APPROVAL"
+        assert st["candidate"]["requires_acknowledgement"] is True
+        assert st["reason"]["code"] == "ESCALATED"
+        assert st["reason"]["detail"]["budget"]["code"] == "rounds"
+        assert st["reason"]["detail"]["blocking_finding_ids"]
+        assert st["budget"]["used"]["rounds"] == 2
+        events = [e["event"] for e in statestore.read_trace(case_dir)]
+        assert events.count("ESCALATED") == 1
+
+    def test_rounds_exhaustion_still_exhausts_an_unverified_candidate(self, tmp_path):
+        # a gate failure means the work is unverified: that is not something a
+        # human can sign off, so EXHAUSTED stays the answer
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["rounds_max"] = 2
+        orch, dispatch, clk, case_dir = build_env(tmp_path, mandate=mandate)
+        orch.run()
+        st = load_state(case_dir)
+        # the happy path accepts before the budget matters
+        assert st["status"] == "PENDING_APPROVAL"
+        assert not st["candidate"].get("requires_acknowledgement")
 
     def test_role_token_cap_exhaustion(self, tmp_path):
         mandate = json.loads(json.dumps(casekit.MANDATE))
@@ -804,16 +1081,36 @@ class TestBudgetExhaustion:
         # stopping on the counter it had already exhausted
         assert len(dispatch.calls_of("extractor")) > calls_before
 
-    def test_exhaustion_never_grants_acceptance(self, tmp_path):
+    def test_escalation_is_not_acceptance(self, tmp_path):
+        # escalation hands the case to a human; it does not approve anything.
+        # A blanket approval that swallows the objections is refused.
         mandate = json.loads(json.dumps(casekit.MANDATE))
         mandate["limits"]["rounds_max"] = 2
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         orch.run()
-        assert load_state(case_dir)["status"] == "EXHAUSTED"
-        with pytest.raises(RuntimeError):
+        st = load_state(case_dir)
+        assert st["status"] == "PENDING_APPROVAL"
+        with pytest.raises(RuntimeError, match="not acknowledged"):
             orch.record_approval(decision="APPROVED", by="Sup")
-        assert load_state(case_dir)["status"] == "EXHAUSTED"
+        assert load_state(case_dir)["status"] == "PENDING_APPROVAL"
+
+    def test_an_approver_may_sign_off_over_named_objections(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["rounds_max"] = 2
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
+        orch.run()
+        st = load_state(case_dir)
+        ids = st["reason"]["detail"]["blocking_finding_ids"]
+        out = orch.record_approval(decision="APPROVED", by="Sup",
+                                   reasoning="the objection is wrong: the blend "
+                                             "does include the segment",
+                                   acknowledge_findings=ids)
+        assert out["terminal"] == "APPROVED"
+        result = statestore.read_json(case_dir / "result.json")
+        assert result["reason"]["detail"]["acknowledged_findings"] == ids
+        assert "acknowledged" in result["reason"]["message"]
 
 
 class TestApprovalDeadline:
@@ -914,7 +1211,7 @@ class TestRepairPacketsFromCritics:
     def test_unverified_closure_does_not_close_finding(self, tmp_path):
         # A critic claims a resolution but with a WRONG evidence sha: the
         # closure must be rejected by the orchestrator, the finding stays open
-        # and the case can never accept (ends EXHAUSTED on rounds).
+        # and the case can never accept -- it escalates to a human instead.
         def tampering_critic(payload):
             base = _stub._default_critic("critic_c1")(payload)
             if len(payload.get("carried_findings", [])):
@@ -935,7 +1232,8 @@ class TestRepairPacketsFromCritics:
             tmp_path, scripts={"critic_c1": tampering_critic}, mandate=mandate)
         orch.run()
         st = load_state(case_dir)
-        assert st["status"] == "EXHAUSTED"
+        assert st["status"] == "PENDING_APPROVAL"
+        assert st["candidate"]["requires_acknowledgement"] is True
         led = ledger.FindingsLedger(case_dir)
         # the tampered evidence (sha "f"*64) must never appear in ANY close
         # record; only legitimately-verified evidence closed findings
@@ -1512,3 +1810,58 @@ class TestCriticPayload:
         c4 = by_role["critic_c4"]
         assert "tokens_by_role" in c4["dispatch_records"]
         assert c4["dispatch_records"]["role_tokens_max"] > 0
+
+
+class TestExtractionScope:
+    """The model needs an annual anchor, not just the trigger filing.
+
+    A 10-Q prints no annual income statement, so extracting only the trigger
+    left every FY column empty: the workbook had no income statement, no
+    annual cash flow, and no annual ratios.
+    """
+
+    @staticmethod
+    def _manifest(*docs):
+        import copy
+        base = copy.deepcopy(casekit.MANIFEST)
+        base["documents"] = [dict(d) for d in docs]
+        return base
+
+    @staticmethod
+    def _doc(doc_id, form, filed):
+        return {"doc_id": doc_id, "form": form, "filed": filed,
+                "period": filed, "path": f"inputs/{doc_id}.htm",
+                "sha256": "f" * 64, "bytes": 1024,
+                "source_url": "https://www.sec.gov/Archives/example.htm"}
+
+    def test_scope_names_the_trigger_and_the_latest_annual_filing(self, tmp_path):
+        manifest = self._manifest(
+            self._doc("intc-10k-fy2024", "10-K", "2025-01-31"),
+            self._doc("intc-10k-fy2025", "10-K", "2026-01-23"),
+            self._doc("intc-10q-2026q2", "10-Q", "2026-07-24"),
+            self._doc("intc-10q-2026q3", "10-Q", "2026-10-30"),
+            self._doc("intc-10q-2026q4", "10-Q", "2027-01-29"),  # after cutoff
+        )
+        orch, _dispatch, _clk, _case_dir = build_env(tmp_path, manifest=manifest)
+        roles = {d["role"]: d["doc_id"] for d in orch._extraction_scope()}
+        assert roles["trigger"] == "intc-10q-2026q3"
+        assert roles["annual_anchor"] == "intc-10k-fy2025"
+
+    def test_scope_never_reaches_past_the_cutoff(self, tmp_path):
+        manifest = self._manifest(
+            self._doc("intc-10k-fy2025", "10-K", "2026-01-23"),
+            self._doc("intc-10q-2026q3", "10-Q", "2026-10-30"),
+            self._doc("intc-10q-2026q4", "10-Q", "2027-01-29"),
+        )
+        orch, _dispatch, _clk, _case_dir = build_env(tmp_path, manifest=manifest)
+        cutoff = orch.mandate()["cutoff_date"]
+        for doc in orch._extraction_scope():
+            assert doc["filed"] <= cutoff, doc
+
+    def test_a_10k_triggered_case_lists_it_once(self, tmp_path):
+        manifest = self._manifest(
+            self._doc("intc-10k-fy2025", "10-K", "2026-01-23"),
+        )
+        orch, _dispatch, _clk, _case_dir = build_env(tmp_path, manifest=manifest)
+        ids = [d["doc_id"] for d in orch._extraction_scope()]
+        assert ids == ["intc-10k-fy2025"], ids

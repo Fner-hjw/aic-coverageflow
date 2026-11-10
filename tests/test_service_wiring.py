@@ -84,6 +84,12 @@ class TestDemoModeDefault:
         assert {"intc-fy2026q3-20261030", "intc-fy2026q4-20270129",
                 "amd-fy2026q3-20261029"} <= ids
 
+    def test_case_list_exposes_clock_start_from_case_state(self, demo):
+        rows = demo.get("/api/cases").json()["cases"]
+        row = next(r for r in rows if r["case_id"] == "intc-fy2026q3-20261030")
+        state = demo.get(f"/api/cases/{row['case_id']}").json()["state"]
+        assert row["case_clock_started"] == state["pending"]["case_clock_started"]
+
     def test_invalid_workspace_env_falls_back_to_demo(self, tmp_path,
                                                       monkeypatch):
         monkeypatch.setenv("COVERAGEFLOW_WORKSPACE",
@@ -105,6 +111,14 @@ class TestControllerMode:
                                       "intc-fy2026q3-20261030")
         assert rows[0]["status"] == state["status"]
         assert rows[0]["ticker"] == "INTC"
+
+    def test_controller_list_exposes_active_clock_start(self, controller, real_ws, monkeypatch):
+        case_dir = real_ws / "cases" / "intc-fy2026q3-20261030"
+        state = statestore.load_state(case_dir)
+        state["pending"]["case_clock_started"] = "2026-11-10T12:00:00Z"
+        monkeypatch.setattr(service, "_rstate", lambda _: state)
+        row = controller.get("/api/cases").json()["cases"][0]
+        assert row["case_clock_started"] == "2026-11-10T12:00:00Z"
 
     def test_create_and_get_case_roundtrip_via_orchestrator(self, controller):
         r = controller.post("/api/cases", json=WIZARD)
@@ -181,6 +195,24 @@ class TestControllerMode:
                             json={"backend": "replay"})
         assert r.status_code == 200
         assert r.json()["selected"] == "replay"
+        assert [row["name"] for row in r.json()["backends"] if row["selected"]] == ["replay"]
+        assert controller.post("/api/backends/select", json={"backend": "stub"}).status_code == 200
+        rows = controller.get("/api/backends").json()["backends"]
+        assert [row["name"] for row in rows if row["selected"]] == ["stub"]
+
+    def test_api_configuration_is_used_by_dispatch(self, controller, real_ws, monkeypatch):
+        monkeypatch.setenv("COVERAGEFLOW_BASE_URL", "https://old.example/v1")
+        result = controller.post("/api/backends/api/configure", json={
+            "base_url": "https://new.example/v1", "model": "test-model", "api_key": "secret-value"})
+        assert result.status_code == 200, result.text
+        assert "secret-value" not in result.text
+        assert result.json()["selected"] == "api"
+        assert (real_ws / ".coverageflow-api.json").stat().st_mode & 0o077 == 0
+        dispatch, name = service._rdispatch_for("intc-fy2026q3-20261030", "api")
+        assert name == "api"
+        assert dispatch._backend._config() == {"base_url": "https://new.example/v1", "model": "test-model", "api_key": "secret-value"}
+        result = controller.post("/api/backends/api/configure", json={"base_url": "bad", "model": "x"})
+        assert result.status_code == 422
 
     def test_bundles_list_scans_real_manifests(self, controller):
         ids = {b["bundle_id"] for b in
@@ -322,3 +354,118 @@ class TestControllerModeRunOverStub:
         events = statestore.read_trace(case_dir)
         dispatched = [e for e in events if e["event"] == "AGENT_RESULT"]
         assert dispatched and "stub" in dispatched[0]["backend"]
+
+
+class TestReportAndApprovalAtTheHumanGate:
+    """The reviewer must be able to read and sign off what the UI shows.
+
+    `report/v<N>-<candidate8>.md` is the *published* artifact and only exists
+    after approval, so before the fix the Approval tab had no note to render
+    and the evidence panel resolved only extracted facts -- every computed
+    number in the note showed "not resolved".
+    """
+
+    @pytest.fixture()
+    def pending(self, real_ws, controller):
+        case_id = "intc-fy2026q3-20261030"
+        assert controller.post("/api/backends/select",
+                               json={"backend": "stub"}).status_code == 200
+        r = controller.post(f"/api/cases/{case_id}/run", json={"backend": "auto"})
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "PENDING_APPROVAL"
+        return case_id
+
+    def test_report_is_readable_before_any_version_is_published(
+            self, real_ws, controller, pending):
+        case_dir = real_ws / "cases" / pending
+        assert not list((case_dir / "report").glob("v*.md")) if (
+            case_dir / "report").is_dir() else True
+        body = controller.get(f"/api/cases/{pending}/report").json()
+        assert body["version"] == "draft"
+        assert body["is_draft"] is True
+        assert body["markdown"].strip()
+        assert body["word_count"] > 0
+
+    def test_evidence_resolves_derived_and_computed_markers(
+            self, controller, pending):
+        body = controller.get(f"/api/cases/{pending}/report").json()
+        kinds = {e["citation"].get("kind") for e in body["evidence"]}
+        assert "filing" in kinds
+        # the note quotes margins, segment shares and DCF outputs; those are
+        # not extracted facts and used to come back unresolved
+        assert kinds & {"derived", "computed"}
+        assert "unresolved" not in kinds
+
+    def test_acknowledge_findings_must_be_a_list(self, controller, pending):
+        r = controller.post(f"/api/cases/{pending}/approval",
+                            json={"decision": "APPROVED", "by": "Reviewer",
+                                  "acknowledge_findings": "fnd-101"})
+        assert r.status_code == 422, r.text
+        assert "acknowledge_findings" in r.text
+
+
+class TestEvidenceResolution:
+    """`_revidence` resolves the three kinds of marker the note can carry."""
+
+    @pytest.fixture()
+    def case_dir(self, tmp_path):
+        cd = tmp_path / "case"
+        gen = cd / "rounds" / "round-001" / "generator"
+        gen.mkdir(parents=True)
+        (cd / "inputs").mkdir()
+        (cd / "inputs" / "manifest.json").write_text(json.dumps(
+            {"documents": [{"doc_id": "intc-10q-2026q3", "sha256": "abc"}]}))
+        (gen / "facts.json").write_text(json.dumps({"facts": [
+            {"field": "income_statement.revenue", "value": 100.0,
+             "citation": {"doc_id": "intc-10q-2026q3", "slice_id": "s1",
+                          "anchor": "p.1"}},
+            {"field": "income_statement.gross_profit", "value": 40.0,
+             "citation": {"doc_id": "intc-10q-2026q3", "slice_id": "s2",
+                          "anchor": "p.2"}}]}))
+        (gen / "model.json").write_text(json.dumps({
+            "derivations": {
+                "derived.gross_margin":
+                    "income_statement.gross_profit / income_statement.revenue"},
+            "series": {"segments.ccg.revenue": {"2026-Q3": 8097.0,
+                                                "yoy": {}, "qoq": {}}}}))
+        (gen / "valuation.json").write_text(json.dumps({
+            "dcf": {"base": {"revenue": 66052.0}},
+            "sensitivity": {"grid": [[1.0, 2.0]]}}))
+        return cd
+
+    def test_filing_marker_carries_the_document(self, case_dir):
+        ev = service._revidence(case_dir, ["income_statement.revenue"])[0]
+        assert ev["citation"]["kind"] == "filing"
+        assert ev["citation"]["doc_id"] == "intc-10q-2026q3"
+        assert ev["citation"]["doc_sha256"] == "abc"
+
+    def test_derived_marker_carries_the_formula_and_its_inputs(self, case_dir):
+        ev = service._revidence(case_dir, ["derived.gross_margin"])[0]
+        cit = ev["citation"]
+        assert cit["kind"] == "derived"
+        assert cit["source_artifact"] == "model.json"
+        assert cit["formula"].startswith("income_statement.gross_profit")
+        assert [i["field"] for i in cit["inputs"]] == [
+            "income_statement.gross_profit", "income_statement.revenue"]
+        assert all(i["citation"]["doc_id"] for i in cit["inputs"])
+
+    def test_series_marker_carries_the_latest_period(self, case_dir):
+        ev = service._revidence(case_dir, ["segments.ccg.revenue"])[0]
+        assert ev["citation"]["kind"] == "derived"
+        assert ev["citation"]["period"] == "2026-Q3"
+        assert ev["citation"]["value"] == 8097.0
+
+    def test_computed_marker_carries_the_valuation_path(self, case_dir):
+        ev = service._revidence(case_dir, ["dcf.base.revenue"])[0]
+        assert ev["citation"]["kind"] == "computed"
+        assert ev["citation"]["source_artifact"] == "valuation.json"
+        assert ev["citation"]["value"] == 66052.0
+
+    def test_a_whole_table_still_resolves(self, case_dir):
+        ev = service._revidence(case_dir, ["sensitivity.grid"])[0]
+        assert ev["citation"]["kind"] == "computed"
+        assert "1.0" in ev["citation"]["value"]
+
+    def test_an_unknown_marker_is_reported_as_unresolved(self, case_dir):
+        ev = service._revidence(case_dir, ["nope.not_a_field"])[0]
+        assert ev["citation"]["kind"] == "unresolved"

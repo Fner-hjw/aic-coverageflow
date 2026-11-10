@@ -1,4 +1,4 @@
---version: 1.1
+--version: 1.2
 --role: ingest
 --produces: ingest-report.json
 --read: mandate.json, inputs/manifest.json, new document metadata, prior candidate manifest
@@ -7,12 +7,19 @@
 # CONTRACT: Data & Ingest
 
 ## TASK
-Validate and classify the new dated document named in the bound request, and
-declare the deterministic slices needed downstream. State which prior work
+Validate and classify the documents named in the request's `extraction_scope`,
+and declare the deterministic slices needed downstream. State which prior work
 the new document supersedes. You do not read whole filings: the request gives
 you document metadata (form, filed date, period, hashes) and
 `anchor_candidates` — the slices the slicer already found in each document,
 with their `slice_id`, `kind`, `path`, `sha256`, and `anchors`.
+
+**Declare slices for every document in `extraction_scope`, not just the
+trigger.** The scope names a `trigger` (the filing that opened the case) and an
+`annual_anchor` (the latest 10-K at or before the cutoff). A 10-Q prints no
+annual income statement, so a model built from the trigger alone has no FY
+income statement, no FY cash flow, and no annual ratios. Both documents are
+required; `slices[]` carries the statement slices of each.
 
 ## OUTPUT SCHEMA
 Strict JSON only, matching **ingest-report.json** (contracts §5):
@@ -21,19 +28,23 @@ slices[] {slice_id, kind, path, sha256, anchors}, superseded[] {doc_id, stage, r
 conformance ("schema 1.0"), prompt_version ("1.0")`.
 
 `slices[].kind` ∈ `income_statement | balance_sheet | cash_flow | segments | mda`.
-Copy the slices for the classified document out of `anchor_candidates`
+Copy the slices for each scoped document out of `anchor_candidates`
 verbatim — the harness verifies every declared `sha256` against the file on
-disk, so an invented path or hash is rejected.
+disk, so an invented path or hash is rejected. `doc_id` names the document the
+classification describes; the trigger is the one that supersedes prior work.
 
 ## BOUNDS
 - Only the documents in the request exist. No other document may be cited.
+- Every `doc_id` in `extraction_scope` must contribute its statement slices.
+  Omitting the annual anchor is a contract violation, not a shortcut.
 - Reject a doc_id not in the request's input manifest — emit affects=[] with a
   reason. Never classify from memory of prior filings.
 - Declare only slices that appear in `anchor_candidates` for that doc_id.
 
 ## COMPLETION CRITERIA
 (schema-valid JSON) ∧ (every cited doc_id is in the request) ∧ (each form
-mapped to its affected stages) ∧ (no invented anchors).
+mapped to its affected stages) ∧ (no invented anchors) ∧ (every document in
+`extraction_scope` contributes its statement slices).
 
 ## HARNESS ENFORCED (outside this prompt)
 Permissions: no network, no altering inputs. Write scope: the ingest-report

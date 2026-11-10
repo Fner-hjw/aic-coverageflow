@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from coverageflow.export_dossier import (build_dossier, collect_case,
+from coverageflow.export_dossier import (_format_evidence_reference, build_dossier, collect_case,
                                           render_dossier_tex)
 
 CUT = "intc-fy2026q3-20261030"
@@ -117,6 +117,27 @@ def make_mini_case(root: Path) -> Path:
 
 
 class TestRenderDossier:
+    def test_references_distinguish_filings_calculations_and_missing_sources(self):
+        evidence = {
+            "manifest": {"documents": [{"doc_id": "filing", "form": "10-Q",
+                "filed": "2026-10-30", "source_url": "https://www.sec.gov/example.htm"}]},
+            "facts": {"facts": [{"field": "income.revenue", "period": "2026-Q3",
+                "citation": {"doc_id": "filing", "anchor": "Income statement", "locator": "line 3"}},
+                {"field": "income.revenue", "period": "2025-Q3",
+                 "citation": {"doc_id": "filing", "anchor": "Income statement", "locator": "line 3"}}]},
+            "model": {"derivations": {"derived.margin": "income.profit / income.revenue"}},
+            "valuation": {"dcf": {"price": 12}},
+        }
+        filing = _format_evidence_reference("income.revenue", 1, evidence)
+        assert "Income statement" in filing and "line 3" in filing
+        assert r"\href{https://www.sec.gov/example.htm}" in filing
+        assert filing.count("Income statement") == 1
+        calculation = _format_evidence_reference("derived.margin", 2, evidence)
+        assert "Model calculation" in calculation and "income / profit / income / revenue" in calculation
+        assert "Source not resolved in candidate facts" in calculation
+        assert "Valuation calculation" in _format_evidence_reference("dcf.price", 3, evidence)
+        assert "Unresolved" in _format_evidence_reference("missing.field", 4, evidence)
+
     def test_collect_and_fill_all_tokens(self, tmp_path: Path):
         case = make_mini_case(tmp_path)
         ev = collect_case(case)
@@ -131,7 +152,8 @@ class TestRenderDossier:
         assert "intc-10q-2026q3" in tex          # input table row
         assert "aaaaaaaaaaaaaaaa" in tex         # manifest sha (16 chars)
         assert "Gaetano Marco Chiantia" in tex   # analyst from approval
-        assert r"[EV:income\_statement.revenue]" in tex
+        assert r"\evref{1}" in tex
+        assert "Underlying source not resolved for this field" in tex
         assert "2026-10-30" in tex
 
     def test_build_writes_tex_without_pdf_when_no_latex(self, tmp_path,
@@ -150,7 +172,7 @@ class TestRenderDossier:
             "## Summary\nOnly one section.\n", encoding="utf-8")
         tex = render_dossier_tex(collect_case(case))
         assert "Only one section." in tex
-        assert "verified report" in tex          # fallback markers present
+        assert "No evidence references in this report" in tex
 
 
 class TestPdfCompile:

@@ -405,7 +405,8 @@ def cmd_approve(args, ws: Path) -> int:
                         gate_engine=load_gate_engine(stub_engines=False,
                                                       workspace=ws))
     out = orch.record_approval(decision=args.decision, by=args.by,
-                               reasoning=args.reason or "")
+                               reasoning=args.reason or "",
+                               acknowledge_findings=args.acknowledge or None)
     _print(out)
     return 0
 
@@ -625,6 +626,12 @@ def build_parser() -> argparse.ArgumentParser:
                          choices=["APPROVED", "REJECTED"])
     approve.add_argument("--by", required=True)
     approve.add_argument("--reason", default="")
+    approve.add_argument("--acknowledge", nargs="*", default=None,
+                         metavar="FINDING_ID",
+                         help="open blocking findings the approver has read and "
+                              "is signing off over; required for an escalated "
+                              "case, and every open blocking finding must be "
+                              "named")
     gates_cmd = add("gates", cmd_gates)
     gates_cmd.add_argument("--case", default=None)
 

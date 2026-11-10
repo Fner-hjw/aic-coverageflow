@@ -332,3 +332,56 @@ def test_bare_year_period_normalises_to_the_fy_form():
     assert _normalize_period("2026-Q3") == "2026-Q3"
     assert _normalize_period("2026-Q3-YTD") == "2026-Q3-YTD"
     assert _normalize_period("2026Q3YTD") == "2026-Q3-YTD"
+
+
+def test_renamed_segment_abbreviations_map_to_the_canonical_series():
+    """Intel renamed CCG to "Client Computing and Physical AI Group" (CCPG).
+
+    The extractor reads the filing and emits whatever name the filing prints,
+    so the model must resolve every spelling to the canonical series -- the
+    mandate's forecast bounds and the forecast proposal both key off "CCG".
+    An unresolved name silently drops the segment from the blended growth.
+    """
+    from coverageflow import model_engine as me
+
+    per_period, global_alias = me._rule_index(me.load_mapping("1.0"))
+    for name in ("CCG", "CCPG", "Client Computing Group",
+                 "Client Computing and Physical AI Group"):
+        assert me._canonical_segment_field(
+            name, "revenue", "2026-Q3", per_period, global_alias
+        ) == "segments.ccg.revenue", name
+
+
+class TestSegmentNamesWithoutAMap:
+    """The extractor reports the segment name as printed in the filing.
+
+    With no segment-mapping table in the payload, `segments.CCPG.revenue` and
+    `segments.Intel Foundry.revenue` used to land in the series under those
+    exact names, where nothing reads them: the Statements Model's segment block
+    came out empty even though the filing carried every number.
+    """
+
+    def _model(self, names):
+        facts = [fh.fact("income_statement.revenue", "FY2025", 52853.0, idx=0)]
+        for i, name in enumerate(names, start=1):
+            facts.append(fh.fact(f"segments.{name}.revenue", "FY2025", 1000.0 * i, idx=i))
+            facts.append(fh.fact(f"segments.{name}.operating_income", "FY2025", 100.0 * i, idx=i))
+        payload = {"role": "extractor", "request_id": "req-0001",
+                   "candidate_id": "cand-abc", "facts": facts, "missing": [],
+                   "conformance": "schema 1.0"}
+        return build_model(Facts.from_payload(payload), "1.0")
+
+    def test_renamed_and_prefixed_segments_reach_their_slug(self):
+        model = self._model(["CCPG", "Intel Foundry", "DCAI"])
+        assert model.series["segments.ccg.revenue"]["FY2025"] == 1000.0
+        assert model.series["segments.foundry.revenue"]["FY2025"] == 2000.0
+        assert model.series["segments.dcai.revenue"]["FY2025"] == 3000.0
+        assert "segments.CCPG.revenue" not in model.series
+
+    def test_an_unknown_segment_is_kept_visible_not_dropped(self):
+        model = self._model(["Some New Segment"])
+        assert model.series["segments.Some New Segment.revenue"]["FY2025"] == 1000.0
+
+    def test_mapped_segments_carry_a_margin(self):
+        model = self._model(["CCPG"])
+        assert model.series["segments.ccg.operating_margin"]["FY2025"] == pytest.approx(0.1)

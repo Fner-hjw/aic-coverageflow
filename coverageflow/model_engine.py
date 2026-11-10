@@ -27,6 +27,22 @@ from pathlib import Path
 
 ENGINE_NAME = "model_engine@1.0"
 SEGMENT_SLUGS = ["ccg", "dcai", "nex", "foundry", "altera", "mobileye"]
+# Issuers rename segments and the extractor reports the name as printed, so a
+# fact arrives as segments.CCPG.revenue while every consumer reads
+# segments.ccg.revenue. Without this table the segment block is silently empty
+# even though the filing carries the numbers.
+_SEGMENT_ALIASES = {
+    "ccpg": "ccg", "ccg": "ccg",
+    "client computing group": "ccg",
+    "client computing and process engineering group": "ccg",
+    "dcai": "dcai", "data center and ai": "dcai",
+    "data center and artificial intelligence": "dcai",
+    "data center group": "dcai",
+    "nex": "nex", "network and edge": "nex",
+    "intel foundry": "foundry", "foundry": "foundry",
+    "altera": "altera", "programmable solutions": "altera",
+    "mobileye": "mobileye",
+}
 _SEGMENT_FIELD_RE = re.compile(r"^segments\.([A-Za-z0-9 &_'-]+?)\.(revenue|operating_income)$")
 _Q_RE = re.compile(r"^(\d{4})-Q([1-4])$")
 _FY_RE = re.compile(r"^FY(\d{4})$")
@@ -116,6 +132,24 @@ class Facts:
 # -------------------------------------------------------------------- model
 
 
+# The formula behind each derived series, published in model.json so the
+# figure is reproducible from the artifact rather than from prose.
+DERIVATIONS = {
+    "derived.net_debt": ("balance_sheet.short_term_debt + "
+                         "balance_sheet.long_term_debt - "
+                         "balance_sheet.cash_and_equivalents - "
+                         "balance_sheet.short_term_investments"),
+    "derived.fcf": "cash_flow.operating_cash_flow - cash_flow.capital_expenditure",
+    "income_statement.ebitda": ("income_statement.operating_income + "
+                                "cash_flow.depreciation_amortization"),
+    "derived.gross_margin": "income_statement.gross_profit / income_statement.revenue",
+    "derived.operating_margin": ("income_statement.operating_income / "
+                                 "income_statement.revenue"),
+    "derived.ebitda_margin": "income_statement.ebitda / income_statement.revenue",
+    "derived.net_margin": "income_statement.net_income / income_statement.revenue",
+}
+
+
 @dataclass
 class Model:
     series: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -155,6 +189,13 @@ class Model:
             "series": series_view,
             "mapping_tables": self.mapping_version,
             "checks": self.checks,
+            # Every derived series states the formula the engine actually
+            # applied. Without this the only description of net debt was the
+            # extractor's prose note, which went stale the moment the engine
+            # started netting short-term investments -- and a critic then
+            # "reproduced" the figure from the stale formula and found it
+            # wrong.
+            "derivations": dict(DERIVATIONS),
         }
 
 
@@ -202,6 +243,10 @@ def _canonical_segment_field(name: str, measure: str, period: str,
     canon = per_period.get(period, {}).get(norm) or global_alias.get(norm)
     if canon:
         return f"segments.{canon}.{measure}"
+    # the filing's own name for a segment the model already knows
+    alias = _SEGMENT_ALIASES.get(norm.lower())
+    if alias:
+        return f"segments.{alias}.{measure}"
     return f"segments.{norm}.{measure}"  # leave untouched (visible, not canonical)
 
 

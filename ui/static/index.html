@@ -9,10 +9,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoverageFlow | Research operations</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=20261110-responsive-pages">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 </head>
 <body>
+  <div class="side-backdrop" id="side-backdrop" hidden></div>
   <div class="shell">
 
     <!-- ------------------------------------------------ sidebar ------ -->
@@ -42,9 +43,6 @@
           Source bundles</a>
 
         <div class="side-group">Tools</div>
-        <a href="#/evolution">
-          <svg class="ic" viewBox="0 0 20 20"><path d="M4 15c3 0 3-10 6-10s3 10 6 10" class="stroke" fill="none"/><circle cx="16" cy="15" r="2" class="fill"/></svg>
-          Methods lab</a>
         <a href="#/demo">
           <svg class="ic" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2.5" class="stroke" fill="none"/><path d="M7 8h6M7 12h4" class="stroke"/></svg>
           Rehearsal</a>
@@ -73,7 +71,7 @@
     <!-- ------------------------------------------------- main col ---- -->
     <div class="main-col">
       <header class="topbar">
-        <button class="side-open" id="side-open" title="Show sidebar" aria-label="Show sidebar">
+        <button class="side-open" id="side-open" title="Show sidebar" aria-label="Show sidebar" aria-controls="sidebar" aria-expanded="false">
           <svg class="ic" viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14" class="stroke"/></svg>
         </button>
 
@@ -108,6 +106,6 @@
   <div id="toast"></div>
   <div id="pop"></div>  <!-- citation panels anchor here -->
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20261110-responsive-pages"></script>
 </body>
 </html>

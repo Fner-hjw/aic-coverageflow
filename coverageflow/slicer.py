@@ -51,7 +51,11 @@ _KEYWORDS: dict[str, list[re.Pattern]] = {
     "IS": [re.compile(r"(net\s+revenue|revenue)", re.I),
            re.compile(r"(net\s+income|operating\s+income|gross\s+margin)", re.I)],
     "BS": [re.compile(r"total\s+assets", re.I)],
-    "CF": [re.compile(r"operating\s+activities", re.I)],
+    # a real cash-flow statement carries all three sections; a chart caption
+    # ("Cash from Operating Activities and Adjusted Free Cash Flow $B") carries
+    # one, and used to win the keyword test over the statement itself
+    "CF": [re.compile(r"operating\s+activities", re.I),
+           re.compile(r"(investing|financing)\s+activities", re.I)],
     "SEG": [re.compile(r"(revenue|operating\s+income)", re.I),
             re.compile(
                 r"(client\s+computing|data\s+center|network\s+and\s+edge|nex|"
@@ -266,23 +270,72 @@ def _next_statement_boundary(blocks: list[_Block], start: int) -> int:
     return len(blocks)
 
 
+# A financial statement table opens with a units or period header. The audit
+# report and the MD&A also name the statements and also mention "total assets"
+# or "operating activities", so keyword matching alone picks the wrong block:
+# in a 10-K it selected the critical-audit-matter table as the balance sheet
+# and a 570-char MD&A excerpt as the cash-flow statement.
+_STATEMENT_HEADER = re.compile(
+    r"^\s*(?:\(?\s*(?:in\s+(?:millions|thousands|billions)|unaudited)"
+    r"|(?:three|six|nine|twelve)\s+months\s+ended"
+    r"|years?\s+ended"
+    r"|(?:january|february|march|april|may|june|july|august|september"
+    r"|october|november|december)\s+\d)",
+    re.I,
+)
+
+
+def _anchor_score(block: _Block, pattern: re.Pattern) -> int:
+    """A statement's own title is a short heading.
+
+    The same phrase also appears in the table of contents and in prose that
+    refers back to the statement; those are long blocks and must not win.
+    """
+    text = block.text.strip()
+    return 4 if len(text) <= 120 and pattern.search(text) else 0
+
+
+def _statement_score(block: _Block) -> int:
+    """How much a table looks like the statement itself, not prose about it."""
+    first = _first_nonempty(block.text)
+    score = 0
+    if _STATEMENT_HEADER.match(first):
+        score += 4
+    if len(block.text) > 400:
+        score += 1
+    return score
+
+
 def _select_statement(blocks: list[_Block], kind: str) -> tuple[int, _Block, str] | None:
-    """Pick the statement table: the first table passing the keyword guard
-    across ALL anchor hits (TOC hits never pass), else a per-hit fallback.
-    Returns (block_idx, table_block, anchor_line)."""
+    """Pick the statement table among all anchor hits.
+
+    Candidates are every table passing the keyword guard; the best-scoring one
+    wins (period header first, then the longer table), with the earliest hit
+    breaking ties. Returns (block_idx, table_block, anchor_line).
+    """
     anchor_re = _ANCHORS[kind]
     hits = [i for i, b in enumerate(blocks) if anchor_re.search(b.text)]
     fallback: tuple[int, _Block, str] | None = None
+    best: tuple[int, int, _Block, str] | None = None
     for hit in hits:
         anchor = _anchor_line(blocks[hit], anchor_re)
+        head = _anchor_score(blocks[hit], anchor_re)
         end = _next_statement_boundary(blocks, hit + 1)
         for i in range(hit + 1, end):
             if not blocks[i].is_table:
                 continue
             if _kw_pass(blocks[i], kind):
-                return i, blocks[i], anchor
-            if fallback is None and blocks[i].lines:
+                score = head + _statement_score(blocks[i])
+                # on an equal score the longer table wins: a 10-K prints a
+                # short summary of the cash-flow statement in the MD&A before
+                # the statement itself, and both open with the same header
+                if best is None or (score, len(blocks[i].text)) > (
+                        best[0], len(best[2].text)):
+                    best = (score, i, blocks[i], anchor)
+            elif fallback is None and blocks[i].lines:
                 fallback = (i, blocks[i], anchor)
+    if best is not None:
+        return best[1], best[2], best[3]
     return fallback
 
 

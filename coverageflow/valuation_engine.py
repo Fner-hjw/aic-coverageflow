@@ -308,6 +308,27 @@ def value_company(
             "fcf": fcf_base,
             "fcf_period": base["fcf_period"],
             "fcf_margin": fcf_m0,
+            # A 10-Q prints revenue for the quarter but cash flow only
+            # year-to-date, so the two flows are annualised from different
+            # spans. Both are run-rates, but the artifact has to say so or a
+            # reader sees "4x a quarter against 12/9x nine months" and cannot
+            # tell a convention from an error.
+            "annualisation": {
+                "revenue": {"period": base_period,
+                            "span_quarters": _span_quarters(base_period),
+                            "factor": _annualizer(base_period)},
+                "fcf": {"period": base["fcf_period"],
+                        "span_quarters": _span_quarters(base["fcf_period"]),
+                        "factor": _annualizer(base["fcf_period"])},
+                "net_income": {"period": base["net_income_period"],
+                               "span_quarters": _span_quarters(
+                                   base["net_income_period"]),
+                               "factor": _annualizer(base["net_income_period"])},
+                "margins": "span-independent; used as reported",
+                "note": ("each flow is annualised from the span the filing "
+                         "reports it over, so every base figure is an annual "
+                         "run-rate"),
+            },
         },
         "blended_growth": blended,
         "years": years,
@@ -328,7 +349,9 @@ def value_company(
         "equity_value": equity,
         "per_diluted_share": per_share,
         "net_debt": net_debt,
+        "net_debt_period": base.get("net_debt_period"),
         "diluted_shares": shares,
+        "shares_period": base.get("shares_period"),
         "discount_convention": conv,
         "wacc": w,
         "dcf_upside": dcf_upside,
@@ -337,13 +360,27 @@ def value_company(
     sensitivity = _sensitivity_grid(years, pv_sum, assumptions, net_debt, shares)
 
     comps_upside = comps["comps_upside"]
-    within_tolerance = True
+    within_tolerance = None
     delta = None
-    note = "DCF and relative valuation agree within mandate tolerance."
+    absent = []
+    if assumptions.market_price is None:
+        absent.append("the mandate's market price")
+    if comps.get("comps_price") is None:
+        absent.append("a dated peer comparable price")
+    if absent:
+        subject = " and ".join(absent) + (" are" if len(absent) > 1 else " is")
+    else:
+        subject = "an input is"
+    note = ("DCF and relative valuation cross-check unavailable: "
+            + subject + " not set, so neither a DCF upside nor a comps upside "
+              "can be computed. The own-band implied prices are reported for "
+              "reference only; they are not a cross-check.")
     if dcf_upside is not None and comps_upside is not None:
         delta = dcf_upside - comps_upside
         within_tolerance = abs(delta) <= assumptions.dcf_comps_tolerance
-        if not within_tolerance:
+        if within_tolerance:
+            note = "DCF and relative valuation agree within mandate tolerance."
+        else:
             note = (
                 f"DCF upside ({dcf_upside:+.1%}) and comps upside ({comps_upside:+.1%}) "
                 f"disagree by {delta:+.1%}, beyond mandate tolerance "
@@ -385,13 +422,20 @@ def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
     fy = [p for p in rev_series if p.startswith("FY")]
     if fy:
         p = max(fy, key=_period_key)
-        ann = 1.0
     else:
         if not rev_series:
             raise MissingFactError("revenue missing from the model; cannot value")
-        p = _latest_period(rev_series)
-        ann = 4.0
-    revenue = rev_series[p] * ann if not p.startswith("FY") else rev_series[p]
+        # Anchor every flow on ONE period. A 10-Q prints revenue for the
+        # quarter but cash flow only year-to-date, so anchoring revenue on the
+        # quarter and FCF on the YTD column put two different spans in one base
+        # block: both were run-rates, but a reader could not tell a convention
+        # from an error. Prefer the latest period that carries both, so one
+        # annualiser applies to the whole base.
+        fcf_series = _series_values(model, "derived.fcf")
+        both = [q for q in rev_series if _pick(fcf_series, q)[0] is not None]
+        p = _latest_period(both) if both else _latest_period(rev_series)
+    ann = _annualizer(p)
+    revenue = rev_series[p] * ann
     gm, _ = _pick(_series_values(model, "derived.gross_margin"), p)
     # EBITDA margin needs D&A, and a 10-Q reports D&A only in the year-to-date
     # cash flow statement, so the latest quarter often has no margin of its
@@ -433,20 +477,36 @@ def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
         "fcf": fcf,
         "fcf_period": fcf_period,
         "net_debt": nd,
+        "net_debt_period": net_debt[0] if net_debt else None,
         "shares": shares[1] if shares else None,
+        "shares_period": shares[0] if shares else None,
         "net_income": net_income,
+        "net_income_period": ni_period,
     }
+
+
+SEGMENT_SLUGS = ("ccg", "dcai", "nex", "foundry", "altera", "mobileye")
 
 
 def _blended_growth(model, forecast: Forecast, base_period: str) -> list[float]:
     """Revenue-weighted blend of per-segment growth on the base-period mix."""
     seg_rev = {}
-    for seg in (("ccg", "dcai", "nex", "foundry", "altera", "mobileye")):
+    for seg in SEGMENT_SLUGS:
         vals = _series_values(model, f"segments.{seg}.revenue")
         if base_period in vals:
             seg_rev[seg] = vals[base_period]
+        elif vals:
+            # the mix is a share, so any period carrying the segment works;
+            # refusing to blend because the base period is a YTD column would
+            # drop every segment and silently fall back to a single rate
+            latest = max(vals, key=_period_key)
+            seg_rev[seg] = vals[latest]
     total = sum(v for v in seg_rev.values() if v > 0) or None
-    growth_map = dict(forecast.segments)
+    # The proposal names segments as the filing does ("CCG", "DCAI"); the model
+    # series are lowercase slugs. Matching them case-sensitively gave every
+    # segment a zero growth path, so the blend collapsed to whichever names
+    # happened to be lowercase -- the largest segment carried no weight.
+    growth_map = {str(k).strip().lower(): v for k, v in forecast.segments}
     blended = []
     for t in range(forecast.horizon_years):
         if total and seg_rev:

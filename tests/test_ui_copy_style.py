@@ -21,7 +21,6 @@ def test_shell_copy_starts_with_capitals() -> None:
         "Today",
         "Start coverage",
         "Source bundles",
-        "Methods lab",
         "Rehearsal",
         "Run replays",
         "Activity log",

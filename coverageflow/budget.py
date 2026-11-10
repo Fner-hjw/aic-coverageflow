@@ -45,7 +45,11 @@ DEFAULT_ROLE_TIMEOUTS = {
     "extractor": 600.0,
     "model": 300.0,
     "writer": 600.0,
-    "critic": 300.0,
+    # The four critics are dispatched together, so each one contends with the
+    # other three for the backend. A single critic took 281s under that load
+    # and hit a 300s ceiling; the ceiling has to cover the contention, not the
+    # solo latency.
+    "critic": 480.0,
 }
 
 
@@ -129,6 +133,11 @@ class BudgetTracker:
             "retries_by_role": dict(used.get("retries_by_role", {})),
             # audit trail of explicit human budget grants (see grant())
             "grants": list(used.get("grants") or []),
+            # roles whose artifact was carried forward instead of re-dispatched.
+            # They spend no tokens, which reads as a broken ledger unless the
+            # reuse is recorded: a critic saw "zero spend for ingest and
+            # engines" and could not complete the per-role cap check.
+            "reused_roles": dict(used.get("reused_roles") or {}),
         }
         self.clock_started: float | None = clock_started
 
@@ -156,6 +165,7 @@ class BudgetTracker:
             "tokens_by_role": dict(self.used["tokens_by_role"]),
             "retries_by_role": dict(self.used.get("retries_by_role") or {}),
             "grants": list(self.used.get("grants") or []),
+            "reused_roles": dict(self.used.get("reused_roles") or {}),
         }
 
     def limits_state(self) -> dict:
@@ -196,6 +206,11 @@ class BudgetTracker:
     def add_tokens(self, role: str, tokens_in: int | None, tokens_out: int | None) -> None:
         t = self.used["tokens_by_role"]
         t[role] = t.get(role, 0) + int(tokens_in or 0) + int(tokens_out or 0)
+
+    def note_reuse(self, role: str) -> None:
+        """Record that *role* was carried forward rather than re-dispatched."""
+        re_ = self.used.setdefault("reused_roles", {})
+        re_[role] = re_.get(role, 0) + 1
 
     def used_tokens(self, role: str) -> int:
         return int(self.used["tokens_by_role"].get(role, 0))

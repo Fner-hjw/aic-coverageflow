@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,10 +91,22 @@ CANDIDATE_ROLES = ("ingest", "extractor", "model", "writer", "engines", "engines
 # Blanking the value before hashing breaks that cycle the same way the JSON
 # artifacts exclude their own `candidate_id` key.
 _CANDIDATE_HEADER = re.compile(r"(\*\*Candidate:\*\*)[^·\n]*")
+_REQUEST_HEADER = re.compile(r"(\*\*Request:\*\*)[^·\n]*")
+
+# Keys excluded from the candidate identity digest. The id digests what the
+# note and the artifacts SAY; a fresh request id every round must not make the
+# same candidate look like a new one, or the clean-review streak resets forever
+# and acceptance is unreachable. The engine input hashes are excluded because
+# they restate another artifact's FILE hash, which carries that request id --
+# the artifact's own content is already digested directly.
+_IDENTITY_EXCLUDED = frozenset({"candidate_id", "request_id",
+                                "input_facts_sha256", "input_forecast_sha256"})
 
 
 def _blank_candidate(text: str) -> str:
-    return _CANDIDATE_HEADER.sub(r"\1 ", text, count=1)
+    """Blank the per-round identifiers in a note's provenance header."""
+    text = _CANDIDATE_HEADER.sub(r"\1 ", text, count=1)
+    return _REQUEST_HEADER.sub(r"\1 ", text, count=1)
 
 # Records the input-manifest hash an ingest report was produced against, so a
 # later round can prove the report still describes the same inputs.
@@ -511,6 +524,16 @@ class Orchestrator:
                         "rounds_used": budget.used_rounds()},
                         round=p["round"])
                     if not ok:
+                        # A case that has burned its rounds on the same
+                        # objections is not a failed case -- it is a case that
+                        # needs a human. Escalate to review with the objections
+                        # listed, provided the candidate passed every gate and
+                        # was fully reviewed. Exhaustion stays the answer when
+                        # the work itself is unverified: a gate failure or a
+                        # missing review is not something a human can sign off.
+                        if self._can_escalate(state):
+                            self._escalate_to_review(state, budget, reason)
+                            return self._summary(state, "escalated to review")
                         self.exhausted(state, budget, reason)
                         return self._summary(state, "budgets exhausted")
                     budget.note_round()
@@ -575,6 +598,27 @@ class Orchestrator:
                        role: str, payload: dict, candidate_id: str | None,
                        write_scope: list[str]) -> Any:
         """Budget check at EVERY dispatch -> binding -> dispatch -> trace."""
+        call = self._prepare_dispatch(state, budget, role, payload,
+                                      candidate_id, write_scope)
+        return self._finish_dispatch(state, budget, role, call,
+                                     self.dispatch(call))
+
+    def _dispatch_concurrently(self, calls: list) -> list:
+        """Run independent dispatches at the same time.
+
+        Each call is its own process with its own prompt and workdir, so the
+        only shared state is the backend's flag cache. Serializing the four
+        critics added ~6 minutes to every round for no ordering benefit.
+        """
+        if len(calls) <= 1:
+            return [self.dispatch(c) for c in calls]
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            return list(pool.map(self.dispatch, calls))
+
+    def _prepare_dispatch(self, state: dict, budget: budget_mod.BudgetTracker,
+                          role: str, payload: dict, candidate_id: str | None,
+                          write_scope: list[str]) -> Any:
+        """Budget check, request binding and the dispatch trace record."""
         ok, reason = budget.check_dispatch(role)
         self._trace(event="BUDGET_CHECK",
                     detail={"check": "dispatch", "role": role, "ok": bool(ok)},
@@ -597,7 +641,13 @@ class Orchestrator:
                         workdir=str(self.case_dir))
         self._trace(event="AGENT_DISPATCHED", request_id=req_id, role=role,
                     candidate_id=candidate_id, round=state["pending"]["round"])
-        result = self.dispatch(call)
+        return call
+
+    def _finish_dispatch(self, state: dict, budget: budget_mod.BudgetTracker,
+                         role: str, call, result) -> Any:
+        """Account for a completed dispatch and record its result."""
+        req_id = call.request_id
+        candidate_id = call.candidate_id
         budget.add_tokens(role, getattr(result, "tokens_in", None),
                           getattr(result, "tokens_out", None))
         self._sync_budget(state, budget)
@@ -707,9 +757,27 @@ class Orchestrator:
             arts.content[rel] = self._load_verified(rel)
         return arts.content.get(rel)
 
+    def _stamp_provenance(self, content: Any) -> Any:
+        """Give every candidate artifact a structured cutoff + bundle header.
+
+        The critic checklist requires each artifact to state the cutoff and the
+        input manifest it was built from. Only the writer's markdown carried
+        them; the JSON artifacts had no schema slot, so the extractor had to
+        describe its own header in prose and the checklist could not be
+        satisfied by any build. The block is constant for the whole case, so
+        it does not disturb candidate identity.
+        """
+        if not isinstance(content, dict):
+            return content
+        out = dict(content)
+        out["provenance"] = self._bundle_provenance()
+        return out
+
     def _write_artifact(self, state: dict, budget: budget_mod.BudgetTracker,
                         arts: Arts, team: str, name: str, content: Any) -> str:
         rel = arts.rel(team, name)
+        if team == "generator" and not isinstance(content, str):
+            content = self._stamp_provenance(content)
         sha = (statestore.atomic_write_text(self.case_dir / rel, content)
                if isinstance(content, str)
                else statestore.atomic_write_json(self.case_dir / rel, content))
@@ -722,7 +790,12 @@ class Orchestrator:
         return rel
 
     def _carried(self) -> list[dict]:
-        return self.ledger().carried()
+        """Blocking findings only: a minor is advisory, not a repair task.
+
+        Handing the critics every open minor made each round re-raise the
+        previous round's nits, which is why the ledger never drained.
+        """
+        return self.ledger().blocking_findings()
 
     def _run_build_stage(self, state: dict, budget: budget_mod.BudgetTracker,
                          arts: Arts, stage: str) -> None:
@@ -735,6 +808,8 @@ class Orchestrator:
         # never get past its first stage.
         if stage == "ingest" and not self._artifact_intact(rel):
             self._carry_ingest_forward(state, budget, arts)
+        if stage == "extractor":
+            self._carry_extractor_forward(state, budget, arts)
 
         # resume fast-path: verified artifact on disk -> role NOT re-dispatched
         if self._artifact_intact(rel):
@@ -748,6 +823,9 @@ class Orchestrator:
                        "input_manifest": self.input_manifest(),
                        "mandate": self.mandate(),
                        "anchor_candidates": self._anchor_candidates(),
+                       # which documents must be extracted, not just which
+                       # one triggered the case
+                       "extraction_scope": self._extraction_scope(),
                        "carried_findings": self._carried()}
         else:
             payload = {"case_id": state["case_id"], "round": arts.round,
@@ -892,7 +970,13 @@ class Orchestrator:
             if doc is None:
                 return (f"slice {slice_id!r} names document {doc_id!r}, which is "
                         "not in inputs/manifest.json")
+            # the slicer reports slice paths relative to inputs/ ("slices/...")
+            # while the case contract writes them case-relative
+            # ("inputs/slices/..."); accept either rather than rejecting a
+            # verbatim copy of what the request handed the role
             target = self.case_dir / rel
+            if not target.is_file() and (inputs_dir / rel).is_file():
+                target = inputs_dir / rel
             if not target.is_file() and doc_id not in sliced:
                 doc_path = self.case_dir / str(doc.get("path") or "")
                 if not doc_path.is_file():
@@ -904,6 +988,8 @@ class Orchestrator:
                 except slicer.SliceError as exc:
                     return f"cannot slice {doc_id}: {exc}"
                 sliced.add(doc_id)
+                if not target.is_file() and (inputs_dir / rel).is_file():
+                    target = inputs_dir / rel
             if not target.is_file():
                 return (f"slice {slice_id!r} declares {rel}, but the slicer "
                         f"produced no such slice for {doc_id}")
@@ -975,8 +1061,16 @@ class Orchestrator:
                  "facts_sha256": statestore.sha256_json(facts)})
             raise StopLoop()
         model = model.to_dict() if hasattr(model, "to_dict") else dict(model)
-        model["input_facts_sha256"] = statestore.sha256_json(facts)
-        model["input_forecast_sha256"] = statestore.sha256_json(forecast)
+        # The declared input digest must be the digest of the artifact AS
+        # WRITTEN. atomic_write_json pretty-prints, so sha256_json(obj) is the
+        # canonical-compact hash and matches no file on disk -- the provenance
+        # chain from facts.json into model.json then resolved to nothing.
+        facts_rel = arts.rel("generator", "facts.json")
+        forecast_rel = arts.rel("generator", "forecast_assumptions.json")
+        model["input_facts_sha256"] = (self._verified.get(facts_rel)
+                                       or statestore.sha256_json(facts))
+        model["input_forecast_sha256"] = (self._verified.get(forecast_rel)
+                                          or statestore.sha256_json(forecast))
         model["candidate_id"] = state["candidate"]["candidate_id"]
         model["cutoff"] = mandate["cutoff_date"]
         try:
@@ -995,6 +1089,7 @@ class Orchestrator:
         valuation["candidate_id"] = state["candidate"]["candidate_id"]
         valuation["cutoff"] = mandate["cutoff_date"]
         for rel, payload in ((model_rel, model), (valuation_rel, valuation)):
+            payload = self._stamp_provenance(payload)
             sha = statestore.atomic_write_json(self.case_dir / rel, payload)
             arts.files[rel] = sha
             arts.content[rel] = payload
@@ -1040,7 +1135,7 @@ class Orchestrator:
             # content rebuilt in round 2 must yield the same candidate id
             if isinstance(content, dict):
                 stripped = {k: v for k, v in content.items()
-                            if k != "candidate_id"}
+                            if k not in _IDENTITY_EXCLUDED}
                 digest_pairs.append([name, statestore.sha256_json(stripped)])
             elif isinstance(content, str):
                 # the note's header carries the id we are about to compute;
@@ -1064,6 +1159,30 @@ class Orchestrator:
                 continue
             new_content = dict(content)
             new_content["candidate_id"] = cand_id
+            sha = statestore.atomic_write_json(self.case_dir / rel, new_content)
+            self._verified[rel] = sha
+            arts.files[rel] = sha
+            arts.content[rel] = new_content
+        # The engines declare the digest of the facts/forecast they consumed.
+        # Stamping the candidate id rewrites those files, so the declared
+        # digests must be refreshed or the provenance chain points at bytes
+        # that no longer exist on disk. Both keys are excluded from candidate
+        # identity, so refreshing them cannot move the id.
+        facts_sha = self._verified.get(arts.rel("generator", "facts.json"))
+        forecast_sha = self._verified.get(
+            arts.rel("generator", "forecast_assumptions.json"))
+        for name, updates in (
+                ("model.json", {"input_facts_sha256": facts_sha,
+                                "input_forecast_sha256": forecast_sha}),
+                ("valuation.json", {"input_facts_sha256": facts_sha})):
+            rel = arts.rel("generator", name)
+            content = self._lazy(arts, rel)
+            if not isinstance(content, dict):
+                continue
+            new_content = dict(content)
+            new_content.update({k: v for k, v in updates.items() if v})
+            if new_content == content:
+                continue
             sha = statestore.atomic_write_json(self.case_dir / rel, new_content)
             self._verified[rel] = sha
             arts.files[rel] = sha
@@ -1305,6 +1424,34 @@ class Orchestrator:
             "input_manifest_sha256": statestore.sha256_json(inputs),
         }
 
+    def _extraction_scope(self) -> list[dict]:
+        """The documents whose statements the model needs.
+
+        A case is triggered on one filing, but a statements model needs an
+        annual anchor as well: a 10-Q prints no annual income statement, so
+        extracting only the trigger leaves every FY column empty and the
+        workbook has no income statement at all.
+        """
+        cutoff = str(self.mandate().get("cutoff_date") or "")
+        docs = [d for d in (self.input_manifest().get("documents") or [])
+                if isinstance(d, dict)
+                and str(d.get("filed") or "") <= cutoff]
+
+        def newest(form: str) -> dict | None:
+            cands = [d for d in docs if str(d.get("form") or "") == form]
+            return max(cands, key=lambda d: str(d.get("filed") or ""),
+                       default=None)
+
+        trigger = newest("10-Q") or newest("10-K")
+        annual = newest("10-K")
+        out: list[dict] = []
+        for doc, role in ((trigger, "trigger"), (annual, "annual_anchor")):
+            if not doc or doc.get("doc_id") in [x["doc_id"] for x in out]:
+                continue
+            out.append({"doc_id": doc.get("doc_id"), "form": doc.get("form"),
+                        "filed": doc.get("filed"), "role": role})
+        return out
+
     def _anchor_candidates(self) -> dict[str, list[dict]]:
         """The slices each input document yields, computed by the slicer.
 
@@ -1326,7 +1473,17 @@ class Orchestrator:
                 slices = slicer.candidate_slices(path, str(doc.get("form") or ""))
             except slicer.SliceError:
                 continue
-            out[doc_id] = [s.to_dict() for s in slices]
+            # the slicer reports paths relative to inputs/ ("slices/..."), but
+            # every consumer resolves them against the case dir. Hand out the
+            # case-relative form so a verbatim copy is the correct one.
+            entries = []
+            for sl in slices:
+                entry = sl.to_dict()
+                rel = str(entry.get("path") or "")
+                if rel and not rel.startswith("inputs/"):
+                    entry["path"] = f"inputs/{rel}"
+                entries.append(entry)
+            out[doc_id] = entries
         return out
 
     def _ingest_report_reusable(self, prev: int, manifest_sha: str) -> dict | None:
@@ -1399,6 +1556,7 @@ class Orchestrator:
             # a reused report costs nothing, but the per-role ledger must still
             # name the role or the cap check cannot be completed for it
             budget.add_tokens("ingest", 0, 0)
+            budget.note_reuse("ingest")
             self._sync_budget(state, budget)
             # checkpoint the carried artifact: without this a crash before the
             # next write leaves it unverified, and the next resume discards it
@@ -1407,6 +1565,76 @@ class Orchestrator:
                         detail={"from_round": prev, "artifact": rel,
                                 "request_id": req_id,
                                 "input_manifest_sha256": manifest_sha},
+                        round=arts.round)
+            return True
+        return False
+
+    @staticmethod
+    def _ingest_content_key(report: dict) -> str:
+        """Digest of what an ingest report SAYS, ignoring its request binding."""
+        return statestore.sha256_json({
+            "doc_id": report.get("doc_id"),
+            "slices": [{k: e.get(k) for k in ("slice_id", "path", "sha256")}
+                       for e in report.get("slices") or []
+                       if isinstance(e, dict)],
+        })
+
+    def _carry_extractor_forward(self, state: dict,
+                                 budget: budget_mod.BudgetTracker,
+                                 arts: Arts) -> bool:
+        """Seed this round's facts from a verified earlier round.
+
+        The extractor reads the frozen ingest report and its slices and
+        nothing else, so identical inputs mean identical facts. Re-running it
+        every round cost ~150s of the round for no new information -- unless a
+        carried finding asks for a change to facts.json, in which case the
+        repair packet has to be honoured and the role must run.
+        """
+        rel = arts.rel("generator", "facts.json")
+        if self._artifact_intact(rel):
+            return True
+        if any("facts.json" in (f.get("affected_artifacts") or [])
+               for f in self._carried()):
+            return False
+        ingest = self._lazy(arts, arts.rel("generator", "ingest-report.json"))
+        if not isinstance(ingest, dict):
+            return False
+        want = self._ingest_content_key(ingest)
+        for prev in range(self._latest_round_dir(), 0, -1):
+            if prev >= arts.round:
+                continue
+            prev_arts = Arts(round=prev)
+            path = self.case_dir / prev_arts.rel("generator", "facts.json")
+            prev_ingest = statestore.read_json_or_none(
+                self.case_dir / prev_arts.rel("generator", "ingest-report.json"))
+            if not path.is_file() or not isinstance(prev_ingest, dict):
+                continue
+            if self._ingest_content_key(prev_ingest) != want:
+                continue
+            facts = statestore.read_json_or_none(path)
+            if not isinstance(facts, dict):
+                continue
+            payload = {"case_id": state["case_id"], "round": arts.round,
+                       "carried_findings": self._carried(),
+                       "mandate": self.mandate(),
+                       "bundle": self._bundle_provenance(),
+                       "prior_artifacts": self._stage_inputs(arts, "extractor")}
+            req_id = self._bind_request(state, "extractor", payload, None)
+            facts = dict(facts)
+            facts["request_id"] = req_id
+            facts["candidate_id"] = None    # stamped at the candidate stage
+            sha = statestore.atomic_write_json(self.case_dir / rel, facts)
+            self._verified[rel] = sha
+            arts.files[rel] = sha
+            arts.content[rel] = facts
+            budget.add_tokens("extractor", 0, 0)
+            budget.note_reuse("extractor")
+            self._sync_budget(state, budget)
+            self._persist(state)
+            self._trace(event="EXTRACTOR_REUSED",
+                        detail={"from_round": prev, "artifact": rel,
+                                "request_id": req_id,
+                                "ingest_content_sha256": want},
                         round=arts.round)
             return True
         return False
@@ -1438,17 +1666,24 @@ class Orchestrator:
         round_no = arts.round if arts.round else state["pending"]["round"]
         rel = f"rounds/round-{round_no:03d}/repair-packet.json"
         mandate = self.mandate()
-        carried = led.carried()
+        # Only a blocking finding is a repair obligation. Carrying the minors
+        # too fed every advisory nit back into the next round's prompts, so
+        # the critics re-raised them verbatim and the ledger could never
+        # drain -- the packet was manufacturing its own findings.
+        carried = led.blocking_findings()
+        advisory = [f for f in led.open_findings()
+                    if f.get("severity") not in ledger_mod.BLOCKING_SEVERITIES]
         packet = {
             "round": round_no,
             "candidate_id": state["candidate"]["candidate_id"],
             "open_findings": carried,
+            "advisory_findings": advisory,
             "required_evidence": [f.get("required_evidence", "") for f in carried],
             "unchanged_criteria": {
-                "acceptance": ("all numerical gates pass; 2 consecutive clean "
-                               "full reviews of the same candidate; all carried "
-                               "findings closed by critic-verified repairs; "
-                               "human approval"),
+                "acceptance": ("all numerical gates pass; 2 consecutive full "
+                               "reviews of the same candidate with no blocking "
+                               "finding open; human approval. Minor findings are "
+                               "advisory and do not block."),
                 "forecast_bounds": mandate["assumptions"]["forecast_bounds"],
                 "cutoff_date": mandate["cutoff_date"],
                 "rubric_version": "1.0",
@@ -1464,7 +1699,8 @@ class Orchestrator:
         self._trace(event="REPAIR_PACKET_ISSUED", round=round_no,
                     candidate_id=state["candidate"]["candidate_id"],
                     artifact=rel, artifact_sha256=sha,
-                    detail={"open_findings": len(carried)})
+                    detail={"open_findings": len(carried),
+                            "advisory_findings": len(advisory)})
         state["pending"]["role"] = "generator"
         state["pending"]["stage"] = None
         state["pending"]["retry_count"] = 0
@@ -1480,6 +1716,7 @@ class Orchestrator:
         candidate_id = state["candidate"]["candidate_id"]
         candidate_artifacts = {r["artifact"]: r["sha256"]
                                for r in self._candidate_artifact_list(build_arts)}
+        pending: list[tuple[str, str, dict, Any]] = []
         for role in CRITIC_ROLES:
             rel = arts.rel("critic", f"{role}.json")
             if self._artifact_intact(rel):
@@ -1509,6 +1746,12 @@ class Orchestrator:
                     "role_tokens_max": budget.limits.role_tokens_max,
                     "retries_by_role": dict(budget.used.get("retries_by_role") or {}),
                     "retries_max": budget.limits.retries_max,
+                    # a carried-forward role spends no tokens by design; the
+                    # count is here so a zero is not read as a broken ledger
+                    "reused_roles": dict(budget.used.get("reused_roles") or {}),
+                    # the engines are deterministic Python, not a dispatch, so
+                    # their zero spend is not a reuse and not a gap
+                    "deterministic_roles": ["engines"],
                     # explicit human budget grants: the effective caps above
                     # may exceed the frozen mandate's, and the critic must be
                     # able to see that the difference was authorised
@@ -1516,18 +1759,24 @@ class Orchestrator:
                 },
                 "rubric_version": "1.0",
             }
+            call = self._prepare_dispatch(state, budget, role, payload,
+                                          candidate_id, [rel])
+            pending.append((role, rel, payload, call))
+        # The four critics are independent fresh-context reviews of the same
+        # candidate, so they run together; only the bookkeeping is ordered.
+        for (role, rel, payload, call), result in zip(
+                pending, self._dispatch_concurrently([c for *_, c in pending])):
+            result = self._finish_dispatch(state, budget, role, call, result)
             while True:
-                result = self._dispatch_role(state, budget, role, payload,
-                                             candidate_id, [rel])
-                err = self._validate_submission(role,
-                                                state["pending"]["request_id"],
-                                                result)
+                err = self._validate_submission(role, call.request_id, result)
                 if err is None:
                     state["pending"]["retry_count"] = 0
                     break
                 self._handle_invalid(state, budget, role, err)
                 payload = dict(payload)
                 payload["submission_feedback"] = err
+                result = self._dispatch_role(state, budget, role, payload,
+                                             candidate_id, [rel])
             sha = statestore.atomic_write_json(self.case_dir / rel, result.parsed)
             arts.files[rel] = sha
             arts.content[rel] = result.parsed
@@ -1593,12 +1842,22 @@ class Orchestrator:
         raw_count = merged.get("reviewer_count")
         reviewer_count = raw_count if isinstance(raw_count, int) and \
             not isinstance(raw_count, bool) else None
-        clean = (bool(reports) and
-                 all(rep.get("verdict") == "clean" for rep in reports) and
-                 bool(merged.get("coverage_ok")) and
-                 reviewer_count == len(reports))
-        no_open = not led.open_findings()
-        if clean and no_open:
+        # A round is acceptance-eligible when every critic actually reviewed
+        # the candidate and nothing blocking is open. Requiring verdict ==
+        # "clean" from all four critics made acceptance unreachable: four
+        # independent LLM reviewers always find something, so the streak could
+        # never reach 2 and the case could only exhaust. A minor finding is
+        # advisory -- it rides along in the approval package for the human,
+        # who is the real gate.
+        reviewed_all = (bool(reports) and
+                        all(rep.get("verdict") in ("clean", "findings")
+                            for rep in reports) and
+                        all((rep.get("coverage") or {}).get("areas_checked")
+                            for rep in reports) and
+                        bool(merged.get("coverage_ok")) and
+                        reviewer_count == len(reports))
+        no_open = not led.blocking_findings()
+        if reviewed_all and no_open:
             cand = state["candidate"]
             if cand["last_review_candidate"] == candidate_id:
                 cand["clean_review_rounds"] += 1
@@ -1741,8 +2000,18 @@ class Orchestrator:
             return False
         return self.clock() > _epoch_from_iso(deadline)
 
-    def record_approval(self, decision: str, by: str, reasoning: str = "") -> dict:
-        """Record the human decision at the approval gate."""
+    def record_approval(self, decision: str, by: str, reasoning: str = "",
+                        acknowledge_findings: list[str] | None = None) -> dict:
+        """Record the human decision at the approval gate.
+
+        ``acknowledge_findings`` names the open blocking findings the approver
+        has read and is signing off over. An escalated case carries objections
+        the machine could not settle -- a critic's judgment call, or a claim
+        the approver judges wrong -- and only a human can adjudicate those.
+        Every open blocking finding must be named: a blanket approval that
+        silently swallows an objection is exactly what the ledger exists to
+        prevent.
+        """
         if decision not in ("APPROVED", "REJECTED"):
             raise ValueError("decision must be APPROVED or REJECTED")
         state = self.load()
@@ -1757,7 +2026,8 @@ class Orchestrator:
                                     "(APPROVAL_EXPIRED)")
             if decision == "REJECTED":
                 return self._finish_rejection(state, by, reasoning)
-            return self._finish_approval(state, by, reasoning)
+            return self._finish_approval(state, by, reasoning,
+                                         acknowledge_findings)
         code = (state.get("reason") or {}).get("code")
         if state["status"] == "BLOCKED" and code == "APPROVAL_EXPIRED" \
                 and decision == "APPROVED":
@@ -1790,12 +2060,26 @@ class Orchestrator:
                             "decision_id": record["decision_id"]})
         return record
 
-    def _finish_approval(self, state: dict, by: str, reasoning: str) -> dict:
+    def _finish_approval(self, state: dict, by: str, reasoning: str,
+                         acknowledge_findings: list[str] | None = None) -> dict:
         led = self.ledger()
         cand = state["candidate"]
-        if led.open_findings():
-            raise RuntimeError("open findings remain; cannot approve")
-        if cand["clean_review_rounds"] < 2:
+        blocking = led.blocking_findings()
+        acknowledged: list[str] = []
+        if blocking:
+            named = {str(f) for f in (acknowledge_findings or [])}
+            outstanding = [f["finding_id"] for f in blocking
+                           if f["finding_id"] not in named]
+            if outstanding:
+                raise RuntimeError(
+                    "blocking findings remain and were not acknowledged: "
+                    + ", ".join(outstanding))
+            acknowledged = [f["finding_id"] for f in blocking]
+        # An escalated case was reviewed as often as the budget allowed and
+        # never came back clean, so the streak is 0 by construction. Requiring
+        # it would make escalation a dead end; the acknowledgement above is
+        # what replaces it.
+        if cand["clean_review_rounds"] < 2 and not cand.get("requires_acknowledgement"):
             raise RuntimeError("acceptance requires 2 consecutive clean reviews")
         if not cand["gates_passed"]:
             raise RuntimeError("acceptance requires all numerical gates to pass")
@@ -1813,7 +2097,9 @@ class Orchestrator:
                 f"cannot publish {report_rel}: it is missing or its sha256 no "
                 "longer matches the verified artifact"
             )
-        self._approval_record(state, "APPROVED", by, reasoning)
+        self._approval_record(state, "APPROVED", by, reasoning,
+                              {"acknowledged_findings": acknowledged}
+                              if acknowledged else None)
         # versioned report publication
         cand8 = (cand["candidate_id"] or "unknown")[:8]
         reports_dir = self.case_dir / "report"
@@ -1826,11 +2112,15 @@ class Orchestrator:
                            "detail": {"by": by}}
         self._transition(state, "PENDING_APPROVAL", "APPROVED",
                          verified=out_rel, detail={"report_version": out_rel})
+        message = (f"human approved; {cand['clean_review_rounds']} consecutive "
+                   f"clean reviews; all gates pass")
+        if acknowledged:
+            message += (f"; {len(acknowledged)} blocking finding(s) "
+                        f"acknowledged by the approver")
         result = self._write_result(
-            state, "APPROVED",
-            f"human approved; {cand['clean_review_rounds']} consecutive clean "
-            f"reviews; all gates pass",
-            code="APPROVED", detail={"by": by},
+            state, "APPROVED", message,
+            code="APPROVED",
+            detail={"by": by, "acknowledged_findings": acknowledged},
             report_version=f"v{version + 1}-{cand8}")
         state["status"] = "CLOSED"
         self._transition(state, "APPROVED", "CLOSED", verified=out_rel)
@@ -1965,6 +2255,47 @@ class Orchestrator:
         if stale.exists():
             stale.unlink()
         return state
+
+    def _can_escalate(self, state: dict) -> bool:
+        """Is the candidate complete enough for a human to adjudicate?
+
+        Escalation is not acceptance: the human still decides. It is only
+        offered when the machine has nothing left to verify -- every gate
+        passed on the current candidate and every critic reviewed it. A gate
+        failure or a missing review means the work is unverified, and that is
+        what EXHAUSTED is for.
+        """
+        cand = state.get("candidate") or {}
+        if not cand.get("gates_passed"):
+            return False
+        if not cand.get("candidate_id"):
+            return False
+        return bool(self.ledger().blocking_findings())
+
+    def _escalate_to_review(self, state: dict,
+                            budget: budget_mod.BudgetTracker,
+                            reason: budget_mod.BudgetReason) -> None:
+        """Hand an unresolved case to the human instead of terminating it."""
+        led = self.ledger()
+        blocking = led.blocking_findings()
+        arts = Arts(round=state["candidate"]["built_round"])
+        self._enter_pending_approval(state, budget, arts)
+        state["candidate"]["requires_acknowledgement"] = True
+        state["reason"] = {
+            "code": "ESCALATED",
+            "message": (f"round budget exhausted ({reason.message}); the "
+                        f"candidate passed every gate and was fully reviewed, "
+                        f"so it is escalated for human adjudication with "
+                        f"{len(blocking)} unresolved blocking finding(s)"),
+            "detail": {"budget": reason.as_dict(),
+                       "blocking_finding_ids": [f["finding_id"] for f in blocking]},
+        }
+        self._sync_budget(state, budget)
+        self._persist(state)
+        self._trace(event="ESCALATED", round=state["pending"]["round"],
+                    candidate_id=state["candidate"]["candidate_id"],
+                    detail={"blocking_findings": len(blocking),
+                            "budget_code": reason.code})
 
     def exhausted(self, state: dict, budget: budget_mod.BudgetTracker,
                   reason: budget_mod.BudgetReason) -> None:

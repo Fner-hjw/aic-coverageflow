@@ -78,6 +78,10 @@ def create_app() -> FastAPI:
     def backend_select(payload: dict) -> dict:
         return service.select_backend(str(payload.get("backend") or ""))
 
+    @app.post("/api/backends/api/configure")
+    def backend_api_configure(payload: dict) -> dict:
+        return service.configure_api(payload)
+
     # ---- cases ------------------------------------------------------------
     @app.get("/api/cases")
     def cases() -> dict:
@@ -119,9 +123,14 @@ def create_app() -> FastAPI:
 
     @app.post("/api/cases/{case_id}/approval")
     def case_approval(case_id: str, payload: dict) -> dict:
+        ack = payload.get("acknowledge_findings") or []
+        if not isinstance(ack, list):
+            raise service.ValidationError(
+                "acknowledge_findings must be a list of finding ids")
         return service.record_approval(
             case_id, str(payload.get("decision") or ""),
-            str(payload.get("by") or ""), str(payload.get("reasoning") or ""))
+            str(payload.get("by") or ""), str(payload.get("reasoning") or ""),
+            acknowledge_findings=[str(a) for a in ack])
 
     @app.post("/api/cases/{case_id}/demo/{action}")
     def case_demo(case_id: str, action: str, payload: dict | None = None) -> dict:

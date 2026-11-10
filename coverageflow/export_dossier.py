@@ -110,6 +110,145 @@ def _md_to_tex(text: str) -> str:
     return "\n".join(out_lines).strip()
 
 
+def _format_evidence_reference(key: str, number: int, evidence: dict) -> str:
+    """Describe candidate-specific sources without inventing period-level attribution."""
+    facts = (evidence.get("facts") or {}).get("facts") or []
+    docs = {d.get("doc_id"): d for d in (evidence.get("manifest") or {}).get("documents", [])}
+    model = evidence.get("model") or {}
+    valuation = evidence.get("valuation") or {}
+
+    def readable_field(field: str) -> str:
+        return field.replace(".", " / ").replace("_", " ")
+
+    def sources_for(field: str) -> list[str]:
+        seen: set[tuple] = set()
+        entries = []
+        for fact in facts:
+            if fact.get("field") != field or not fact.get("citation"):
+                continue
+            citation = fact["citation"]
+            source_id = (citation.get("doc_id"), citation.get("anchor"), citation.get("locator"))
+            if source_id in seen:
+                continue
+            seen.add(source_id)
+            doc = docs.get(citation.get("doc_id")) or {}
+            details = [citation.get("doc_id") or "Document not identified"]
+            if doc.get("form"):
+                details.append(doc["form"])
+            if doc.get("filed"):
+                details.append("Filed " + str(doc["filed"]))
+            if citation.get("anchor"):
+                details.append(citation["anchor"])
+            if citation.get("locator"):
+                details.append(citation["locator"])
+            entry = _tex_escape("; ".join(map(str, details)))
+            url = doc.get("source_url") or ""
+            if re.fullmatch(r"https?://[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+", url):
+                entry += r". \href{" + url.replace("%", r"\%") + r"}{Open source document}"
+            entries.append(entry)
+        return entries
+
+    def dig(obj: dict, dotted: str) -> bool:
+        cur: Any = obj
+        for segment in dotted.split("."):
+            if not isinstance(cur, dict) or segment not in cur:
+                return False
+            cur = cur[segment]
+        return True
+
+    source_list = sources_for(key)
+    if source_list:
+        details = r"\textbf{Filing source.} " + r"; ".join(source_list)
+    elif key in (model.get("derivations") or {}):
+        formula = str(model["derivations"][key])
+        fields = list(dict.fromkeys(re.findall(r"\b[a-z_]+(?:\.[a-z_]+)+\b", formula)))
+        inputs = [(field, sources_for(field)) for field in fields]
+        readable_formula = re.sub(r"\b[a-z_]+(?:\.[a-z_]+)+\b",
+                                  lambda match: readable_field(match.group()), formula)
+        details = r"\textbf{Model calculation.} Formula: " + _tex_escape(readable_formula) + "."
+        for field, sources in inputs:
+            details += r"\newline " + _tex_escape(readable_field(field)) + ": " + ("; ".join(sources) if sources else "Source not resolved in candidate facts") + "."
+    elif key in (model.get("series") or {}):
+        details = r"\textbf{Model output.} " + _tex_escape(readable_field(key)) + r" in model.json. Underlying source not resolved for this field."
+    elif dig(valuation, key):
+        details = r"\textbf{Valuation calculation.} " + _tex_escape(readable_field(key)) + r" in valuation.json. Review the model and assumptions for its inputs."
+    else:
+        details = r"\textbf{Unresolved.} No matching source or calculation was found in this candidate's facts, model, or valuation."
+    return r"\noindent\textbf{[" + str(number) + r"]} " + details + r"\par"
+
+
+def _report_tex(report_md: str, evidence: dict | None = None) -> tuple[str, str, str]:
+    """Render the full report and a numbered, searchable evidence-key index."""
+    references: dict[str, int] = {}
+
+    def inline(text: str) -> str:
+        parts = re.split(r"(\[EV:[^\]]+\])", text)
+        output = []
+        for part in parts:
+            if part.startswith("[EV:") and part.endswith("]"):
+                key = part[4:-1]
+                number = references.setdefault(key, len(references) + 1)
+                if output:
+                    output[-1] = output[-1].rstrip()
+                output.append(r"\evref{" + str(number) + "}")
+            else:
+                escaped = _tex_escape(part)
+                output.append(re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", escaped))
+        return "".join(output)
+
+    lines = report_md.splitlines()
+    title = next((line[2:].strip() for line in lines if line.startswith("# ")), "Research report")
+    body: list[str] = []
+    in_list = False
+    in_table = False
+    in_report = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            continue
+        if stripped.startswith("> ") and not in_report:
+            continue  # Header metadata is displayed in the document masthead.
+        if stripped.startswith("| ") or (stripped.startswith("|") and stripped.endswith("|")):
+            if re.fullmatch(r"\|[-\s|:]+\|?", stripped):
+                continue
+            if in_list:
+                body.append(r"\end{itemize}")
+                in_list = False
+            # Preserve all cells even when the original table is wider than the page.
+            cells = [inline(cell.strip()) for cell in stripped.strip("|").split("|")]
+            body.append(r"\noindent " + r" \quad | \quad ".join(cells) + r"\par")
+            in_table = True
+            continue
+        if in_table:
+            body.append("")
+            in_table = False
+        if re.match(r"^[-*] ", stripped):
+            if not in_list:
+                body.append(r"\begin{itemize}")
+                in_list = True
+            body.append(r"\item " + inline(stripped[2:]))
+            continue
+        if in_list:
+            body.append(r"\end{itemize}")
+            in_list = False
+        heading = re.match(r"^(#{2,6})\s+(.+)$", stripped)
+        if heading:
+            in_report = True
+            command = "section" if len(heading.group(1)) == 2 else "subsection"
+            body.append(r"\Needspace{9\baselineskip}" + "\n" + "\\" + command + "*{" + inline(heading.group(2)) + "}")
+        elif stripped.startswith("> "):
+            body.append(inline(stripped[2:]) + "\n")
+        elif stripped:
+            body.append(inline(stripped) + "\n")
+        else:
+            body.append("")
+    if in_list:
+        body.append(r"\end{itemize}")
+    entries = [_format_evidence_reference(key, number, evidence or {})
+               for key, number in references.items()]
+    return _tex_escape(title), "\n".join(body), "\n".join(entries) or r"\textit{No evidence references in this report.}"
+
+
 def _md_sections(report_md: str) -> dict[str, str]:
     """Split report.md into {lowercased heading: body} chunks."""
     sections: dict[str, str] = {}
@@ -356,6 +495,7 @@ def collect_case(case_dir: Path) -> dict:
         "state": state,
         "manifest": manifest,
         "manifest_path": case_dir / "inputs" / "manifest.json",
+        "facts": _read_json_or_none(gen_dir / "facts.json") or {},
         "model": _read_json_or_none(gen_dir / "model.json") or {},
         "valuation": _read_json_or_none(gen_dir / "valuation.json") or {},
         "report_md": report_md,
@@ -381,8 +521,16 @@ def render_dossier_tex(evidence: dict, template_path: Path | None = None) -> str
     pt_gordon = _fmt_usd((dcf.get("per_diluted_share") or {}).get("gordon"))
     cand = ev["state"].get("candidate", {}).get("candidate_id") or ""
     result = ev["result"] or {}
+    title, report_body, evidence_keys = _report_tex(ev["report_md"] or "", ev)
+    approval = ev.get("approval") or {}
+    approved = approval.get("decision") == "APPROVED"
 
     tokens = {
+        "REPORT_TITLE": title,
+        "REPORT_BODY": report_body,
+        "EVIDENCE_KEYS": evidence_keys,
+        "DOCUMENT_STATUS": "Approved report" if approved else "Draft for review - not approved",
+        "APPROVAL_SUMMARY": ("Approved by " + _tex_escape(str(approval.get("by") or "Not recorded"))) if approved else "No publication approval recorded",
         "COMPANY": _tex_escape(company_name),
         "TICKER": _tex_escape(str(mandate.get("ticker", ""))),
         "CUTOFF": _tex_escape(str(mandate.get("cutoff_date", ""))),

@@ -77,14 +77,27 @@ class ApiBackend:
 
     def _config(self) -> dict[str, str | None]:
         cfg_file = self._load_config_file()
+        # The workspace UI configuration is an explicit workspace choice.
+        workspace_cfg = {}
+        workspace = os.environ.get("COVERAGEFLOW_WORKSPACE")
+        if workspace and self._config_path is None:
+            try:
+                data = json.loads((Path(workspace) / ".coverageflow-api.json").read_text(encoding="utf-8"))
+                if isinstance(data, dict) and isinstance(data.get("api"), dict):
+                    workspace_cfg = data["api"]
+            except (OSError, json.JSONDecodeError):
+                pass
         return {
             "base_url": self._explicit["base_url"]
+            or workspace_cfg.get("base_url")
             or os.environ.get(ENV_BASE_URL)
             or cfg_file.get("base_url"),
             "model": self._explicit["model"]
+            or workspace_cfg.get("model")
             or os.environ.get(ENV_MODEL)
             or cfg_file.get("model"),
             "api_key": self._explicit["api_key"]
+            or workspace_cfg.get("api_key")
             or os.environ.get(ENV_API_KEY)
             or cfg_file.get("api_key"),
         }

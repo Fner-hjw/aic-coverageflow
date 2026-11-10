@@ -428,6 +428,11 @@ _EXEMPT_SPAN = re.compile(
     r"|\b(?:19|20)\d{2}\b"      # a bare year is a label, not a claim
     r"|'\d{2}\b"                # Q3'26 shorthand
     r"|\bItem\s+\d+[A-Z]?\b"    # SEC item references: Item 2, Item 1A
+    # "the shares do not sum to 100%" is arithmetic on the cited values, not a
+    # measurement of the company. Only this idiom is exempt: a bare "100%"
+    # elsewhere is still a claim and still needs a marker.
+    r"|\bsum(?:s|ming)?\s+to\s+100(?:\.0+)?\s*%"
+    r"|\b(?:writer\s+prompt|conformance\s+schema)\s+\d+\.\d+(?:\.\d+)?\b"  # run metadata
     r"|^\s*\d+(?=[.)]\s)"        # markdown ordered-list marker: "1. **Risk**"
     # Identifiers are labels too. The provenance header block carries a
     # request id, a candidate id, a bundle id and a sha256; without these the

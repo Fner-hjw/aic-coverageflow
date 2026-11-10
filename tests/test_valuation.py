@@ -247,6 +247,19 @@ def test_cross_check_within_tolerance():
     assert v.to_dict()["within_tolerance"] is True
 
 
+@pytest.mark.parametrize("overrides", [
+    {"peer_block": {"peers": []}},
+    {"market": {}},
+])
+def test_cross_check_unavailable_without_comps_or_market_price(overrides):
+    model = build_model(Facts.from_payload(valuation_payload()), "1.0")
+    assumptions = Assumptions.from_payload({**ASSUMPTIONS, **overrides})
+    result = value_company(model, Forecast.from_payload(FORECAST), assumptions).to_dict()
+    assert result["cross_check_delta"] is None
+    assert result["within_tolerance"] is None
+    assert "unavailable" in result["cross_check_note"]
+
+
 # ----------------------------------------------------------- sensitivity
 
 def test_sensitivity_grid_hand_math(valuation):

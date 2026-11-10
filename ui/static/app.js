@@ -1,5 +1,5 @@
 /* CoverageFlow UI. Vanilla ES2022 single-file SPA (stream A4).
- * Hash routes: #/dashboard #/new #/bundles #/evolution #/demo #/replay
+ * Hash routes: #/dashboard #/new #/bundles #/demo #/replay
  * #/backends #/case/<id>/<tab>
  * Every state change goes through the FastAPI endpoints; the UI never
  * writes files. WebSocket /ws/events drives live updates with a 3s
@@ -127,6 +127,9 @@ const ICONS = {
   review: ["M5 4h14v16H5z", "M8 9h8", "M8 13h5"],
   archive: ["M4 7h16v13H4z", "M3 4h18v3H3z", "M9 11h6"],
   alert: ["M12 3 2.5 20h19z", "M12 9v4", "M12 16h.01"],
+  clock: ["M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", "M12 7v5l3 2"],
+  repeat: ["M4 8h13l-3-3", "M20 16H7l3 3", "M17 5l3 3-3 3", "M7 13l-3 3 3 3"],
+  tokens: ["M5 5h14v14H5z", "M9 9h6v6H9z", "M9 2v3M15 2v3M9 19v3M15 19v3", "M2 9h3M2 15h3M19 9h3M19 15h3"],
 };
 
 function icon(name, label) {
@@ -207,6 +210,24 @@ function meter(used, max, mode, fix) {
     class: `meter ${pct >= 90 ? "hot" : pct >= 70 ? "warm" : ""}`,
     title: `${mode}: ${text}`,
   }, h("span", { class: "bar" }, h("i", { style: `width:${pct}%` })), text);
+}
+
+function duration(minutes) {
+  const seconds = Math.max(0, Math.round(Number(minutes || 0) * 60));
+  const hours = Math.floor(seconds / 3600), mins = Math.floor(seconds % 3600 / 60), secs = seconds % 60;
+  return [hours ? `${hours} hr` : "", mins ? `${mins} min` : "", secs || !hours && !mins ? `${secs} sec` : ""].filter(Boolean).join(" ");
+}
+
+function runLimit(iconName, title, used, max, valueText, detail) {
+  const percent = max > 0 ? Math.max(0, Math.min(100, used / max * 100)) : 0;
+  return h("div", { class: `run-limit${percent >= 90 ? " is-high" : percent >= 70 ? " is-near" : ""}` },
+    h("div", { class: "run-limit-icon" }, icon(iconName)),
+    h("div", { class: "run-limit-content" },
+      h("div", { class: "run-limit-heading" }, h("strong", null, title), h("span", { class: "run-limit-value" }, valueText)),
+      h("div", { class: "run-limit-track", role: "progressbar", "aria-label": title,
+        "aria-valuemin": "0", "aria-valuemax": String(max || 0), "aria-valuenow": String(Math.min(Math.max(used, 0), max || 0)), "aria-valuetext": valueText },
+        h("span", { style: `width:${percent}%` })),
+      h("p", null, detail)));
 }
 
 function labeledPanel(label, ...children) {
@@ -375,6 +396,8 @@ const Live = {
 let CURRENT_CASE_REFRESH = null;   // set by the case view for live events
 let CURRENT_TAB_SNAPSHOT = null;   // set by views interested in snapshots
 let TERMINAL_TIMER = null;         // terminal view poller; render() clears it
+let CASE_CLOCK_TIMER = null;
+let QUEUE_CLOCK_TIMER = null;
 let TERMINAL_TOKEN = 0;           // invalidates pollers from superseded renders
 
 function handleLiveEvent(ev) {
@@ -416,6 +439,10 @@ async function render() {
   const view = $("#view");
   // leaving a page stops its poller (the terminal view re-arms its own)
   if (TERMINAL_TIMER) clearInterval(TERMINAL_TIMER);
+  if (CASE_CLOCK_TIMER) clearInterval(CASE_CLOCK_TIMER);
+  CASE_CLOCK_TIMER = null;
+  if (QUEUE_CLOCK_TIMER) clearInterval(QUEUE_CLOCK_TIMER);
+  QUEUE_CLOCK_TIMER = null;
   TERMINAL_TIMER = null;
   TERMINAL_TOKEN++;   // invalidate any in-flight terminal view
   view.replaceChildren(loadingRow("View"));
@@ -425,7 +452,7 @@ async function render() {
     if (page === "dashboard") await Views.dashboard(view);
     else if (page === "new") await Views.newCase(view, rest[0]);
     else if (page === "bundles") await Views.bundles(view);
-    else if (page === "evolution") await Views.evolution(view);
+    else if (page === "evolution") { location.replace("#/dashboard"); return; }
     else if (page === "demo") await Views.demo(view);
     else if (page === "replay") await Views.replay(view);
     else if (page === "terminal") await Views.terminal(view, rest[0]);
@@ -455,8 +482,27 @@ const Sidebar = {
     let collapsed = false;
     try { collapsed = localStorage.getItem(this.KEY) === "1"; } catch {}
     this.apply(collapsed);
-    $("#side-collapse")?.addEventListener("click", () => this.apply(true));
-    $("#side-open")?.addEventListener("click", () => this.apply(false));
+    const mobile = () => matchMedia("(max-width: 900px)").matches;
+    const backdrop = $("#side-backdrop"), opener = $("#side-open");
+    const closeMobile = (restoreFocus = false) => {
+      const wasOpen = document.body.classList.contains("mobile-nav-open");
+      document.body.classList.remove("mobile-nav-open");
+      if (backdrop) backdrop.hidden = true;
+      opener?.setAttribute("aria-expanded", "false");
+      if (wasOpen && restoreFocus) opener?.focus();
+    };
+    $("#side-collapse")?.addEventListener("click", () => mobile() ? closeMobile(true) : this.apply(true));
+    opener?.addEventListener("click", () => {
+      if (!mobile()) { this.apply(false); return; }
+      document.body.classList.add("mobile-nav-open");
+      if (backdrop) backdrop.hidden = false;
+      opener.setAttribute("aria-expanded", "true");
+      $("#sidenav a")?.focus();
+    });
+    backdrop?.addEventListener("click", () => closeMobile(true));
+    $("#sidebar")?.addEventListener("click", event => { if (mobile() && event.target.closest("a")) closeMobile(); });
+    document.addEventListener("keydown", event => { if (event.key === "Escape") closeMobile(true); });
+    window.addEventListener("resize", () => { if (!mobile()) closeMobile(); });
   },
 };
 
@@ -545,130 +591,74 @@ Views.dashboard = async function (view) {
   document.title = "CoverageFlow | Today";
 
   const rows = data.cases || [];
-  const active = rows.filter(c => c.status === "RUNNING" || c.status === "CREATED");
-  const pending = rows.filter(c => c.status === "PENDING_APPROVAL");
-  const openFindings = rows.reduce((n, c) => n + (c.open_findings || 0), 0);
+  const priority = { PENDING_APPROVAL: 0, BLOCKED: 1, EXHAUSTED: 1, STOPPED: 1 };
+  const ordered = [...rows].sort((a, b) => (priority[a.status] ?? 2) - (priority[b.status] ?? 2));
 
   view.replaceChildren(
     h("div", { class: "page-head dashboard-head" },
       h("div", null,
         h("span", { class: "eyebrow" }, "Research operations"),
         h("h1", null, "Today on the desk"),
-        h("span", { class: "sub" }, deskSummary(rows, active, pending, openFindings))),
+        h("span", { class: "sub" }, "Review cases that need a decision or follow-up.")),
       h("span", { class: "spacer" }),
       h("a", { class: "btn primary", href: "#/new" }, icon("briefcase"), "Start coverage")),
-    deskOverview(rows, active, pending, openFindings, data.health),
-    statRow(rows, active, pending, openFindings),
-    coverageQueue(rows),
-    h("div", { class: "widgets" },
-      h("div", { class: "col" },
-        deskListPanel("Work in progress", "Live cases and their current role", activeRunsList(rows)),
-        deskListPanel("Your sign-off", "Publication decisions waiting on the desk", approvalsList(rows))),
-      h("div", { class: "col" },
-        healthCard(data.health))),
+    dashboardOverview(rows, ordered),
+    coverageQueue(ordered),
+    h("div", { class: "desk-provider" }, icon("pulse"),
+      h("span", null, "Selected provider: ", h("strong", null, data.health?.active_backend || "Not set")),
+      h("a", { href: "#/backends" }, "Model routing")),
   );
 };
 
-function deskSummary(rows, active, pending, openFindings) {
-  if (!rows.length) return "The desk is clear. Start with a frozen source bundle.";
-  const bits = [];
-  if (active.length) bits.push(`${active.length} ${active.length === 1 ? "case is" : "cases are"} moving`);
-  if (pending.length) bits.push(`${pending.length} ${pending.length === 1 ? "decision needs" : "decisions need"} your sign-off`);
-  if (openFindings) bits.push(`${openFindings} open ${openFindings === 1 ? "finding" : "findings"}`);
-  return bits.length ? `${bits.join("; ")}.` : `${rows.length} completed ${rows.length === 1 ? "case" : "cases"}, with nothing waiting.`;
-}
-
-function deskOverview(rows, active, pending, openFindings, health) {
-  const closed = rows.filter(c => ["CLOSED", "APPROVED"].includes(c.status)).length;
-  const total = Math.max(rows.length, 1);
-  const segments = [
-    ["Published", closed, "done"],
-    ["In motion", active.length, "active"],
-    ["At sign-off", pending.length, "review"],
+function dashboardOverview(rows, ordered) {
+  const groups = [
+    { label: "Ready or in progress", states: ["CREATED", "RUNNING"], color: "active" },
+    { label: "Awaiting decision", states: ["PENDING_APPROVAL"], color: "review" },
+    { label: "Needs follow-up", states: ["BLOCKED", "EXHAUSTED", "STOPPED"], color: "followup" },
+    { label: "Closed or decided", states: ["CLOSED", "APPROVED", "REJECTED"], color: "done" },
   ];
+  const known = new Set(groups.flatMap(group => group.states));
+  const segments = groups.map(group => ({ ...group, count: rows.filter(c => group.states.includes(c.status)).length }));
+  const other = rows.filter(c => !known.has(c.status)).length;
+  if (other) segments.push({ label: "Other", color: "other", count: other });
   return h("section", { class: "desk-overview" },
     h("div", { class: "overview-copy" },
       h("span", { class: "kicker" }, "Coverage summary"),
       h("div", { class: "big-number" }, String(rows.length).padStart(2, "0")),
-      h("p", null, "Coverage files in this workspace"),
-      h("div", { class: "service-line" },
-        h("span", { class: "signal" }),
-        `${health.active_backend} routing, ${health.mode}`)),
-    h("div", { class: "flow-graphic", role: "img", "aria-label": "Cases moving from source bundle through review to sign-off" },
-      h("div", { class: "flow-title" }, "Queue by stage", h("span", null, "Live workspace")),
-      h("div", { class: "flow-bars" }, ...segments.map(([label, count, cls]) =>
-        h("div", { class: `flow-row ${cls}` },
-          h("span", { class: "flow-label" }, label),
-          h("span", { class: "flow-track" },
-            h("i", { style: `width:${Math.max(count ? 12 : 2, (count / total) * 100)}%` })),
-          h("b", null, String(count))))),
-      h("div", { class: "flow-route" },
-        h("span", null, icon("source"), "Sources"),
-        h("i"),
-        h("span", null, icon("layers"), "Build"),
-        h("i"),
-        h("span", null, icon("check"), "Sign-off"))),
-    h("div", { class: "attention-card" },
-      h("span", { class: "kicker" }, "Needs attention"),
-      h("strong", null, pending.length ? `${pending.length} at the human gate` : openFindings ? `${openFindings} findings still open` : "No blockers"),
-      h("p", null, pending.length
-        ? "The model is done. Read the dossier and make the call."
-        : openFindings ? "Critic notes are waiting in the ledger." : "No decisions are waiting on you."),
-      h("a", { href: pending.length ? `#/case/${pending[0].case_id}/approval` : openFindings ? "#/dashboard" : "#/new" },
-        pending.length ? "Open the dossier" : openFindings ? "Review the queue" : "Start a case", icon("arrow"))));
+      h("p", null, rows.length === 1 ? "Case on the desk" : "Cases on the desk")),
+    h("div", { class: "flow-graphic" },
+      h("div", { class: "flow-title" }, "Cases by status"),
+      h("div", { class: "flow-bars" }, ...segments.map(x =>
+        h("div", { class: `flow-row ${x.color}` }, h("span", null, x.label),
+          h("span", { class: "flow-track", "aria-hidden": "true" },
+            h("i", { style: `width:${rows.length ? x.count / rows.length * 100 : 0}%` })),
+          h("b", null, String(x.count)))))),
+    dashboardAttention(ordered));
 }
 
-function statTile(label, value, detailNodes, iconName) {
-  return h("div", { class: "stat" },
-    h("div", { class: "stat-top" },
-      h("span", { class: "stat-icon" }, icon(iconName || "pulse")),
-      h("span", { class: "label" }, label)),
-    h("div", { class: "v" }, String(value).padStart(2, "0")),
-    detailNodes ? h("div", { class: "d" }, detailNodes) : null);
+function dashboardAttention(rows) {
+  const needsAction = rows.filter(c => ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED"].includes(c.status));
+  return h("div", { class: "attention-card" },
+    h("span", { class: "kicker" }, "Needs attention"),
+    h("strong", null, needsAction.length ? `${needsAction.length} ${needsAction.length === 1 ? "case needs" : "cases need"} a next step` : "Nothing waiting"),
+    h("p", null, needsAction.length ? "Review a decision or follow-up." : "No decisions or recovery actions are waiting."),
+    needsAction.length ? h("div", { class: "desk-attention-list" }, ...needsAction.map(c => {
+      const approval = c.status === "PENDING_APPROVAL";
+      const description = approval ? (c.deadline ? `Decision due ${fmt.datetime(c.deadline)}` : "Approval decision needed") :
+        c.status === "BLOCKED" ? "Review the issue before continuing" :
+        c.status === "EXHAUSTED" ? "A run limit has been reached" : "The case was stopped";
+      return h("a", { class: "desk-attention-row", href: `#/case/${c.case_id}/${approval ? "approval" : "overview"}` },
+        h("span", { class: "desk-attention-case" }, h("b", null, c.ticker), h("small", null, c.case_id)),
+        h("span", { class: "desk-attention-reason" }, description), icon("arrow"));
+    })) : null);
 }
 
-function statRow(rows, active, pending, openFindings) {
-  const closed = rows.filter(c => ["CLOSED", "APPROVED"].includes(c.status)).length;
-  return h("section", { class: "stats" },
-    statTile("Cases on desk", String(rows.length),
-      [`${closed} published, ${pending.length} at sign-off`], "briefcase"),
-    statTile("In motion", String(active.length),
-      [active.length
-        ? `Now with ${active.map(c => c.pending_role || "generator").join(", ")}`
-        : "Nothing running"], "pulse"),
-    statTile("Your sign-off", String(pending.length),
-      [pending.length ? "Dossier ready to read" : "Nothing waiting"], "check"),
-    statTile("Open findings", String(openFindings),
-      [openFindings
-        ? h("span", { class: "down" }, "Repairs still to clear")
-        : h("span", { class: "up" }, "Critic ledger is clear")], "flag"),
-  );
-}
-
-function healthCard(health) {
-  return h("section", { class: "workspace-card" },
-    h("div", { class: "panel-heading" },
-      h("div", null,
-        h("span", { class: "kicker" }, "System"),
-        h("h2", null, "Workspace")),
-      h("span", { class: "live-mark" }, h("i"), "Live")),
-    h("div", { class: "workspace-route" },
-      h("span", null, "Active route"),
-      h("strong", null, health.active_backend)),
-    h("dl", { class: "workspace-grid" },
-      h("div", null, h("dt", null, "Mode"), h("dd", null, health.mode)),
-      h("div", null, h("dt", null, "Cases"), h("dd", null, String(health.cases).padStart(2, "0"))),
-      h("div", null, h("dt", null, "Running"), h("dd", null, String(health.active_runs).padStart(2, "0"))),
-      h("div", null, h("dt", null, "Sign-off"), h("dd", null, String(health.pending_approvals).padStart(2, "0")))),
-    h("div", { class: "workspace-foot" }, `Checked ${fmt.time(health.ts)}`));
-}
-
-function queueGauge(label, used, max, fix = 0) {
+function queueGauge(iconName, label, used, max) {
   const share = max ? Math.min(100, (Number(used) / Number(max)) * 100) : 0;
   return h("div", { class: `queue-gauge ${share >= 90 ? "hot" : share >= 70 ? "warm" : ""}` },
-    h("span", null, label),
-    h("i", null, h("b", { style: `width:${share}%` })),
-    h("em", null, `${fmt.num(used, fix)} / ${fmt.num(max, fix)}`));
+    h("span", { class: "queue-gauge-label" }, icon(iconName), label),
+    h("em", null, `${fmt.int(used)} of ${fmt.int(max)}`),
+    h("i", { "aria-hidden": "true" }, h("b", { style: `width:${share}%` })));
 }
 
 function coverageQueue(rows) {
@@ -676,8 +666,7 @@ function coverageQueue(rows) {
     h("header", { class: "queue-head" },
       h("div", null,
         h("span", { class: "kicker" }, "Casebook"),
-        h("h2", null, "Coverage queue")),
-      h("span", { class: "queue-count" }, `${String(rows.length).padStart(2, "0")} files`)));
+        h("h2", null, "Coverage queue"))));
   if (!rows.length) {
     panel.append(emptyState("No cases yet", "Start with a frozen filing bundle and cutoff date."));
     return panel;
@@ -685,11 +674,37 @@ function coverageQueue(rows) {
   panel.append(h("div", { class: "queue-columns", "aria-hidden": "true" },
     h("span", null, "Case file"),
     h("span", null, "State"),
-    h("span", null, "Run budget"),
+    h("span", null, "Revision rounds"),
     h("span", null, "Review"),
     h("span", null, "Output")));
   const list = h("div", { class: "queue-list" });
+  const clockUpdates = [];
   rows.forEach(c => {
+    const clock = h("span", { class: "queue-case-time" });
+    let started = Date.parse(c.case_clock_started || "");
+    const runningClock = ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(c.status);
+    let clockPending = runningClock && c.case_clock_started === undefined;
+    let clockUnavailable = runningClock && !clockPending && !Number.isFinite(started);
+    const updateClock = () => {
+      if (clockPending) { clock.textContent = "Loading case time…"; return; }
+      if (clockUnavailable) { clock.textContent = "Case time unavailable"; return; }
+      const active = runningClock && Number.isFinite(started);
+      const elapsed = Number(c.elapsed_minutes || 0) + (active ? Math.max(0, Date.now() - started) / 60000 : 0);
+      clock.replaceChildren(icon("clock"), ` ${duration(elapsed)}`);
+    };
+    updateClock();
+    if (runningClock) clockUpdates.push(updateClock);
+    if (clockPending) {
+      Api.get(`/api/cases/${encodeURIComponent(c.case_id)}`).then(detail => {
+        const pending = detail.state?.pending || {};
+        const used = detail.state?.budget?.used || {};
+        started = Date.parse(pending.case_clock_started || "");
+        c.elapsed_minutes = used.elapsed_minutes ?? c.elapsed_minutes;
+        clockUnavailable = !Number.isFinite(started);
+        clockPending = false;
+        updateClock();
+      }).catch(() => { clockPending = false; clockUnavailable = true; updateClock(); });
+    }
     const row = h("div", { class: `case-row state-${String(c.status).toLowerCase()}`,
       tabindex: "0", role: "link", "aria-label": `Open ${c.ticker} case ${c.case_id}` },
       h("div", { class: "case-identity" },
@@ -700,19 +715,18 @@ function coverageQueue(rows) {
           h("span", { class: "case-date" }, `Cutoff ${c.cutoff_date}`))),
       h("div", { class: "case-state" },
         statusChip(c.status),
+        clock,
         h("span", null, c.pending_role ? `With ${c.pending_role}` : "No role pending")),
       h("div", { class: "budget-stack" },
-        queueGauge("Round", c.rounds_used, c.rounds_max),
-        queueGauge("Time", c.elapsed_minutes, c.case_minutes, 1),
-        queueGauge("Tokens", c.tokens_max_role, c.role_tokens_max)),
+        queueGauge("repeat", "Rounds used", c.rounds_used, c.rounds_max)),
       h("div", { class: "review-stack" },
         h("div", null,
-          h("span", null, "Findings"),
+          h("span", null, "Open findings"),
           c.open_findings
             ? h("strong", { class: "review-alert" }, String(c.open_findings).padStart(2, "0"))
             : h("strong", null, "00")),
         h("div", null,
-          h("span", null, "Clean reviews"),
+          h("span", { title: "Consecutive complete reviews of the same candidate with no blocking findings." }, "Reviews cleared"),
           h("strong", null, `${c.clean_review_rounds}/2`))),
       h("div", { class: "case-output" },
         h("strong", null, c.latest_report || "No draft"),
@@ -727,45 +741,9 @@ function coverageQueue(rows) {
     });
     list.append(row);
   });
+  if (clockUpdates.length) QUEUE_CLOCK_TIMER = setInterval(() => clockUpdates.forEach(update => update()), 1000);
   panel.append(list);
   return panel;
-}
-
-function deskListPanel(title, subtitle, content) {
-  return h("section", { class: "desk-list-panel" },
-    h("div", { class: "panel-heading" },
-      h("div", null, h("h2", null, title), h("p", null, subtitle))),
-    content);
-}
-
-function approvalsList(rows) {
-  const pending = rows.filter(c => c.status === "PENDING_APPROVAL");
-  if (!pending.length) return emptyState("Nothing awaits sign-off",
-    "Cases appear here after two clean reviews and all findings are closed.");
-  return h("div", { class: "desk-mini-list" }, ...pending.map(c =>
-    h("a", { class: "desk-mini-row", href: `#/case/${c.case_id}/approval` },
-      h("span", { class: "mini-ticker" }, c.ticker),
-      h("span", { class: "mini-copy" },
-        h("strong", null, c.case_id),
-        h("small", null, c.deadline ? `Due ${fmt.datetime(c.deadline)}` : "No deadline set")),
-      h("span", { class: "mini-value" }, `${c.clean_review_rounds}/2 clean`),
-      icon("arrow"))));
-}
-
-function activeRunsList(rows) {
-  const active = rows.filter(c => c.status === "RUNNING" || c.status === "CREATED");
-  if (!active.length) return emptyState("No work in flight",
-    "Open a case to inspect its current role, controls, and trace.");
-  return h("div", { class: "desk-mini-list" }, ...active.map(c =>
-    h("button", { class: "desk-mini-row", onclick: () => Route.nav(`#/case/${c.case_id}`) },
-      h("span", { class: "mini-ticker" }, c.ticker),
-      h("span", { class: "mini-copy" },
-        h("strong", null, c.case_id),
-        h("small", null, `Now with ${c.pending_role || "generator"}`)),
-      h("span", { class: "mini-meter" },
-        h("i", null, h("b", { style: `width:${c.rounds_max ? Math.min(100, c.rounds_used / c.rounds_max * 100) : 0}%` })),
-        `${c.rounds_used}/${c.rounds_max} rounds`),
-      icon("arrow"))));
 }
 
 /* ------------------------------------------------------ case detail ---- */
@@ -800,9 +778,10 @@ Views.case = async function (view, caseId, tab) {
     ...TABS.map(([id, label]) => {
       let count = "";
       if (id === "findings" && c.findings.length) count = ` (${c.findings.filter(f => f.status === "open").length || 0}/open)`;
-      if (id === "approval" && c.state.status === "PENDING_APPROVAL") count = " ●";
+      const pendingApproval = id === "approval" && c.state.status === "PENDING_APPROVAL";
       return h("button", {
-        class: (tab === id ? "active " : "") + (id === "approval" && c.state.status === "PENDING_APPROVAL" ? "attn " : ""),
+        class: (tab === id ? "active " : "") + (pendingApproval ? "attn " : ""),
+        "aria-label": pendingApproval ? "Approval, pending" : null,
         onclick: () => Route.nav(`#/case/${caseId}/${id}`),
       }, label + count);
     }));
@@ -815,8 +794,7 @@ Views.case = async function (view, caseId, tab) {
       h("span", { class: "sub mono" }, caseId)),
     h("div", { class: "case-head-state" },
       statusChip(c.state.status),
-      h("span", null, `Cutoff ${c.mandate.cutoff_date}`),
-      h("span", null, `Candidate ${(c.state.candidate.candidate_id || "pending").slice(0, 12)}`)));
+      h("span", null, `Cutoff ${c.mandate.cutoff_date}`)));
 
   const body = h("div", { id: "case-body" });
   view.replaceChildren(head, tabsBar, body);
@@ -830,101 +808,125 @@ Views.case = async function (view, caseId, tab) {
   else renderCaseOverview(body, c);
 };
 
+function caseNextAction(c) {
+  const st = c.state, caseId = c.case_id;
+  let title, message, action;
+  if (st.status === "CREATED") {
+    title = "Start the case";
+    message = "Ready to start with the selected provider.";
+    action = h("button", { class: "btn primary", onclick: () => doRun(caseId, false) }, "Start case");
+  } else if (st.status === "RUNNING") {
+    title = "Follow the run";
+    message = "The case is in progress. Follow its activity for the latest updates.";
+    action = h("a", { class: "btn primary", href: `#/terminal/${caseId}` }, "View activity");
+  } else if (st.status === "PENDING_APPROVAL") {
+    title = "Review the case";
+    message = "The case is waiting for an approval decision.";
+    action = h("a", { class: "btn primary", href: `#/case/${caseId}/approval` }, "Review and decide");
+  } else if (["BLOCKED", "EXHAUSTED", "STOPPED"].includes(st.status)) {
+    title = "Attention needed";
+    message = "Review the case status and available next steps.";
+    action = blockedGuidance(c, st);
+  } else {
+    title = "Review the result";
+    message = "Review the case outputs and activity.";
+    action = h("a", { class: "btn primary", href: `#/case/${caseId}/report` }, "View report");
+  }
+  return h("section", { class: "block case-next" },
+    h("div", { class: "case-next-copy" }, h("span", { class: "eyebrow" }, "Next step"),
+      h("h2", null, title), h("p", null, message)),
+    h("div", { class: "case-next-actions" }, action,
+      st.status === "CREATED" ? h("a", { class: "case-next-link", href: "#/backends" }, "Model routing") : null));
+}
+
 function renderCaseOverview(body, c) {
   const st = c.state;
   const b = st.budget;
   const docs = c.documents_visible_at_cutoff || [];
+  const excludedDocs = c.manifest.documents.filter(d => d.filed > c.mandate.cutoff_date);
+  const filingRow = (d, excluded = false) => h("div", { class: "case-filing" },
+    h("strong", null, d.form), h("span", null, d.doc_id), h("span", null, d.filed),
+    excluded ? h("span", { class: "chip minor" }, "After cutoff. Excluded.") : null);
+  const overviewPanel = (name, className, ...content) => {
+    const panel = labeledPanel(name, ...content); panel.classList.add(className); return panel;
+  };
+  const started = Date.parse(st.pending.case_clock_started || "");
+  const clockActive = Number.isFinite(started) && ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(st.status);
+  const clockBox = h("div", { class: "case-progress-clock" });
+  const updateClock = () => {
+    const elapsed = Number(b.used.elapsed_minutes || 0) + (clockActive ? Math.max(0, Date.now() - started) / 60000 : 0);
+    clockBox.replaceChildren(h("span", null, "Case time"),
+      h("strong", null, icon("clock"), duration(elapsed)),
+      h("small", null, clockActive ? "Clock is running" : "Recorded time"));
+  };
+  updateClock();
+  if (clockActive) CASE_CLOCK_TIMER = setInterval(updateClock, 1000);
   body.replaceChildren(
-    h("div", { class: "two-col" },
+    caseNextAction(c),
+    h("div", { class: "case-overview-grid" },
       h("div", null,
-      labeledPanel("Case status",
+      overviewPanel("Case progress", "overview-progress",
           stateStrip(st.status, st.pending.role, c.result && c.result.terminal),
-          kv([
-            ["status", readableStatus(st.status)],
-            ["current activity", st.status === "RUNNING" ? readableRole(st.pending.role) : "Not applicable"],
-            ["request", st.pending.request_id],
-            ["round", String(st.pending.round)],
-            ["retries at role", `${st.pending.retry_count}/${b.retries_max}`],
-            ["candidate", st.candidate.candidate_id || "pending"],
-            ["clean reviews (2 needed)", String(st.candidate.clean_review_rounds)],
-            ["reason", reasonText(st.reason)],
-          ])),
-        labeledPanel("Run limits",
-          kv([
-            ["revision rounds", ""],
-          ]),
-          h("div", { class: "row wrap" },
-            meter(b.used.rounds, b.rounds_max, "rounds"),
-            meter(b.used.elapsed_minutes, b.case_minutes, "case clock", 1),
-            meter(Math.max(...Object.values(b.used.tokens_by_role || { 0: 0 })),
-              b.role_tokens_max, "role tokens")),
-          kv([
-            ["case clock started", fmt.datetime(st.pending.case_clock_started)],
-            ["approval deadline", st.pending.deadline ? fmt.datetime(st.pending.deadline) : "Not set"],
-            ["config versions", `cards ${Object.values(st.config_versions.prompt_cards || {}).slice(0, 4).join(" / ")}, engines ${st.config_versions.engines}`],
-            ["verified checkpoints", String(st.checkpoints.length)],
-          ])),
-        labeledPanel("Controls",
-          canRun(st) && st.status !== "EXHAUSTED" ? h("div", { class: "control-group" },
-            h("h3", null, "Run with selected backend"),
-            h("p", null, "Runs this case with the backend selected in ",
-              h("a", { href: "#/backends" }, "Model routing"),
-              ". The selected backend may be a live model or replay; the demo workspace simulates dispatch."),
-            h("div", { class: "control-actions" },
-              h("button", { class: "btn primary", onclick: () => doRun(c.case_id, false) },
-                st.status === "BLOCKED" ? "Rerun with selected backend" : "Run with selected backend"))) : null,
-          st.status === "RUNNING" ? h("div", { class: "control-group" },
-            h("h3", null, "Resume interrupted work"),
-            h("p", null, "Continue from the last verified checkpoint using the selected backend."),
-            h("div", { class: "control-actions" },
-              h("button", { class: "btn", onclick: () => doResume(c.case_id) }, "Resume pending work"))) : null,
-          canRun(st) && st.status !== "EXHAUSTED" ? h("div", { class: "control-group" },
-            h("h3", null, "Test with recorded responses"),
-            h("p", null, "Replay uses saved responses instead of a live model and can change this case. In a real workspace, missing matching recordings stop the run."),
-            h("div", { class: "control-actions" },
-              h("button", { class: "btn", onclick: () => doRun(c.case_id, true) }, "Run with replay"))) : null,
-          !["CLOSED", "APPROVED", "REJECTED"].includes(st.status)
-            ? h("div", { class: "control-group" },
+          h("div", { class: "case-progress-meta" },
+            h("div", null, h("span", { title: "Consecutive complete reviews of the same candidate with no blocking findings." }, "Reviews cleared"), h("strong", null, `${st.candidate.clean_review_rounds} of 2`)),
+            st.status === "PENDING_APPROVAL" && st.pending.deadline ? h("div", null,
+              h("span", null, "Decision deadline"), h("strong", null, fmt.datetime(st.pending.deadline))) : null,
+            clockBox),
+          runLimit("repeat", "Revision rounds", b.used.rounds, b.rounds_max,
+            `${fmt.int(b.used.rounds)} of ${fmt.int(b.rounds_max)}`, "Rounds used to build or revise this case."),
+          h("details", { class: "case-inline-details" }, h("summary", null, "Run details"),
+            kv([
+              ["request", st.pending.request_id || "Not set"],
+              ["current round", String(st.pending.round)],
+              ["retries at role", `${st.pending.retry_count}/${b.retries_max}`],
+              ["candidate", st.candidate.candidate_id || "Not set"],
+              ["reason", reasonText(st.reason)],
+              ["case clock started", fmt.datetime(st.pending.case_clock_started)],
+              ["verified checkpoints", String(st.checkpoints.length)],
+            ]))),
+        h("details", { class: "case-tools overview-tools" },
+          h("summary", null, "Testing and recovery"),
+          h("div", { class: "case-tools-content" },
+            st.status === "RUNNING" ? h("div", { class: "control-group" },
+              h("h3", null, "Resume interrupted work"),
+              h("p", null, "Use only if the run was interrupted. Continues from the last verified checkpoint."),
+              h("button", { class: "btn", onclick: () => doResume(c.case_id) }, "Resume pending work")) : null,
+            canRun(st) && st.status !== "EXHAUSTED" ? h("div", { class: "control-group" },
+              h("h3", null, "Run with recorded responses"),
+              h("p", null, "Replay can change this case. Missing matching recordings stop the run."),
+              h("button", { class: "btn", onclick: () => doRun(c.case_id, true) }, "Run with replay")) : null,
+            !["CLOSED", "APPROVED", "REJECTED"].includes(st.status) ? h("div", { class: "control-group" },
               h("h3", null, "Rehearsal"),
-              h("p", null, "Test interruption and recovery. Stopping a stage affects this case."),
+              h("p", null, "Test interruption and recovery. Interrupting a stage affects this case."),
               h("div", { class: "control-actions" },
                 h("button", { class: "btn danger", onclick: () => doKill(c.case_id) }, "Interrupt a stage"),
-                h("a", { class: "btn", href: `#/demo?case=${c.case_id}` }, "Open rehearsal"))) : null,
-          h("div", { class: "control-group" },
-            h("h3", null, "Monitor activity"),
-            h("p", null, "Follow dispatches, results, and case changes."),
-            h("div", { class: "control-actions" },
-              h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log"))),
-          blockedGuidance(c, st)),
+                h("a", { class: "btn", href: "#/demo" }, "Open rehearsal"))) : null,
+            h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log"))),
       ),
       h("div", null,
-        labeledPanel("Frozen mandate",
+        overviewPanel("Source snapshot", "overview-sources",
+          h("p", { class: "case-source-summary" }, h("strong", null, `${docs.length} ${docs.length === 1 ? "filing" : "filings"} available`),
+            h("span", null, " at the cutoff")),
+          h("p", { class: "hint case-source-bundle" }, `Bundle: ${c.manifest.bundle_id}`),
+          docs.length ? h("div", { class: "case-filings" }, ...docs.slice(0, 3).map(d => filingRow(d))) :
+            h("p", { class: "hint" }, "No filings are available at the cutoff."),
+          docs.length > 3 || excludedDocs.length ? h("details", { class: "case-inline-details" },
+            h("summary", null, "More filings"),
+            h("div", { class: "case-filings" }, ...docs.slice(3).map(d => filingRow(d)), ...excludedDocs.map(d => filingRow(d, true))),
+            excludedDocs.length ? h("p", { class: "hint" }, "Filings after the cutoff are excluded from the run.") : null) : null),
+        h("details", { class: "case-tools case-mandate" }, h("summary", null, "Mandate and assumptions"),
+          h("div", { class: "case-tools-content" },
           kv([
             ["mandate", c.mandate.mandate_id],
-            ["ticker", c.mandate.ticker],
             ["cik", c.mandate.cik],
-            ["cutoff", c.mandate.cutoff_date],
             ["trigger", c.mandate.trigger_document],
-            ["note type", c.mandate.report_policy.note_type],
             ["length (words)", c.mandate.report_policy.length_words.join("–")],
             ["WACC / terminal", `${fmt.pct(c.mandate.assumptions.wacc)} / ${fmt.pct(c.mandate.assumptions.terminal_growth)}`],
             ["exit multiple (EBITDA)", String(c.mandate.assumptions.exit_multiple_ebitda)],
             ["segments bounded", Object.keys(c.mandate.assumptions.forecast_bounds.segments).join(", ")],
             ["peers", c.mandate.assumptions.peer_block.peers.map(p => p.ticker).join(", ")],
             ["dcf↔comps tolerance", fmt.pct(c.mandate.assumptions.dcf_comps_tolerance, 0)],
-          ])),
-        labeledPanel(`Filings available at cutoff (${docs.length})`,
-          c.manifest.documents.map(d => {
-            const visible = d.filed <= c.mandate.cutoff_date;
-            return h("div", { class: "row", style: visible ? "" : "opacity:.45" },
-              h("span", { class: "chip " + (visible ? "ok" : "major") }, d.form),
-              h("span", { class: "mono small grow" }, d.doc_id),
-              h("span", { class: "mono small muted" }, d.filed),
-              !visible ? h("span", { class: "hint" }, "Post-cutoff. Excluded.") : null);
-          }),
-          h("p", { class: "hint" },
-            `Bundle ${c.manifest.bundle_id} uses ${fmt.mb(c.manifest.documents.reduce((s, d) => s + d.bytes, 0))} on disk. Filings after the cutoff are excluded before the run starts.`),
-        ),
+          ]))),
       )));
 }
 
@@ -1047,6 +1049,14 @@ async function doKill(caseId) {
 
 /* -------- build tab: stage reports + gate results ------------------------ */
 
+function renderCriticFinding(finding) {
+  if (typeof finding === "string") return h("li", null, finding);
+  if (!finding || typeof finding !== "object") return h("li", null, String(finding));
+  const details = [finding.finding_id, finding.severity].filter(Boolean).join(" · ");
+  const summary = finding.summary || JSON.stringify(finding);
+  return h("li", null, details ? h("strong", null, `${details}: `) : null, summary);
+}
+
 function renderCaseBuild(body, c) {
   if (!c.rounds.length) {
     body.replaceChildren(emptyState("No rounds built yet",
@@ -1066,7 +1076,7 @@ function renderCaseBuild(body, c) {
         h("td", null, cr.verdict === "clean" ? h("span", { class: "chip ok" }, "Clean") :
           h("span", { class: "chip major" }, cr.verdict || "Not set")),
         h("td", null, cr.verdict === "pending" ? "Awaiting dispatch" :
-          cr.findings && cr.findings.length ? cr.findings.join(", ") : "None")));
+          cr.findings && cr.findings.length ? h("ul", null, ...cr.findings.map(renderCriticFinding)) : "None")));
     const pkChip = h("span", { class: "chip", title: "Repair packet" },
       rnd.repair_packet ? "Repair packet issued" : "No repair packet");
     return labeledPanel(`Round ${String(rnd.round).padStart(3, "0")}: ${rnd.status}`,
@@ -1412,14 +1422,14 @@ async function renderCaseReport(body, c) {
     `/api/cases/${c.case_id}/report?version=${rep.version}`), null);
   const report = rep2.ok ? rep2.data : rep;
 
-  const selWrap = h("select");
+  const selWrap = h("select", { "aria-label": "Report version" });
   selWrap.append(...report.versions.map(v =>
-    h("option", { value: v, selected: v === report.version ? "" : null }, v)));
+    h("option", { value: v, selected: v === report.version ? "" : null }, v === "draft" ? "Draft" : v)));
 
   const pane = h("div", { id: "report-pane" });
   const diffToggler = h("button", { class: "btn small" },
     report.diff ? `Compare with ${report.diff.base_version}` : "First version");
-  if (!report.diff) diffToggler.disabled = true;
+  diffToggler.hidden = !report.diff;
 
   async function paintVersion(v) {
     pane.replaceChildren(loadingRow("Report"));
@@ -1428,20 +1438,22 @@ async function renderCaseReport(body, c) {
         : `/api/cases/${c.case_id}/report`), "report load failed");
     if (!r.ok) { pane.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
     const data = r.data;
+    const unresolved = (data.evidence || []).filter(ev => !(ev.citation || {}).doc_id).length;
     pane.replaceChildren(
-      h("div", { class: "row wrap mb2" },
-        h("span", { class: "chip accent" }, `Version ${data.version}`),
-        h("span", { class: "chip" }, `Round ${data.round}`),
-        h("span", { class: "chip" }, `Candidate ${(data.candidate_id || "").slice(0, 10)}`),
-        h("span", { class: "chip " + (data.within_bounds ? "ok" : "major") },
-          `${data.word_count} words, policy ${data.word_bounds[0]}–${data.word_bounds[1]}`),
-        h("span", { class: "grow" }),
-        data.evidence.length ? h("span", { class: "chip" },
-          `${data.evidence.length} Evidence links`) : null),
+      h("div", { class: "report-summary" },
+        h("div", { class: "report-summary-main" },
+          h("span", { class: data.is_draft ? "report-state draft" : "report-state" }, data.is_draft ? "Draft for review" : `Version ${data.version}`),
+          h("span", null, `Round ${data.round}`),
+          data.candidate_id ? h("span", { title: data.candidate_id }, `Candidate ${data.candidate_id}`) : null),
+        h("div", { class: "report-summary-details" },
+          h("span", null, `${data.word_count} words (policy ${data.word_bounds[0]}–${data.word_bounds[1]})`),
+          h("span", null, `${(data.evidence || []).length} distinct evidence references`),
+          unresolved ? h("span", { class: "report-unresolved" }, `${unresolved} unresolved`) : null)),
       renderNote(data));
     diffToggler.textContent = data.diff
-      ? `Compare with ${data.diff.base_version}` : "First version";
-    diffToggler.disabled = !data.diff;
+      ? `Compare with ${data.diff.base_version}` : "";
+    diffToggler.hidden = !data.diff;
+    diffToggler.dataset.diffing = "";
     diffToggler.dataset.v = data.version;
   }
 
@@ -1455,27 +1467,54 @@ async function renderCaseReport(body, c) {
       return;
     }
     diffToggler.dataset.diffing = "1";
+    diffToggler.textContent = "Return to report";
     pane.replaceChildren(diffPane(r.data));
   });
 
   body.replaceChildren(
-    h("div", { class: "actions" },
-      h("label", { class: "label", style: "margin:0" }, "Version"),
-      selWrap, diffToggler,
-      h("span", { class: "grow" }),
-      h("span", { class: "label", style: "margin:0" }, "Export"),
-      h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "Dossier.pdf"),
-      h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "xlsx") }, "Model.xlsx"),
-      h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "Dossier.html")),
-    h("p", { class: "hint" },
-      "Click a dotted figure to inspect its document ID, slice, anchor, and SHA-256 hash."),
+    h("div", { class: "report-toolbar" },
+      h("div", { class: "report-toolbar-heading" },
+        h("div", null, h("h2", null, "Report"),
+          h("p", null, report.is_draft ? "Review the draft and its supporting evidence." : "Review the report and its supporting evidence.")),
+        h("div", { class: "report-versions" },
+          report.versions.length > 1 ? h("label", null, h("span", null, "Version"), selWrap) : null,
+          diffToggler)),
+      h("div", { class: "report-export" },
+        h("span", { class: "report-export-label" }, "Export"),
+        h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "PDF"),
+        h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "xlsx") }, "Excel model"),
+        h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "HTML"))),
+    h("p", { class: "report-source-help" },
+      "Select ↗ to inspect a source. An ! marks a source that needs review."),
     pane);
   paintVersion(report.version);
 }
 
-/** render report markdown into a .note block with evidence links */
+/** Render the report with readable, individually accessible evidence markers. */
 function renderNote(data) {
-  const note = h("div", { class: "note" });
+  const note = h("article", { class: "note" });
+  const evidence = new Map((data.evidence || []).map(ev => [ev.token, ev]));
+  function content(text) {
+    const parts = [];
+    const rx = /\[EV:([^\]]+)\]/g;
+    let last = 0; let match;
+    while ((match = rx.exec(text))) {
+      parts.push(...inline(text.slice(last, match.index)));
+      const token = match[1];
+      const ev = evidence.get(token);
+      const resolved = ev && ev.citation && ev.citation.doc_id;
+      const marker = h("button", { type: "button", class: "cite-link" + (resolved ? "" : " unresolved"),
+        title: resolved ? `Source: ${token}` : `Source not resolved: ${token}`,
+        "aria-label": resolved ? `View source for ${token}` : `Source not resolved for ${token}` },
+        resolved ? "↗" : "!");
+      if (ev) marker.addEventListener("click", e => openCitePanel(e, ev));
+      else marker.disabled = true;
+      parts.push(marker);
+      last = rx.lastIndex;
+    }
+    parts.push(...inline(text.slice(last)));
+    return parts;
+  }
   const lines = data.markdown.split("\n");
   let i = 0;
   while (i < lines.length) {
@@ -1488,40 +1527,23 @@ function renderNote(data) {
         rows.push(lines[i].split("|").slice(1, -1).map(s => s.trim()));
         i++;
       }
-      const t = h("table", null,
-        h("thead", null, h("tr", null,
-          ...header.map(x => h("th", null, h("span", null, inline(x)))))),
-        h("tbody", null, ...rows.map(r => h("tr", null,
-          ...r.map(x => h("td", null, inline(x)))))));
-      note.append(t);
+      note.append(h("div", { class: "note-table" }, h("table", null,
+        h("thead", null, h("tr", null, ...header.map(x => h("th", null, content(x))))),
+        h("tbody", null, ...rows.map(r => h("tr", null, ...r.map(x => h("td", null, content(x)))))))));
       continue;
     }
-    if (line.startsWith("### ")) note.append(h("h3", null, h("span", null, inline(line.slice(4)))));
-    else if (line.startsWith("## ")) note.append(h("h2", null, h("span", null, inline(line.slice(3)))));
-    else if (line.trim()) note.append(h("p", null, h("span", null, inline(line))));
-    i++;
-  }
-  // click-through evidence: wrap each token occurrence in text nodes
-  for (const ev of (data.evidence || [])) {
-    const rx = new RegExp(rxEscape(ev.token), "g");
-    const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = walker.nextNode())) {
-      if (!node.textContent.includes(ev.token)) continue;
-      const frag = document.createDocumentFragment();
-      let last = 0; let m;
-      const text = node.textContent;
-      while ((m = rx.exec(text))) {
-        frag.append(text.slice(last, m.index));
-        const a = h("a", { class: "cite-link", dataset: { token: ev.token } }, ev.token);
-        a.addEventListener("click", e => openCitePanel(e, ev));
-        frag.append(a);
-        last = m.index + ev.token.length;
-      }
-      frag.append(text.slice(last));
-      node.parentNode.replaceChild(frag, node);
-      break;   // first occurrence carries the link (dotted elsewhere)
+    if (/^[-*] /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[-*] /.test(lines[i])) items.push(h("li", null, content(lines[i++].slice(2))));
+      note.append(h("ul", null, items));
+      continue;
     }
+    if (line.startsWith("# ")) note.append(h("h1", null, content(line.slice(2))));
+    else if (line.startsWith("### ")) note.append(h("h3", null, content(line.slice(4))));
+    else if (line.startsWith("## ")) note.append(h("h2", null, content(line.slice(3))));
+    else if (line.startsWith("> ")) note.append(h("p", { class: "note-meta" }, content(line.slice(2))));
+    else if (line.trim()) note.append(h("p", null, content(line)));
+    i++;
   }
   return note;
 }
@@ -1544,17 +1566,44 @@ function inline(s) {
 function openCitePanel(click, ev) {
   click.preventDefault();
   const cit = ev.citation;
-  const pop = h("div", { class: "cite-pop" },
-    h("header", null, "Source record",
-      h("button", { onclick: () => pop.remove() }, "Esc")),
-    h("dl", null,
-      h("dt", null, "Figure"), h("dd", { class: "token" }, ev.token),
-      h("dt", null, "Document (doc_id)"), h("dd", null, cit.doc_id),
-      h("dt", null, "Slice (slice_id)"), h("dd", null, cit.slice_id),
-      h("dt", null, "Anchor"), h("dd", null, cit.anchor),
+  const kind = cit.kind || "filing";
+  const rows = [h("dt", null, "Figure"), h("dd", { class: "token" }, ev.token)];
+  if (kind === "filing") {
+    rows.push(
+      cit.note ? h("dt", null, "Status") : null, cit.note ? h("dd", null, cit.note) : null,
+      h("dt", null, "Document (doc_id)"), h("dd", null, cit.doc_id || "Not available"),
+      h("dt", null, "Slice (slice_id)"), h("dd", null, cit.slice_id || "Not available"),
+      h("dt", null, "Anchor"), h("dd", null, cit.anchor || "Not available"),
       h("dt", null, "Locator"), h("dd", null, cit.locator || "Not set"),
       h("dt", null, "Document SHA-256"),
-      h("dd", { title: cit.doc_sha256 }, cit.doc_sha256)));
+      h("dd", { title: cit.doc_sha256 }, cit.doc_sha256 || "Not available"));
+  } else if (kind === "derived") {
+    rows.push(
+      h("dt", null, "Kind"), h("dd", null, "derived figure"),
+      h("dt", null, "Source artifact"), h("dd", null, cit.source_artifact));
+    if (cit.formula) rows.push(h("dt", null, "Formula"), h("dd", { class: "token" }, cit.formula));
+    if (cit.period) rows.push(h("dt", null, "Period"), h("dd", null, cit.period));
+    if (cit.value !== undefined && cit.value !== null) rows.push(h("dt", null, "Value"), h("dd", null, String(cit.value)));
+    if ((cit.inputs || []).length) {
+      rows.push(h("dt", null, "Inputs"), h("dd", null, ...cit.inputs.map(i =>
+        h("div", null, h("code", null, i.field), " ",
+          h("span", { class: "hint" }, `${i.citation.doc_id} ${i.citation.anchor || ""}`)))));
+    }
+    rows.push(h("dt", null, "Status"), h("dd", null, cit.note || "Not set"));
+  } else if (kind === "computed") {
+    rows.push(
+      h("dt", null, "Kind"), h("dd", null, "computed figure"),
+      h("dt", null, "Source artifact"), h("dd", null, cit.source_artifact),
+      h("dt", null, "Path"), h("dd", { class: "token" }, cit.path),
+      h("dt", null, "Value"), h("dd", null, String(cit.value)),
+      h("dt", null, "Status"), h("dd", null, cit.note || "Not set"));
+  } else {
+    rows.push(h("dt", null, "Status"), h("dd", null, cit.note || "Not resolved"));
+  }
+  const pop = h("div", { class: "cite-pop" },
+    h("header", null, kind === "filing" ? "Source record" : "Derivation",
+      h("button", { onclick: () => pop.remove() }, "Esc")),
+    h("dl", null, ...rows));
   $("#pop").replaceChildren(pop);
   const x = Math.min(click.clientX + 14, window.innerWidth - 400);
   const y = Math.min(click.clientY + 10, window.innerHeight - 320);
@@ -1631,8 +1680,16 @@ async function renderCaseApproval(body, c) {
   }
 
   const decisionBox = h("div", { id: "decision-box" });
-  const latest = c.reports.length ? c.reports[c.reports.length - 1] : { version: "Not set" };
+  const latest = c.reports.length ? c.reports[c.reports.length - 1]
+    : { version: rep.ok ? `${rep.data.version} (unpublished)` : "Not set" };
   const openFindings = (c.findings || []).filter(f => f.status === "open");
+  // Only major/critical findings block publication; minors are advisory and
+  // ride along to the approver. The controller's own list wins when present.
+  const blockingIds = ((st.reason || {}).detail || {}).blocking_finding_ids;
+  const blocking = blockingIds
+    ? openFindings.filter(f => blockingIds.includes(f.finding_id))
+    : openFindings.filter(f => f.severity === "major" || f.severity === "critical");
+  const escalated = (st.reason || {}).code === "ESCALATED";
 
   const cover = h("div", { class: "dossier-cover" },
     h("h2", null, "Approval dossier"),
@@ -1643,7 +1700,7 @@ async function renderCaseApproval(body, c) {
       h("dt", null, "Cutoff"), h("dd", null, c.mandate.cutoff_date),
       h("dt", null, "Engines"), h("dd", null, `Engines ${st.config_versions.engines}, maps ${st.config_versions.mapping_tables}`),
       h("dt", null, "Candidate"), h("dd", null, st.candidate.candidate_id || "Not set"),
-      h("dt", null, "Clean reviews"), h("dd", null, `${st.candidate.clean_review_rounds} / 2 consecutive`),
+      h("dt", null, "Clean reviews"), h("dd", null, escalated ? "escalated, objections unresolved" : `${st.candidate.clean_review_rounds} / 2 consecutive`),
       h("dt", null, "Gates"), h("dd", null, "4 / 4 numerical gates pass"),
       h("dt", null, "Carried findings"), h("dd", null, String(openFindings.length)),
       h("dt", null, "Budget drawn"), h("dd", null, `${b.used.rounds}/${b.rounds_max} rounds, ${b.used.elapsed_minutes.toFixed(1)}/${b.case_minutes} min`),
@@ -1652,23 +1709,37 @@ async function renderCaseApproval(body, c) {
     h("p", { class: "hint" },
       "This dossier contains the frozen inputs, engine versions, critic decisions, and current note. Publication still requires the sign-off below."));
 
-  const ready = openFindings.length === 0 && st.candidate.clean_review_rounds >= 2;
+  const ready = blocking.length === 0;
 
   const who = h("input", { type: "text", placeholder: "Approver name as recorded",
                             value: "Gaetano Marco Chiantia" });
   const why = h("textarea", { rows: "3", placeholder: "What did you review?" });
   const act = h("div", { class: "signoff" },
     h("div", { class: "label-bar" }, h("span", null, "Publication decision"),
-      h("span", null, ready ? "Ready for review" : "Review requirements incomplete")),
-    why,
-    h("div", { class: "row" },
-      h("span", { class: "who" }, who),
+      h("span", { class: ready ? "signoff-status ready" : "signoff-status" }, ready ? "Ready for review"
+        : escalated ? `${blocking.length} objection(s) to adjudicate`
+        : "Review requirements incomplete")),
+    blocking.length ? h("div", { class: "hint" },
+      `Approving publishes over ${blocking.length} unresolved blocking finding(s). Name them in the review notes; a blanket approval is refused.`,
+      h("ul", null, ...blocking.map(f => h("li", null,
+        h("code", null, f.finding_id), ` (${f.severity}) ${f.summary}`)))) : null,
+    h("label", { class: "signoff-field" }, h("span", null, "Review notes"), why),
+    h("label", { class: "signoff-field" }, h("span", null, "Approver name"), who),
+    h("div", { class: "signoff-actions" },
       h("button", { class: "btn primary", onclick: () => decide("APPROVED") }, "Approve for publication"),
       h("button", { class: "btn danger", onclick: () => decide("REJECTED") }, "Reject")));
 
   async function decide(decision) {
+    if (decision === "APPROVED" && blocking.length && !why.value.trim()) {
+      toast("review notes required",
+        `Name the ${blocking.length} objection(s) you are signing off over.`);
+      why.focus();
+      return;
+    }
     const r = await guard(() => Api.post(`/api/cases/${c.case_id}/approval`, {
-      decision, by: who.value, reasoning: why.value }), "approval failed");
+      decision, by: who.value, reasoning: why.value,
+      acknowledge_findings: decision === "APPROVED"
+        ? blocking.map(f => f.finding_id) : [] }), "approval failed");
     if (r.ok) {
       toast(`recorded: ${decision}`, `decision ${r.data.decision_id}, auditable record stored`);
       Route.nav(`#/case/${c.case_id}`);
@@ -1681,10 +1752,11 @@ async function renderCaseApproval(body, c) {
     h("div", null,
       labeledPanel("Sign-off checklist",
         kv([
-          ["1. Numerical gates", "4/4 pass. Thresholds locked."],
-          ["2. Clean reviews", `${st.candidate.clean_review_rounds} of 2 consecutive, same candidate`],
-          ["3. Carried findings", openFindings.length ? `${openFindings.length} still open` : "All closed with critic-verified evidence"],
-          ["4. Human gate", st.status === "PENDING_APPROVAL" ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
+          ["1. Numerical gates", st.candidate.gates_passed ? "All numerical gates pass. Thresholds locked." : "Not all gates pass, so publication is refused."],
+          ["2. Critic coverage", escalated ? "Every critic reviewed the candidate; the round budget ran out before the objections settled." : `${st.candidate.clean_review_rounds} of 2 consecutive clean reviews, same candidate`],
+          ["3. Blocking findings", blocking.length ? `${blocking.length} open (major/critical), must be named to approve` : "None open"],
+          ["4. Advisory findings", openFindings.length - blocking.length > 0 ? `${openFindings.length - blocking.length} minor, advisory only` : "None"],
+          ["5. Human gate", st.status === "PENDING_APPROVAL" ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
         ])),
       rep.ok ? labeledPanel(`Rendered note for sign-off (${rep.data.version})`,
         renderNote(rep.data),
@@ -1742,9 +1814,9 @@ Views.newCase = async function newCase(view, fromId) {
   let DCT = (M.assumptions || {}).dcf_comps_tolerance ?? 0.25;
 
   const W = {
-    ticker: h("input", { type: "text", placeholder: "INTC", value: "INTC" }),
+    ticker: h("input", { type: "hidden", value: "" }),
     period: h("input", { type: "text", placeholder: "FY2027Q1", value: "fy2027q1" }),
-    cik: h("input", { type: "text", placeholder: "0000050863", value: "0000050863" }),
+    cik: h("input", { type: "hidden", value: "" }),
     cutoff: h("input", { type: "date", value: "2026-10-30" }),
     bundle: h("select"),
     trigger: h("select"),
@@ -1768,6 +1840,10 @@ Views.newCase = async function newCase(view, fromId) {
   }
 
   const rawBox = h("textarea", { class: "code", rows: "22", readonly: "readonly" });
+  const tickerDisplay = h("dd");
+  const cikDisplay = h("dd");
+  const identityStatus = h("p", { class: "identity-status", role: "status" });
+  let identityLoading = false;
   const errorsBox = h("div");
   const okBox = h("div");
 
@@ -1783,27 +1859,28 @@ Views.newCase = async function newCase(view, fromId) {
   const peerModel = () => ({ ticker: "AMD", pe: "", evebitda: "", ps: "", growth: "" });
 
   function segAdd(v = segModel()) {
-    const name = h("input", { type: "text", value: v.name });
-    const min = h("input", { type: "number", step: "0.01", value: String(v.min), class: "num" });
-    const max = h("input", { type: "number", step: "0.01", value: String(v.max), class: "num" });
-    const del = h("button", { class: "btn small danger", onclick: () => tr.remove() }, "✕");
-    const tr = h("tr", null, h("td", null, name), h("td", null, min),
-      h("td", null, max), h("td", null, del));
+    const name = h("input", { type: "text", value: v.name, "aria-label": "Segment" });
+    const min = h("input", { type: "number", step: "0.01", value: String(v.min), class: "num", "aria-label": "Minimum growth" });
+    const max = h("input", { type: "number", step: "0.01", value: String(v.max), class: "num", "aria-label": "Maximum growth" });
+    const del = h("button", { class: "btn small danger", type: "button", "aria-label": "Remove segment", onclick: () => { tr.remove(); sync(); } }, "✕");
+    const tr = h("tr", null, h("td", { "data-label": "Segment" }, name), h("td", { "data-label": "Min" }, min),
+      h("td", { "data-label": "Max" }, max), h("td", { class: "editor-remove" }, del));
     [name, min, max].forEach(el => el.addEventListener("input", sync));
     segRows.append(tr);
   }
 
   function peerAdd(v = peerModel()) {
     const cells = {};
+    const labels = { ticker: "Ticker", pe: "P/E TTM", evebitda: "EV/EBITDA", ps: "P/S", growth: "Revenue growth YoY" };
     for (const key of ["ticker", "pe", "evebitda", "ps", "growth"]) {
       cells[key] = h("input", { type: "text", value: String(v[key === "pe" ? "pe" : key] || ""),
-        class: key === "ticker" ? "" : "num" });
+        class: key === "ticker" ? "" : "num", "aria-label": labels[key] });
       cells[key].addEventListener("input", sync);
     }
-    const del = h("button", { class: "btn small danger", onclick: () => tr.remove() }, "✕");
+    const del = h("button", { class: "btn small danger", type: "button", "aria-label": "Remove peer", onclick: () => { tr.remove(); sync(); } }, "✕");
     const tr = h("tr", null,
-      ...["ticker", "pe", "evebitda", "ps", "growth"].map(k => h("td", null, cells[k])),
-      h("td", null, del));
+      ...["ticker", "pe", "evebitda", "ps", "growth"].map(k => h("td", { "data-label": labels[k] }, cells[k])),
+      h("td", { class: "editor-remove" }, del));
     tr.dataset.cells = "1";
     tr._cells = cells;
     peersRows.append(tr);
@@ -1826,10 +1903,9 @@ Views.newCase = async function newCase(view, fromId) {
    * for the same ticker ("desk profile"), and every assumption stays
    * editable with an explainer for what it constrains. */
   const deskBox = h("div");
-  let userTrigger = false, autoTicker = "", autoCutoff = "", cikUser = false;
-  W.trigger.addEventListener("change", () => { userTrigger = true; });
-  W.cik.addEventListener("input", () => { cikUser = true; });
-  W.ticker.addEventListener("input", () => { autoTicker = ""; void deskProfiles(); });
+  let userTrigger = false, autoTicker = "", autoCutoff = "";
+  let identityRequest = 0;
+  W.trigger.addEventListener("change", () => { userTrigger = true; sync(); });
 
   function applyMandate(data, opts = {}) {
     const m = data.mandate || {}, A = m.assumptions || {},
@@ -1870,17 +1946,29 @@ Views.newCase = async function newCase(view, fromId) {
     sync();
   }
 
-  async function deriveIdent() {
+  async function deriveIdent({ bundleChanged = false } = {}) {
     const b = (bundles.ok ? bundles.data.bundles : [])
       .find(x => x.bundle_id === W.bundle.value);
     if (!b) return;
+    const request = ++identityRequest;
     const tk = (b.bundle_id.split("-")[0] || "").toUpperCase();
-    if (tk && (!W.ticker.value || W.ticker.value === autoTicker
+    if (bundleChanged) { userTrigger = false; W.cik.value = ""; }
+    if (b.as_of_cutoff && (bundleChanged || !W.cutoff.value || W.cutoff.value === autoCutoff
+                           || W.cutoff.value === "2026-10-30")) {
+      W.cutoff.value = autoCutoff = b.as_of_cutoff;
+    }
+    paintDocs();
+    if (tk && (bundleChanged || !W.ticker.value || W.ticker.value === autoTicker
                || W.ticker.value === "INTC")) {
       W.ticker.value = autoTicker = tk;   // bundle_id embeds the ticker
-      if (!cikUser) {
+      {
+        W.cik.value = "";
+        identityLoading = true;
+        sync();
         const r = await guard(() => Api.get(
           `/api/edgar/search?ticker=${encodeURIComponent(tk)}`), null);
+        if (request !== identityRequest || W.bundle.value !== b.bundle_id) return;
+        identityLoading = false;
         if (r.ok) {
           const cik = r.data.cik
             || ((r.data.filings || r.data.rows || [])[0] || {}).cik;
@@ -1888,11 +1976,6 @@ Views.newCase = async function newCase(view, fromId) {
         }
       }
       void deskProfiles();
-    }
-    if (b.as_of_cutoff && (!W.cutoff.value || W.cutoff.value === autoCutoff
-                           || W.cutoff.value === "2026-10-30")) {
-      W.cutoff.value = autoCutoff = b.as_of_cutoff;
-      paintDocs();
     }
     void deskProfiles();
     sync();
@@ -1977,6 +2060,13 @@ Views.newCase = async function newCase(view, fromId) {
 
   function sync() {
     rawBox.value = JSON.stringify(payload(), null, 2);
+    tickerDisplay.textContent = W.ticker.value || "Not available";
+    cikDisplay.textContent = W.cik.value || (identityLoading ? "Looking up CIK..." : "Not available");
+    identityStatus.replaceChildren();
+    if (!identityLoading && W.bundle.value && !W.cik.value) {
+      identityStatus.append("CIK could not be found. ",
+        h("button", { type: "button", class: "linkish", onclick: () => { void deriveIdent(); } }, "Retry lookup"));
+    }
     if (src) {
       const id = `${W.ticker.value.trim().toLowerCase()}-${W.period.value.trim()}-${W.cutoff.value.replace(/-/g, "")}`;
       if (id === fromId)
@@ -2017,15 +2107,20 @@ Views.newCase = async function newCase(view, fromId) {
     sync();
   }
 
-  W.bundle.addEventListener("change", () => { void deriveIdent(); paintDocs(); });
+  W.bundle.addEventListener("change", () => { void deriveIdent({ bundleChanged: true }); });
   W.cutoff.addEventListener("change", paintDocs);
-  for (const el of [W.ticker, W.cik, W.period, W.noteType, W.wordsMin, W.wordsMax,
+  for (const el of [W.period, W.noteType, W.wordsMin, W.wordsMax,
     W.wacc, W.tg, W.exit, W.tax, W.mfloor, W.mceil])
     el.addEventListener("input", sync);
 
   async function submit() {
     errorsBox.replaceChildren();
     okBox.replaceChildren();
+    if (!W.ticker.value || !W.cik.value) {
+      errorsBox.replaceChildren(h("div", { class: "err-box" },
+        identityLoading ? "Wait for the CIK lookup to finish." : "Choose a bundle with a valid ticker and CIK before creating a case."));
+      return;
+    }
     const body = payload();
     const r = await guard(() => Api.post("/api/cases", body), "case not created");
     if (!r.ok) {
@@ -2062,22 +2157,22 @@ Views.newCase = async function newCase(view, fromId) {
       h("p", { class: "mb0" },
         "Every field below comes from that caseʼs frozen plan, including sections, valuation assumptions, segment bounds, peers, bundle, and trigger. ",
         "Review, adjust what the plan discussed, and create.")) : null,
-    !src ? h("div", { class: "panel inset" },
-      h("label", { class: "label mt0" }, "Start with a filing bundle"),
-      h("p", { class: "hint mb2" },
-        "Ticker, CIK, cutoff date and trigger document are all derived from the frozen bundle you pick below. ",
-        "(bundle id embeds the ticker; the CIK comes from the EDGAR index; the trigger is the latest 10-Q/10-K at the cutoff). ",
-        "To cover a company that has no frozen bundle yet, build one first on the ",
-        h("a", { href: "#/bundles" }, "Bundle builder"), " searches EDGAR by ticker."),
-      deskBox) : null,
-    h("fieldset", null, h("legend", null, "Identity, bundle, and cutoff"),
+    h("fieldset", { class: "coverage-identity" }, h("legend", null, "Filing bundle and case details"),
+      label("frozen bundle", W.bundle),
+      h("p", { class: "hint bundle-help" },
+        "Choose a bundle to identify the company and suggest a cutoff and trigger. ",
+        "Need a bundle? ", h("a", { href: "#/bundles" }, "Build one from EDGAR"), "."),
+      h("dl", { class: "company-identity", "aria-label": "Company from selected bundle" },
+        h("div", null, h("dt", null, "Ticker"), tickerDisplay),
+        h("div", null, h("dt", null, "CIK"), cikDisplay)),
+      identityStatus,
       h("div", { class: "form-grid" },
-        label("ticker", W.ticker), label("period label", W.period),
-        label("cik", W.cik), label("cutoff date", W.cutoff),
-        label("frozen bundle", W.bundle), label("trigger document", W.trigger)),
+        label("period label", W.period), label("cutoff date", W.cutoff),
+        label("trigger document", W.trigger)),
       src ? W.idWarn : null,
-      h("label", { class: "label mt2" }, "Documents visible at this cutoff"),
-      W.docsBox),
+      h("details", { class: "bundle-documents" },
+        h("summary", null, "Review bundle documents"), W.docsBox)),
+    !src ? deskBox : null,
     h("fieldset", null, h("legend", null, "Report policy"),
       h("div", { class: "form-grid" },
         label("note type", W.noteType),
@@ -2094,31 +2189,30 @@ Views.newCase = async function newCase(view, fromId) {
         label("exit multiple (EBITDA)", W.exit), label("tax rate", W.tax),
         label("gross margin floor", W.mfloor), label("gross margin ceiling", W.mceil)),
       h("label", { class: "label mt3" }, "Forecast bounds per segment (growth min–max)"),
-      h("table", { class: "grid editor" },
+      h("table", { class: "grid editor segment-editor" },
         h("thead", null, h("tr", null, h("th", null, "Segment"),
           h("th", { class: "num" }, "Min"), h("th", { class: "num" }, "Max"),
           h("th", null, ""))), segRows),
-      h("button", { class: "btn small mt2", onclick: () => segAdd() }, "＋ Add segment"),
+      h("button", { class: "btn small mt2", onclick: () => { segAdd(); sync(); } }, "＋ Add segment"),
       h("label", { class: "label mt3" }, "Peer multiple block (dated ≤ cutoff, hashed input)"),
-      h("table", { class: "grid editor" },
+      h("table", { class: "grid editor peer-editor" },
         h("thead", null, h("tr", null,
           h("th", null, "Ticker"), h("th", { class: "num" }, "P/E TTM"),
           h("th", { class: "num" }, "EV/EBITDA"), h("th", { class: "num" }, "P/S"),
           h("th", { class: "num" }, "Revenue growth YoY"), h("th", null, ""))), peersRows),
-      h("button", { class: "btn small mt2", onclick: () => peerAdd() }, "＋ Add peer")),
+      h("button", { class: "btn small mt2", onclick: () => { peerAdd(); sync(); } }, "＋ Add peer")),
+    h("details", { class: "mandate-preview" },
+      h("summary", null, "View saved settings (JSON)"),
+      h("p", { class: "hint" }, "These settings update as you edit the form and are saved when you create the case."),
+      rawBox),
     h("div", { class: "actions" },
       h("button", { class: "btn primary", onclick: submit }, "Create case"),
       h("span", { class: "hint" }, "Validation uses the same rules as the controller gate.")));
 
-  const rawPane = h("div", null,
-    labeledPanel("Mandate JSON",
-      h("p", { class: "hint" }, "This JSON updates with the form and is frozen when you create the case."),
-      rawBox));
-
   view.replaceChildren(
     routeHead("Coverage", "Start coverage",
       "Set the filing cutoff, report scope, and valuation bounds."),
-    h("div", { class: "wizard" }, formPane, rawPane));
+    h("div", { class: "wizard coverage-wizard" }, formPane));
 
   paintDocs();
   if (!src) void deriveIdent();       /* from scratch: derive ident from the
@@ -2155,13 +2249,13 @@ Views.bundles = async function bundles(view) {
   function paintChosen() {
     chosenBox.replaceChildren(
       h("label", { class: "label" }, `Selected for snapshot (${chosen.size})`),
-      chosen.size ? h("table", { class: "grid" },
+      chosen.size ? h("table", { class: "grid bundle-table" },
         h("thead", null, h("tr", null, h("th", null, "Form"), h("th", null, "Document ID"),
           h("th", { class: "num" }, "Filed"), h("th", null, ""))),
         h("tbody", null, ...[...chosen.entries()].map(([docId, d]) =>
-          h("tr", null, h("td", null, d.form), h("td", { class: "id" }, docId),
-            h("td", { class: "num" }, d.filed),
-            h("td", null, h("button", { class: "btn small danger",
+          h("tr", null, h("td", { "data-label": "Form" }, d.form), h("td", { class: "id", "data-label": "Document ID" }, docId),
+            h("td", { class: "num", "data-label": "Filed" }, d.filed),
+            h("td", { class: "bundle-table-action" }, h("button", { class: "btn small danger", "aria-label": `Remove ${docId}`,
               onclick: () => { chosen.delete(docId); paintChosen(); } }, "✕"))))))
         : emptyState("No documents selected", "Search a ticker and add filings to the snapshot."));
   }
@@ -2177,16 +2271,16 @@ Views.bundles = async function bundles(view) {
     if (r.data.cik) W_cik().value = r.data.cik;
     note.replaceChildren(h("p", { class: "hint" }, r.data.note));
     results.replaceChildren(
-      r.data.filings.length ? h("table", { class: "grid" },
+      r.data.filings.length ? h("table", { class: "grid bundle-table" },
         h("thead", null, h("tr", null, h("th", null, "Form"), h("th", null, "Title"),
           h("th", { class: "num" }, "Filed"), h("th", { class: "num" }, "Size"),
           h("th", null, ""))),
         h("tbody", null, ...r.data.filings.map(d => h("tr", null,
-          h("td", null, h("span", { class: "chip" }, d.form)),
-          h("td", null, h("a", { href: d.source_url }, d.doc_id), h("div", { class: "hint" }, d.title)),
-          h("td", { class: "num" }, d.filed),
-          h("td", { class: "num" }, fmt.mb(d.bytes)),
-          h("td", null, chosen.has(d.doc_id)
+          h("td", { "data-label": "Form" }, h("span", { class: "chip" }, d.form)),
+          h("td", { "data-label": "Document" }, h("div", null, h("a", { href: d.source_url }, d.doc_id), h("div", { class: "hint" }, d.title))),
+          h("td", { class: "num", "data-label": "Filed" }, d.filed),
+          h("td", { class: "num", "data-label": "Size" }, fmt.mb(d.bytes)),
+          h("td", { class: "bundle-table-action" }, chosen.has(d.doc_id)
             ? h("span", { class: "chip ok" }, "Selected")
             : h("button", { class: "btn small", onclick: () => { chosen.set(d.doc_id, d); paintChosen(); } }, "Select"))))))
         : emptyState(`No ${tickerIn.value} filings in index`, "Try another ticker or widen the window. The demo index covers Intel and AMD."));
@@ -2208,7 +2302,7 @@ Views.bundles = async function bundles(view) {
   view.replaceChildren(
     routeHead("Source intake", "Source bundles",
       "Find filings, choose the documents, and freeze a hashed snapshot."),
-    h("div", { class: "two-col" },
+    h("div", { class: "two-col bundle-layout" },
       h("div", null,
         labeledPanel("1. Search EDGAR by ticker",
           h("div", { class: "form-grid" },
@@ -2226,172 +2320,18 @@ Views.bundles = async function bundles(view) {
           h("div", { class: "actions" },
             h("button", { class: "btn primary", onclick: snapshot }, "Freeze bundle →")))),
       labeledPanel("3. Frozen bundles on disk",
-        list.ok ? h("table", { class: "grid" },
+        list.ok ? h("table", { class: "grid bundle-table" },
           h("thead", null, h("tr", null, h("th", null, "Bundle"), h("th", null, "SHA-256"),
             h("th", { class: "num" }, "Documents"), h("th", null, "Cutoff"))),
           h("tbody", null, ...list.data.bundles.map(b => h("tr", null,
-            h("td", { class: "id" }, b.bundle_id),
-            h("td", { class: "id muted" }, (b.bundle_sha256 || "").slice(0, 18) + "…"),
-            h("td", { class: "num" }, String(b.documents.length)),
-            h("td", { class: "num" }, b.as_of_cutoff)))))
+            h("td", { class: "id", "data-label": "Bundle" }, b.bundle_id),
+            h("td", { class: "id muted", "data-label": "SHA-256" }, (b.bundle_sha256 || "").slice(0, 18) + "…"),
+            h("td", { class: "num", "data-label": "Documents" }, String(b.documents.length)),
+            h("td", { class: "num", "data-label": "Cutoff" }, b.as_of_cutoff)))))
           : emptyState("No bundles", "Create one from the search results."))));
   paintChosen();
 };
 
-
-/* ------------------------------------------------------- evolution ------ */
-
-Views.evolution = async function evolution(view) {
-  CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
-  document.title = "Methods lab | CoverageFlow";
-  const r = await guard(() => Api.get("/api/versions"), null);
-  const reg = r.ok ? r.data : null;
-
-  const SCOPES = [
-    { id: "prompt card ingest", ok: true },
-    { id: "prompt card extractor", ok: true },
-    { id: "prompt card writer", ok: true },
-    { id: "mapping tables v2", ok: true },
-    { id: "engine code (deterministic)", ok: true },
-    { id: "report template", ok: true },
-    { id: "controller", ok: false, why: "Orchestrator control logic is locked. A proposal cannot weaken the controller." },
-    { id: "gates", ok: false, why: "Gate thresholds are locked. A proposal cannot weaken its own acceptance standard." },
-    { id: "rubric", ok: false, why: "The critic rubric is a locked acceptance standard." },
-    { id: "acceptance rules", ok: false, why: "Acceptance rules (2 clean reviews, budgets) are locked." },
-  ];
-  const scopeSel = h("select");
-  for (const s of SCOPES) {
-    scopeSel.append(h("option", { value: s.id, disabled: s.ok ? null : "" },
-      (s.ok ? "  " : "✕ ") + s.id));
-  }
-  const scopeWhy = h("p", { class: "hint" });
-  scopeSel.addEventListener("change", () => {
-    const s = SCOPES.find(x => x.id === scopeSel.value);
-    scopeWhy.textContent = s ? (s.ok
-      ? "Evolvable scope. Regression must prove unchanged outputs on the declared bundle."
-      : s.why) : "";
-  });
-  scopeWhy.textContent = SCOPES[0].ok ? "Evolvable scope. Regression must prove unchanged outputs on the declared bundle." : "";
-  const descIn = h("textarea", { rows: "3", placeholder: "What failed, what changes, and which evidence case is linked?" });
-  const linkedIn = h("input", { type: "text", placeholder: "Linked case, for example intc-fy2026q4-20270129" });
-  const prepResult = h("div");
-
-  async function prepare() {
-    prepResult.replaceChildren(loadingRow("Proposal"));
-    const rr = await guard(() => Api.post("/api/evolution/prepare", {
-      scope: scopeSel.value, description: descIn.value, linked_case: linkedIn.value,
-    }), "prepare rejected");
-    if (!rr.ok) { prepResult.replaceChildren(); return; }
-    toast("Proposal prepared", `${rr.data.version}, parent ${rr.data.parent}`);
-    Views.evolution(view);
-  }
-
-  view.replaceChildren(
-    routeHead("Governance", "Methods lab",
-      `Review versioned changes against frozen cases. Active version: ${reg ? reg.active : "Not set"}.`),
-    labeledPanel("Version registry",
-      gridTable(
-        ["version", "parent", "scope", "tested cases", "regressions", "approval", "rollback"],
-        (reg ? reg.versions : []).map(v => [
-          v.version === reg.active
-            ? h("span", null, v.version, " (Active)")
-            : h("span", { class: "mono" }, v.version),
-          v.parent || "Not set",
-          v.scope,
-          (v.tested.cases || []).join(", ") || "None",
-          v.review ? (v.review.regressions_all_pass ? "All pass" : "Fail") : "Not run",
-          v.approval ? `${readableStatus(v.approval.decision)} by ${v.approval.by}` : "Pending",
-          v.rollback_to ? `→ ${v.rollback_to}` : "None",
-        ]),
-        { emptyWhat: "No versions", emptyNote: "The registry starts from the pinned system." })),
-    h("div", { class: "two-col" },
-      h("div", null,
-        labeledPanel("Propose a change (prepare)",
-          h("label", { class: "f" }, h("span", null, "Scope. Locked scopes are unavailable."), scopeSel),
-          scopeWhy,
-          h("label", { class: "f" }, h("span", null, "Description"), descIn),
-          h("label", { class: "f" }, h("span", null, "Linked failure case"), linkedIn),
-          h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: prepare }, "Prepare proposal →")),
-          prepResult)),
-      h("div", null,
-        labeledPanel("Lifecycle: regress → approve → rollback",
-          h("p", { class: "hint" },
-            "Regression runs offline with replay data. Approval activates the new version. Rollback restores an approved version and runs a verification case."),
-          evoLifecycle(reg, view)))));
-
-  function evoLifecycle(reg, view) {
-    const box = h("div");
-    const pending = (reg ? reg.versions : []).filter(v => !v.approval);
-    const approved = (reg ? reg.versions : []).filter(v => v.approval && v.approval.decision === "APPROVED");
-    if (pending.length) {
-      for (const p of pending) box.append(evoRow(p, approved, view));
-    } else {
-      box.append(emptyState("No pending changes",
-        "Prepare a change, run regression, and send it for approval."));
-    }
-    return box;
-  }
-
-  function evoRow(p, approved, view) {
-    const who = h("input", { type: "text", value: "Gaetano Marco Chiantia" });
-    const note = h("div", { class: "hint" });
-    const row = h("div", { class: "panel mt2" },
-      h("div", { class: "row wrap" },
-        h("span", { class: "chip accent" }, p.version),
-        h("span", { class: "chip" }, p.scope),
-        h("span", { class: "grow" })),
-      h("p", { class: "hint" }, (p.proposal && p.proposal.description) ||
-        "No description. Parent: " + (p.parent || "Not set")),
-      h("div", { class: "row wrap" },
-        h("button", { class: "btn", onclick: async () => {
-          note.textContent = "Regression running with offline replay…";
-          const rr = await guard(() => Api.post("/api/evolution/regress", { version: p.version }), "regression failed");
-          if (!rr.ok) { note.textContent = ""; return; }
-          toast("Regression complete", rr.data.summary);
-          Views.evolution(view);
-        } }, "▶ Run regression"),
-        h("span", { class: "grow" }),
-        h("span", { class: "small" }, who),
-        h("button", { class: "btn primary small", onclick: () => approve(p.version, "APPROVED", view) }, "Approve"),
-        h("button", { class: "btn small", onclick: () => approve(p.version, "REJECTED", view) }, "Reject"),
-        h("button", { class: "btn small", onclick: () => approve(p.version, "DEFERRED", view) }, "Defer")),
-      note);
-
-    async function approve(version, decision, view) {
-      const rr = await guard(() => Api.post("/api/evolution/approve", {
-        version, decision, by: who.value,
-      }), `${decision} failed`);
-      if (!rr.ok) return;
-      toast(`Decision recorded: ${decision}`, `Active now: ${rr.data.active}`);
-      Views.evolution(view);
-    }
-    return row;
-  }
-
-  // rollback pane
-  const rollbackSel = h("select");
-  for (const v of (reg ? reg.versions : [])) {
-    if (v.version !== reg.active && v.approval && v.approval.decision === "APPROVED")
-      rollbackSel.append(h("option", { value: v.version }, v.version));
-  }
-  const rollResult = h("div");
-  view.append(labeledPanel("Roll back to an approved version",
-    h("span", { class: "hint" }, "Rollback restores the selected version and runs a verification case."),
-    h("div", { class: "row wrap" },
-      h("span", { class: "label", style: "margin:0" }, "Version"),
-      rollbackSel,
-      h("button", { class: "btn danger", onclick: async () => {
-        if (!rollbackSel.value) return;
-        const rr = await guard(() => Api.post("/api/evolution/rollback", { to_version: rollbackSel.value }), "rollback failed");
-        if (!rr.ok) return;
-        rollResult.replaceChildren(h("div", { class: "ok-box mt2" },
-          `Rolled back ${rr.data.from_version} → ${rr.data.to_version}`,
-          h("div", { class: "mono small mt2" },
-            `Verification run: ${rr.data.verification.case}, outputs match history: ${rr.data.verification.outputs_match_history}`)));
-        toast("Rollback verified", rr.data.verification.note);
-      } }, "Roll back")),
-    rollResult));
-};
 
 /* ------------------------------------------------------- demo panel ------ */
 
@@ -2405,7 +2345,7 @@ Views.demo = async function demo(view) {
     if (!["CLOSED", "APPROVED", "REJECTED"].includes(c.status))
       caseSel.append(h("option", { value: c.case_id }, `${c.case_id}: ${readableStatus(c.status)}`));
   }
-  const stageSel = h("select", null,
+  const stageSel = h("select", { "aria-label": "Stage to kill" },
     ...["generator", "ingest", "extractor", "model", "writer", "critic", "approval"]
       .map(s => h("option", { value: s }, s)));
   const out = h("div");
@@ -2431,11 +2371,11 @@ Views.demo = async function demo(view) {
     toast("Rehearsal complete", `Case ${target()}, action ${action}`);
   }
 
-  const demoCard = (title, body, btnLabel, action, payloadFn) => {
-    const btn = h("button", { class: "btn", onclick: () => run(action, payloadFn && payloadFn()) }, btnLabel);
-    if (!hasTarget()) { btn.disabled = true; btn.title = "No eligible target case"; }
+  const demoCard = (title, body, btnLabel, action, payloadFn, extraAction) => {
+    const btn = action ? h("button", { class: "btn", onclick: () => run(action, payloadFn && payloadFn()) }, btnLabel) : btnLabel;
+    if (action && !hasTarget()) { btn.disabled = true; btn.title = "No eligible target case"; }
     const el = h("fieldset", { class: "rehearsal-card" }, h("legend", null, title), body,
-      h("div", { class: "actions" }, btn));
+      h("div", { class: "actions" }, btn, extraAction));
     return el;
   };
 
@@ -2446,30 +2386,29 @@ Views.demo = async function demo(view) {
     h("fieldset", { class: "target-strip" }, h("legend", null, "Target case"),
       h("label", { class: "f" }, h("span", null, "Case"), caseSel)),
     labeledPanel("Scripted rehearsal actions",
-      h("div", { class: "two-col" },
-        h("div", null,
+      h("div", { class: "rehearsal-grid" },
           demoCard("Seed finding: Evidence run 2",
             h("p", { class: "hint" }, "Adds a major finding so the repair loop can produce and verify closure evidence."),
             "Seed a finding", "seed-finding"),
-          demoCard("Perturbation: Evidence run 4",
-            h("p", { class: "hint" }, "Introduces a post-cutoff filing and checks that the outputs remain unchanged."),
-            "Run perturbation check", "perturb")),
-        h("div", null,
           demoCard("Kill stage: Evidence run 3",
-            h("p", { class: "hint" }, "Stops the selected stage. Resume should restart only the pending role from the last verified checkpoint."),
-            h("div", { class: "row" }, h("span", { class: "hint" }, "Stage to kill"), stageSel,
-              (() => { const b = h("button", { class: "btn small", onclick: () => {
+            h("div", null,
+              h("p", { class: "hint" }, "Stops the selected stage. Resume should restart only the pending role from the last verified checkpoint."),
+              h("label", { class: "rehearsal-stage" }, h("span", null, "Stage to kill"), stageSel)),
+            "Kill stage", "kill-stage", () => ({ stage: stageSel.value }),
+              (() => { const b = h("button", { class: "btn", onclick: () => {
                 const t = target(); if (typeof t === "string" && t) Route.nav(`#/case/${t}`);
               } }, "Inspect case");
                 if (!hasTarget()) { b.disabled = true; b.title = "No eligible target case"; }
                 return b; })()),
-            "Kill stage", "kill-stage", () => ({ stage: stageSel.value })),
+          demoCard("Perturbation: Evidence run 4",
+            h("p", { class: "hint" }, "Introduces a post-cutoff filing and checks that the outputs remain unchanged."),
+            "Run perturbation check", "perturb"),
           demoCard("Watch live",
             h("p", { class: "hint" }, "Open the trace to watch the finding, repair packet, and subsequent review."),
             hasTarget()
               ? h("a", { class: "btn small", href: `#/case/${target()}/trace` }, "Trace of the running case →")
               : h("span", { class: "hint" }, "No eligible case to watch. Create one first."),
-            null, "seed-finding"))),
+            null, null)),
       out));
 };
 
@@ -2552,13 +2491,29 @@ Views.replay = async function replay(view) {
  * polling /trace?from=<cursor> every 2s shows dispatches, results, gates
  * and transitions in near-real time. */
 
+function activityLevel(ev) {
+  const event = String(ev.event || "").toUpperCase();
+  const detail = ev.detail || {};
+  const state = String(detail.to || detail.terminal || "").toUpperCase();
+  const decision = String(detail.decision || "").toUpperCase();
+  if (/FAIL|ERROR|INVALID/.test(event) || detail.ok === false) return "error";
+  if (event === "FINDING_OPENED" || event === "APPROVAL_REQUESTED" || event === "ESCALATED" ||
+      detail.rejected === true || ["BLOCKED", "EXHAUSTED", "STOPPED", "REJECTED"].includes(state) ||
+      ["REJECTED", "DEFERRED"].includes(decision)) return "attention";
+  if (event === "GATE_PASS" || event === "FINDING_VERIFIED_CLOSED" ||
+      (event === "AGENT_RESULT" && detail.ok === true) ||
+      (event === "APPROVAL_RECORDED" && decision === "APPROVED") ||
+      (event === "CASE_CLOSED" && state === "APPROVED")) return "success";
+  if (["BUDGET_CHECK", "REQUEST_BOUND"].includes(event)) return "muted";
+  return "normal";
+}
+
 function termLine(ev) {
   const timestamp = ev.ts ? new Date(ev.ts) : null;
   const validTime = timestamp && !Number.isNaN(timestamp.getTime());
   const time = validTime ? fmt.time(ev.ts) : "Not set";
   const timeTitle = validTime ? `${fmt.datetime(ev.ts)} (${Intl.DateTimeFormat().resolvedOptions().timeZone})` : "Timestamp unavailable";
-  const bad = /FAIL|ERROR|BLOCKED|EXHAUSTED|INVALID|REJECT/i.test(ev.event) ||
-    (ev.detail && ev.detail.ok === false);
+  const level = activityLevel(ev);
   const label = value => String(value).toLowerCase().replace(/_/g, " ")
     .replace(/^./, letter => letter.toUpperCase());
   const detail = ev.detail && Object.keys(ev.detail).length ? JSON.stringify(ev.detail) : "";
@@ -2566,9 +2521,10 @@ function termLine(ev) {
     ev.round != null ? `Round ${ev.round}` : null].filter(Boolean).join(", ");
   const usage = ev.tokens_out != null ? `${ev.tokens_in ?? "?"} → ${ev.tokens_out} tokens` : "";
   const meta = [ev.backend || "", usage, detail].filter(Boolean).join(", ");
-  return h("div", { class: `tl${bad ? " bad" : ""}` },
+  const levelLabel = { error: "Error", attention: "Needs attention", success: "Completed", muted: "Routine", normal: "Activity" }[level];
+  return h("div", { class: `tl ${level}` },
     h("span", { class: "ts", title: timeTitle }, time),
-    h("span", { class: "ev" }, label(ev.event)),
+    h("span", { class: "ev", "aria-label": `${levelLabel}: ${label(ev.event)}` }, label(ev.event)),
     h("span", { class: "who" }, where || "Not specified"),
     h("span", { class: "meta", title: meta }, meta || "No additional details"));
 }
@@ -2646,6 +2602,9 @@ Views.terminal = async function (view, caseId) {
         h("span", { class: "term-live" }, "● Live"),
         h("button", { class: "btn small", onclick: () =>
           Route.nav(`#/case/${target.case_id}`) }, "Case page →")),
+      h("div", { class: "activity-legend", "aria-label": "Activity colors" },
+        ...[["error", "Error"], ["attention", "Needs attention"], ["success", "Completed"], ["normal", "Activity"], ["muted", "Routine"]].map(([type, name]) =>
+          h("span", { class: `activity-key ${type}` }, h("i", { "aria-hidden": "true" }), name))),
       h("div", { class: "activity-feed" }, term, pin),
       h("p", { class: "hint activity-note" }, "The latest events appear as the case runs.")));
   requestAnimationFrame(stick);
@@ -2658,29 +2617,94 @@ Views.backends = async function backends(view) {
   const r = await guard(() => Api.get("/api/backends"), null);
   if (!r.ok) { view.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
   const b = r.data;
+  const apiBackend = b.backends.find(x => x.name === "api");
+  const apiForm = h("div", { class: "api-config", hidden: "" });
+  const baseInput = h("input", { type: "url", required: "", value: apiBackend?.config?.base_url || "", placeholder: "https://provider.example/v1" });
+  const modelInput = h("input", { type: "text", required: "", value: apiBackend?.config?.model || "", placeholder: "Model name" });
+  const keyInput = h("input", { type: "password", autocomplete: "off", placeholder: apiBackend?.config?.has_api_key ? "Leave blank to keep current key" : "Optional for local servers" });
+  const form = h("form", { onsubmit: async e => {
+    e.preventDefault();
+    const saved = await guard(() => Api.post("/api/backends/api/configure", {
+      base_url: baseInput.value, model: modelInput.value, api_key: keyInput.value,
+    }), "Could not save API settings");
+    if (saved.ok) { toast("API backend selected"); await Views.backends(view); }
+  } },
+  h("p", { class: "hint" }, "Enter an OpenAI-compatible base URL and model. Settings are stored in this workspace; the API key is optional for local servers."),
+  h("label", { class: "signoff-field" }, h("span", null, "Base URL"), baseInput),
+  h("label", { class: "signoff-field" }, h("span", null, "Model"), modelInput),
+  h("label", { class: "signoff-field" }, h("span", null, "API key"), keyInput),
+  h("p", { class: "hint" }, "The key is stored locally in a restricted workspace file. Configuration does not test the connection."),
+  h("button", { class: "btn primary", type: "submit" }, "Save and select API"), " ",
+  h("button", { class: "btn", type: "button", onclick: () => { apiForm.hidden = true; } }, "Cancel"));
+  apiForm.append(labeledPanel("Configure API", form));
+
+  const providerName = name => ({ claude: "Claude", codex: "Codex", kimi: "Kimi", vibe: "Vibe", api: "API", replay: "Replay", stub: "Stub", auto: "Automatic" }[name] || name);
+  const status = backend => backend.name === "api" && !backend.api_config ? "Needs setup" :
+    !backend.detected ? "Not installed" : backend.healthy === false ? "Unavailable" : "Available";
+  const select = h("select", { id: "backend-choice" });
+  for (const [groupName, rows] of [
+    ["Providers", b.backends.filter(x => !["replay", "stub"].includes(x.name))],
+    ["Testing options", b.backends.filter(x => ["replay", "stub"].includes(x.name))],
+  ]) {
+    const group = h("optgroup", { label: groupName });
+    for (const x of rows) group.append(h("option", {
+      value: x.name, selected: x.name === b.selected ? "" : null,
+      disabled: !x.detected && x.name !== "api" && x.name !== b.selected ? "" : null,
+    }, `${providerName(x.name)} (${status(x)})`));
+    select.append(group);
+  }
+  if (!b.backends.some(x => x.name === b.selected)) {
+    select.prepend(h("option", { value: b.selected, selected: "" }, providerName(b.selected)));
+  }
+  const choiceNote = h("p", { class: "hint routing-choice-note", "aria-live": "polite" });
+  const applyChoice = h("button", { class: "btn primary", type: "button", onclick: async () => {
+    const choice = b.backends.find(x => x.name === select.value);
+    if (choice?.name === "api" && !choice.api_config) {
+      apiForm.hidden = false; baseInput.focus(); return;
+    }
+    const result = await guard(() => Api.post("/api/backends/select", { backend: select.value }), "Could not select provider");
+    if (result.ok) { toast(`Backend selected: ${providerName(select.value)}`); await Views.backends(view); }
+  } }, "Select provider");
+  const updateChoice = () => {
+    const choice = b.backends.find(x => x.name === select.value);
+    const isCurrent = select.value === b.selected;
+    applyChoice.disabled = isCurrent || (b.mode === "demo" && choice?.name === "api" && !choice.api_config);
+    applyChoice.textContent = isCurrent ? "Selected" : choice?.name === "api" && !choice.api_config ? "Configure API" : "Select provider";
+    choiceNote.textContent = choice?.name === "replay" ? "Uses recorded responses for testing." :
+      choice?.name === "stub" ? "Uses fixed responses without a model for testing." :
+      choice?.name === "api" && !choice.api_config ? (b.mode === "demo" ? "Open a controller workspace to configure an API provider." : "Add a base URL and model to use an API provider.") :
+      select.value === "auto" ? "A provider is selected automatically at run time." :
+      isCurrent ? "This provider is used for new runs." : "Select this provider for new runs.";
+  };
+  select.addEventListener("change", updateChoice);
+  updateChoice();
 
   view.replaceChildren(
     routeHead("Dispatch", "Model routing",
-      "Select a detected CLI, configured API adapter, or replay backend."),
-    labeledPanel("Detected backends",
+      "Choose the provider used for new runs."),
+    h("section", { class: "block routing-provider" },
+      h("span", { class: "label" }, "Model provider"),
+      h("p", { class: "routing-current", role: "status" }, "Currently selected: ", h("strong", null, providerName(b.selected))),
+      h("label", { class: "routing-choice-label", for: "backend-choice" }, "Choose a provider"),
+      h("div", { class: "routing-choice" }, select, applyChoice),
+      choiceNote,
+      apiBackend?.api_config ? h("button", { class: "btn small routing-configure", type: "button", onclick: () => { apiForm.hidden = false; baseInput.focus(); } }, "Configure API") : null),
+    ...(b.mode === "demo" ? [h("p", { class: "hint" }, "Demo mode simulates runs. Open a controller workspace to configure and use a live API backend.")] : []),
+    apiForm,
+    h("details", { class: "routing-details" }, h("summary", null, "Provider details"), labeledPanel("Detected backends",
       gridTable(
-        ["backend", "kind", "detected", "api config", "health", "usage", ""],
+        ["backend", "kind", "detected", "api config", "health", "usage"],
         b.backends.map(x => [
           h("span", { class: "mono" }, x.name),
           x.kind,
           x.detected ? h("span", { class: "chip ok" }, "Available") :
-            h("span", { class: "chip minor" }, "Not installed"),
-          x.api_config ? "Configured" : "Not configured",
-          x.healthy === null ? "Not checked" : x.healthy ? h("span", { class: "verified" }, "Healthy") : "Down",
+            h("span", { class: "chip minor" }, x.name === "api" ? "Not configured" : "Not installed"),
+          x.name === "api" ? (x.api_config ? "Configured" : "Not configured") : "Not applicable",
+          x.name === "api" && x.healthy ? "Configured" : x.healthy === null ? "Not checked" : x.healthy ? h("span", { class: "verified" }, "Healthy") : "Down",
           h("span", { class: "hint" }, x.usage_note),
-          h("button", { class: "btn small", disabled: x.selected ? "" : null,
-            onclick: async () => {
-              const rr = await guard(() => Api.post("/api/backends/select", { backend: x.name }), null);
-              if (rr.ok) { toast(`Backend selected: ${x.name}`); Views.backends(view); }
-            } }, x.selected ? "Active" : "Select"),
         ]),
-        { emptyWhat: "No backends", emptyNote: "Detection lists adapter status." })),
-    labeledPanel("Per-role token usage vs caps (live cases)",
+        { emptyWhat: "No backends", emptyNote: "Detection lists adapter status." }))),
+    h("details", { class: "routing-details" }, h("summary", null, "Token usage and limits"), labeledPanel("Per-role token usage vs caps (live cases)",
       h("table", { class: "grid" },
         h("thead", null, h("tr", null,
           h("th", null, "Role"), h("th", { class: "num" }, "Tokens used"),
@@ -2692,5 +2716,5 @@ Views.backends = async function backends(view) {
             h("td", { class: "num" }, fmt.int(b.caps.role_tokens_max)),
             h("td", { class: "num" }, meter(used, b.caps.role_tokens_max, "tokens")))))),
       h("p", { class: "hint" },
-        "CoverageFlow checks role-token limits before every dispatch. Exceeding a limit ends the case and records the reason.")));
+        "CoverageFlow checks role-token limits before every dispatch. Exceeding a limit ends the case and records the reason."))));
 };

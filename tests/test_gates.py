@@ -580,6 +580,20 @@ def test_header_exemption_does_not_reach_the_body():
     assert any("13,500" in f["summary"] for f in findings)
 
 
+def test_provenance_versions_in_body_are_labels_but_financial_numbers_are_not():
+    md = ("The provenance block carries writer prompt 1.3 and conformance "
+          "schema 1.0; revenue was 13,500.\n")
+    ok, findings = gates.gate_report_evidence_links(md)
+    assert not ok
+    assert len(findings) == 1
+    assert '"13,500"' in findings[0]["summary"]
+
+    ok, findings = gates.gate_report_evidence_links(
+        md.replace("13,500.", "13,500 [EV:income_statement.revenue]."),
+        evidence_index={"income_statement.revenue": "facts.json"})
+    assert ok, findings
+
+
 def test_unknown_key_finding_names_the_keys_that_do_resolve():
     """A shortened key must come back with the real ones, not another guess."""
     md = "Terminal value is 144,315 [EV:dcf.terminal_value].\n"
@@ -680,3 +694,21 @@ def test_harness_evidence_index_wins_over_the_lead_echo(tmp_path):
     report = make_engine().run_all(ctx)
     links = next(r for r in report.results if r.gate == "report_evidence_links")
     assert links.ok, links.findings
+
+
+def test_sum_to_100_is_arithmetic_not_a_claim():
+    """"the shares do not sum to 100%" is arithmetic on the cited values.
+
+    The writer states it to explain why segment shares exceed the total; there
+    is nothing for an evidence marker to attach to. A bare "100%" elsewhere is
+    still a measurement and still needs a marker.
+    """
+    from coverageflow.gates import gate_report_evidence_links
+
+    ok, findings = gate_report_evidence_links(
+        "CCG was 49.0% [EV:segments.ccg.revenue_share_of_total]; the shares "
+        "are computed against consolidated revenue and do not sum to 100%.")
+    assert ok, findings
+
+    ok, findings = gate_report_evidence_links("Revenue grew 100% in the quarter.")
+    assert not ok

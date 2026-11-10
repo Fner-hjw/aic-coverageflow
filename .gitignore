@@ -12,4 +12,5 @@ export/dossier.log
 # launcher: saved answers + API credentials (never commit)
 .coverageflow-launch.json
 .coverageflow.json
+.coverageflow-api.json
 workspace/

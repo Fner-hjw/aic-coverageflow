@@ -66,18 +66,30 @@ def _load_labels() -> dict[str, str]:
 
 # ------------------------------------------------------------- series utils
 
+_SERIES_META = ("yoy", "qoq", "yoy_computed", "qoq_computed")
+
+
 def _values(model: Any, fld: str) -> dict[str, float]:
     series = model.series if hasattr(model, "series") else model.get("series", {})
     entry = series.get(fld, {})
+    # bool is an int in Python, so the *_computed flags would otherwise land
+    # in the sheet as 0.0 columns
     return {k: float(v) for k, v in entry.items()
-            if k not in ("yoy", "qoq", "yoy_computed") and isinstance(v, (int, float))}
+            if k not in _SERIES_META and isinstance(v, (int, float))
+            and not isinstance(v, bool)}
 
 
-def _period_key(p: str) -> tuple[int, int]:
+def _period_key(p: str) -> tuple[int, int, int]:
+    """Sort key for a period label: FY2025, 2026-Q3, 2026-Q3-YTD.
+
+    A 10-Q reports the quarter *and* the year-to-date span, and the model
+    keeps them as separate series keys, so both have to order.
+    """
     if p.startswith("FY"):
-        return int(p[2:]), 0
-    year, q = p.split("-Q")
-    return int(year), int(q)
+        return int(p[2:]), 0, 0
+    year, rest = p.split("-Q", 1)
+    q, _, span = rest.partition("-")
+    return int(year), int(q), 1 if span.upper() == "YTD" else 0
 
 
 def _periods(model: Any, kind: str) -> list[str]:
@@ -86,13 +98,22 @@ def _periods(model: Any, kind: str) -> list[str]:
     for fld_series in (model.series if hasattr(model, "series")
                        else model.get("series", {})).values():
         for k in fld_series:
-            if not isinstance(k, str) or k in ("yoy", "qoq", "yoy_computed"):
+            if not isinstance(k, str) or k in _SERIES_META:
                 continue
             if kind == "FY" and k.startswith("FY"):
                 keys.add(k)
             elif kind == "Q" and "-Q" in k:
                 keys.add(k)
-    return sorted(keys, key=_period_key)
+    # a label the exporter cannot order is not a column it can render; skip it
+    # rather than failing the whole workbook
+    ordered = []
+    for k in keys:
+        try:
+            _period_key(k)
+        except (ValueError, IndexError):
+            continue
+        ordered.append(k)
+    return sorted(ordered, key=_period_key)
 
 
 def _val(d: dict, *path) -> Any:
@@ -162,6 +183,78 @@ def _data_rows(ws, row: int, periods: list[str],
                 cell.number_format = fmt
         row += 1
     return row
+
+
+_STATEMENTS = (
+    ("income_statement.", "Income statement"),
+    ("balance_sheet.", "Balance sheet"),
+    ("cash_flow.", "Cash flow"),
+    ("segments.", "Segment detail"),
+)
+
+
+def _has_data(series: dict[str, float] | None, periods: list[str]) -> bool:
+    return bool(series) and any(p in series for p in periods)
+
+
+def _section_rows(ws, row: int, title: str, width: int, periods: list[str],
+                  rows: list[tuple[str, dict[str, float] | None, str, float | None]]) -> int:
+    """A section header only when at least one of its rows has data.
+
+    Printing "Income Statement" over nothing is what made the workbook look
+    half-built: the header promised a statement the case never extracted.
+    """
+    live = [r for r in rows if _has_data(r[1], periods)]
+    if not live:
+        return row
+    row = _section(ws, row, title, width)
+    return _data_rows(ws, row, periods, live)
+
+
+def _coverage(model: Any) -> list[tuple[str, list[str]]]:
+    """Which periods each statement actually carries."""
+    series = model.series if hasattr(model, "series") else model.get("series", {})
+    out = []
+    for prefix, label in _STATEMENTS:
+        periods: set[str] = set()
+        for fld, entry in series.items():
+            if not fld.startswith(prefix) or not isinstance(entry, dict):
+                continue
+            for k in entry:
+                if not isinstance(k, str) or k in _SERIES_META:
+                    continue
+                try:
+                    _period_key(k)
+                except (ValueError, IndexError):
+                    continue
+                periods.add(k)
+        out.append((label, sorted(periods, key=_period_key)))
+    return out
+
+
+def _coverage_block(ws, row: int, model: Any, width: int = 6) -> int:
+    """State what the workbook contains, and what it does not.
+
+    A reader opening an empty FY column deserves to know whether the figure is
+    zero, missing, or simply never extracted.
+    """
+    row = _section(ws, row, "Data coverage", width)
+    for label, periods in _coverage(model):
+        ws.cell(row=row, column=1, value=label)
+        c = ws.cell(row=row, column=2,
+                    value=", ".join(periods) if periods else "not extracted")
+        c.font = Font(size=9, color="595959")
+        row += 1
+    annual = any(p.startswith("FY") for label, ps in _coverage(model)
+                 for p in ps if label == "Income statement")
+    if not annual:
+        c = ws.cell(row=row, column=1, value=(
+            "Annual income-statement and cash-flow columns are empty because "
+            "no annual filing was extracted for this case; a case triggered on "
+            "a 10-Q carries quarterly and year-to-date figures only."))
+        c.font = Font(size=9, italic=True, color="595959")
+        row += 1
+    return row + 1
 
 
 def _kv_row(ws, row: int, label: str, value: Any, fmt: str | None = None,
@@ -279,18 +372,19 @@ def _build_statements(wb, model, L, company, meta, fy):
     periods = fy or _periods(model, "Q")
     row = _title(ws, f"{company}: Statements Model",
                  meta or "annual series (USD millions unless noted)")
+    row = _coverage_block(ws, row, model, len(periods) + 1)
     row = _header_row(ws, row, ["FY"] + periods)
-    row = _section(ws, row, "Income Statement", len(periods) + 1)
-    row = _data_rows(ws, row, periods, _is_rows(model, L))
+    row = _section_rows(ws, row, "Income Statement", len(periods) + 1,
+                        periods, _is_rows(model, L))
     row += 1
-    row = _section(ws, row, "Balance Sheet", len(periods) + 1)
-    row = _data_rows(ws, row, periods, _bs_rows(model, L))
+    row = _section_rows(ws, row, "Balance Sheet", len(periods) + 1,
+                        periods, _bs_rows(model, L))
     row += 1
-    row = _section(ws, row, "Cash Flow Statement", len(periods) + 1)
-    row = _data_rows(ws, row, periods, _cf_rows(model, L))
+    row = _section_rows(ws, row, "Cash Flow Statement", len(periods) + 1,
+                        periods, _cf_rows(model, L))
     row += 1
-    row = _section(ws, row, "Segments (consolidated)", len(periods) + 1)
-    row = _data_rows(ws, row, periods, _segment_rows(model, "margin"))
+    row = _section_rows(ws, row, "Segments (consolidated)", len(periods) + 1,
+                        periods, _segment_rows(model, "margin"))
     return ws
 
 
@@ -300,26 +394,25 @@ def _build_quarterly(wb, model, L, company, meta, qs):
     row = _title(ws, f"{company}: Quarterly Financials",
                  meta or "quarterly series (USD millions unless noted)")
     row = _header_row(ws, row, ["Qtr"] + periods)
-    row = _section(ws, row, "Income Statement", len(periods) + 1)
     rows = _is_rows(model, L)
     rows += [
         ("Revenue Growth YoY", _growth(model, "income_statement.revenue", "yoy"), FMT_PCT, None),
         ("Revenue Growth QoQ", _growth(model, "income_statement.revenue", "qoq"), FMT_PCT, None),
     ]
-    row = _data_rows(ws, row, periods, rows)
+    row = _section_rows(ws, row, "Income Statement", len(periods) + 1,
+                        periods, rows)
     row += 1
-    row = _section(ws, row, "Cash Flow", len(periods) + 1)
-    row = _data_rows(ws, row, periods, [
+    row = _section_rows(ws, row, "Cash Flow", len(periods) + 1, periods, [
         (L("cash_flow.operating_cash_flow"), _values(model, "cash_flow.operating_cash_flow"), FMT_ABS, None),
         (L("cash_flow.capital_expenditure"), _values(model, "cash_flow.capital_expenditure"), FMT_ABS, None),
         ("Free Cash Flow", _values(model, "derived.fcf"), FMT_ABS, None),
     ])
     row += 1
-    row = _section(ws, row, "Segments (consolidated revenue)", len(periods) + 1)
     segs = ("CCG", "DCAI", "NEX", "Foundry", "Altera", "Mobileye")
     seg_rows = [(f"{s} Revenue", _values(model, f"segments.{s.lower()}.revenue"), FMT_ABS, None)
                 for s in segs]
-    row = _data_rows(ws, row, periods, seg_rows)
+    row = _section_rows(ws, row, "Segments (consolidated revenue)",
+                        len(periods) + 1, periods, seg_rows)
 
 
 def _growth(model, fld, kind):
@@ -340,8 +433,25 @@ def _build_dcf(wb, dcf, vdict, company, meta):
     row = _kv_row(ws, row, "Terminal growth", _val(assump, "terminal_growth"), FMT_PCT)
     row = _kv_row(ws, row, "Exit multiple (EBITDA)", _val(assump, "exit_multiple_ebitda"), FMT_MULT)
     row = _kv_row(ws, row, "Discount convention", _val(dcf, "discount_convention"))
-    row = _kv_row(ws, row, "Net debt", _val(dcf, "net_debt"), FMT_ABS)
-    row = _kv_row(ws, row, "Diluted shares (mm)", _val(dcf, "diluted_shares"), FMT_SHARES)
+    row += 1
+
+    # net debt and share count are read off the model, not the mandate, and
+    # they come from the latest balance sheet, which may be a quarter later
+    # than the FY column a reader is comparing against
+    row = _section(ws, row, "Bridge inputs (latest balance sheet)", 8)
+    nd_period = _val(dcf, "net_debt_period")
+    sh_period = _val(dcf, "shares_period")
+    row = _kv_row(ws, row, f"Net debt ({nd_period})" if nd_period else "Net debt",
+                  _val(dcf, "net_debt"), FMT_ABS)
+    row = _kv_row(ws, row, f"Diluted shares, mm ({sh_period})" if sh_period
+                  else "Diluted shares (mm)", _val(dcf, "diluted_shares"), FMT_SHARES)
+    if nd_period:
+        c = ws.cell(row=row, column=1, value=(
+            f"Net debt is taken at {nd_period}, the latest balance sheet in the "
+            "case. The Statements Model reports it per fiscal year, so the two "
+            "tabs agree only where the latest period is that fiscal year."))
+        c.font = Font(size=9, italic=True, color="595959")
+        row += 1
     row += 1
 
     years = dcf.get("years", [])
@@ -390,19 +500,53 @@ def _build_dcf(wb, dcf, vdict, company, meta):
     row = _kv_row(ws, row, "Equity value - Gordon", _val(dcf, "equity_value", "gordon"), FMT_ABS)
     row = _kv_row(ws, row, "Value per diluted share - exit multiple", _val(dcf, "per_diluted_share", "exit_multiple"), FMT_PRICE)
     row = _kv_row(ws, row, "Value per diluted share - Gordon", _val(dcf, "per_diluted_share", "gordon"), FMT_PRICE)
+    # the two terminal methods are a cross-check: when they disagree by more
+    # than 3x the projection, not the terminal value, is doing the work, and a
+    # reader who averages them would be averaging a number with no support
+    em = _val(dcf, "per_diluted_share", "exit_multiple")
+    gg = _val(dcf, "per_diluted_share", "gordon")
+    if isinstance(em, (int, float)) and isinstance(gg, (int, float)) and em and gg:
+        ratio = max(abs(em), abs(gg)) / max(min(abs(em), abs(gg)), 1e-9)
+        if ratio > 3:
+            c = ws.cell(row=row, column=1, value=(
+                f"Methods disagree {ratio:.0f}x. The projected free cash flow is "
+                "negative or near zero, so the Gordon terminal value collapses "
+                "while the exit multiple still capitalises EBITDA. Neither "
+                "figure is a valuation until the FCF path is credible."))
+            c.font = Font(size=9, italic=True, color="C00000")
+            row += 1
     row += 1
 
     row = _section(ws, row, "Market vs. intrinsic", 8)
-    price = _val(vdict, "comps") and None  # market price echoed in upside calc
     dcf_upside = _val(dcf, "dcf_upside")
     comps_price = _val(vdict, "comps", "comps_price")
     comps_upside = _val(vdict, "comps", "comps_upside")
-    row = _kv_row(ws, row, "DCF upside vs market", dcf_upside, FMT_PCT)
-    row = _kv_row(ws, row, "Comps implied price", comps_price, FMT_PRICE)
-    row = _kv_row(ws, row, "Comps upside vs market", comps_upside, FMT_PCT)
-    row = _kv_row(ws, row, "Cross-check delta (DCF - comps)", _val(vdict, "cross_check_delta"), FMT_PCT)
+    delta = _val(vdict, "cross_check_delta")
     within = _val(vdict, "within_tolerance")
-    row = _kv_row(ws, row, "Within mandate tolerance", "yes" if within else "no")
+    # a label with no number beside it reads as a broken workbook; print only
+    # the comparisons that could actually be computed
+    market_rows = [
+        ("DCF upside vs market", dcf_upside, FMT_PCT),
+        ("Comps implied price", comps_price, FMT_PRICE),
+        ("Comps upside vs market", comps_upside, FMT_PCT),
+        ("Cross-check delta (DCF - comps)", delta, FMT_PCT),
+    ]
+    printed = 0
+    for label, value, fmt in market_rows:
+        if value is None:
+            continue
+        row = _kv_row(ws, row, label, value, fmt)
+        printed += 1
+    # the tolerance verdict is always stated: "unavailable" is information,
+    # a missing row is not
+    row = _kv_row(ws, row, "Within mandate tolerance",
+                  "unavailable" if within is None else ("yes" if within else "no"))
+    if not printed:
+        c = ws.cell(row=row, column=1,
+                    value="No market comparison: the mandate sets no market "
+                          "price, so no upside can be computed.")
+        c.font = Font(size=9, italic=True, color="595959")
+        row += 1
     if note:
         c = ws.cell(row=row, column=1, value="Cross-check note: " + note)
         c.font = Font(size=9, color="595959")
@@ -416,7 +560,6 @@ def _build_comparison(wb, comps, model, L, company, meta, fy):
     row = _title(ws, f"{company}: Company Comparison",
                  meta or f"dated peer block (as of {comps.get('as_of') or 'n/a'})")
     peers = comps.get("peers", [])
-    row = _header_row(ws, row, ["Metric"] + [company] + [str(p.get("ticker", "?")) for p in peers])
     applied = comps.get("applied", {})
 
     rows = [
@@ -432,6 +575,10 @@ def _build_comparison(wb, comps, model, L, company, meta, fy):
                                       if latest_fy else None)] + [None] * len(peers), FMT_ABS))
     rows.append(("Diluted EPS (FY)", [(_values(model, "income_statement.diluted_eps").get(latest_fy)
                                        if latest_fy else None)] + [None] * len(peers), FMT_PRICE))
+    rows = [r for r in rows if not all(v is None for v in r[1])]
+    if rows:
+        row = _header_row(ws, row, ["Metric"] + [company]
+                          + [str(p.get("ticker", "?")) for p in peers])
     for label, vals, fmt in rows:
         ws.cell(row=row, column=1, value=label)
         for i, v in enumerate(vals, start=2):
@@ -440,35 +587,60 @@ def _build_comparison(wb, comps, model, L, company, meta, fy):
                 c.number_format = fmt
         row += 1
     row += 1
-    row = _section(ws, row, "Implied value per share (median peer multiple, own metrics)", 2 + len(peers))
-    for method, label in (("ev_ebitda", "From EV/EBITDA"), ("p_e", "From P/E"), ("p_s", "From P/S")):
-        a = applied.get(method)
-        row = _kv_row(ws, row, label, _val(a, "implied_price"), FMT_PRICE)
-    row = _kv_row(ws, row, "Comps price (median of methods)", comps.get("comps_price"), FMT_PRICE)
-    row = _kv_row(ws, row, "Comps upside vs market", comps.get("comps_upside"), FMT_PCT)
+    implied = [(label, _val(applied.get(method), "implied_price"))
+               for method, label in (("ev_ebitda", "From EV/EBITDA"),
+                                     ("p_e", "From P/E"),
+                                     ("p_s", "From P/S"))]
+    implied = [(label, v) for label, v in implied if v is not None]
+    if implied:
+        row = _section(ws, row,
+                       "Implied value per share (median peer multiple, own metrics)",
+                       2 + len(peers))
+        for label, v in implied:
+            row = _kv_row(ws, row, label, v, FMT_PRICE)
+        row = _kv_row(ws, row, "Comps price (median of methods)",
+                      comps.get("comps_price"), FMT_PRICE)
+        row = _kv_row(ws, row, "Comps upside vs market",
+                      comps.get("comps_upside"), FMT_PCT)
+    else:
+        c = ws.cell(row=row, column=1,
+                    value="No peer multiples: the mandate carries no dated "
+                          "peer block, so no implied price can be computed.")
+        c.font = Font(size=9, italic=True, color="595959")
+        row += 2
     band = comps.get("own_band", {})
     if band:
+        # a negative implied price is not a valuation, it is a loss-making
+        # denominator: printing it invites the reader to average it in
+        usable = [(k, band[k]) for k in ("ev_ebitda", "p_e", "p_s")
+                  if band.get(k) and min(band[k]["implied_price"]) > 0]
+        dropped = [k for k in ("ev_ebitda", "p_e", "p_s")
+                   if band.get(k) and min(band[k]["implied_price"]) <= 0]
         row += 1
-        row = _section(ws, row, "Own historical multiple band", 2 + len(peers))
-        for key in ("ev_ebitda", "p_e", "p_s"):
-            b = band.get(key)
-            if not b:
-                continue
-            ws.cell(row=row, column=1, value=f"{key} band [{float(b['band'][0]):.1f}x, {float(b['band'][1]):.1f}x]"
-                    if key == "ev_ebitda" else key)
-            lo, hi = b["implied_price"]
-            for i, v in enumerate((lo, hi), start=2):
-                c = ws.cell(row=row, column=i, value=round(float(v), 6))
-                c.number_format = FMT_PRICE
+        row = _section(ws, row, "Own historical multiple band", 3)
+        if usable:
+            row = _header_row(ws, row, ["Multiple", "Low", "High"])
+            for key, b in usable:
+                ws.cell(row=row, column=1,
+                        value=f"{key} band [{float(b['band'][0]):.1f}x, "
+                              f"{float(b['band'][1]):.1f}x]")
+                for i, v in enumerate(b["implied_price"], start=2):
+                    c = ws.cell(row=row, column=i, value=round(float(v), 6))
+                    c.number_format = FMT_PRICE
+                row += 1
+        if dropped:
+            c = ws.cell(row=row, column=1, value=(
+                f"{', '.join(dropped)} omitted: the covered company's "
+                "denominator is negative, so the implied price is negative "
+                "and carries no valuation meaning."))
+            c.font = Font(size=9, italic=True, color="595959")
             row += 1
     return ws
 
 
 def _build_ratios(wb, model, L, company, meta, fy, qs):
     ws = _sheet(wb, "Ratios")
-    periods = fy or qs
     row = _title(ws, f"{company}: Ratios", meta or "profitability and growth analysis")
-    row = _header_row(ws, row, [""] + periods)
     rows = [
         ("Gross Margin", _values(model, "derived.gross_margin"), FMT_PCT),
         ("Operating Margin", _values(model, "derived.operating_margin"), FMT_PCT),
@@ -488,8 +660,24 @@ def _build_ratios(wb, model, L, company, meta, fy, qs):
         ("Net Income Growth YoY", _growth(model, "income_statement.net_income", "yoy"), FMT_PCT),
         ("Diluted EPS Growth YoY", _growth(model, "income_statement.diluted_eps", "yoy"), FMT_PCT),
     ]
+    # a ratio exists only where its inputs do: a case with no annual income
+    # statement has no annual margins, so fall back to the columns that carry
+    # data instead of printing an empty table under an FY header
+    available: set[str] = set()
+    for _, series, _ in ratios:
+        available |= set(series)
+    periods = ([p for p in (fy or []) if p in available]
+               or [p for p in (qs or []) if p in available]
+               or sorted(available, key=_period_key))
+    if not periods:
+        c = ws.cell(row=row, column=1,
+                    value="No ratios: the case carries no income-statement "
+                          "series to compute them from.")
+        c.font = Font(size=9, italic=True, color="595959")
+        return ws
+    row = _header_row(ws, row, [""] + periods)
     for label, series, fmt in ratios:
-        if not series:
+        if not _has_data(series, periods):
             continue
         ws.cell(row=row, column=1, value=label)
         for i, p in enumerate(periods, start=2):

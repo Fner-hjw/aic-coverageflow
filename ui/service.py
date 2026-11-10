@@ -40,10 +40,12 @@ import io
 import json
 import os
 import re
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
 # Error boundary (api.py maps these to HTTP statuses)
@@ -206,6 +208,24 @@ def _rreport_versions(cd: Path) -> list[str]:
     return sorted((p.name[:-3] for p in rep.glob("v*.md")), key=_vrkey)
 
 
+def _rdraft_report(cd: Path) -> tuple[int, str] | None:
+    """The newest round's report.md, before any version is published.
+
+    `report/v<N>-<candidate8>.md` is the *published* artifact and only exists
+    after a human approves. Until then the note lives in the round directory,
+    and the reviewer has to be able to read what they are signing off on.
+    """
+    best: tuple[int, str] | None = None
+    for p in cd.glob("rounds/round-*/generator/report.md"):
+        try:
+            round_no = int(p.parent.parent.name.removeprefix("round-"))
+        except ValueError:
+            continue
+        if best is None or round_no > best[0]:
+            best = (round_no, p.read_text("utf-8"))
+    return best
+
+
 def _rledger_rows(cd: Path) -> list[dict]:
     data = _real_statestore.read_json_or_none(cd / "findings.json") or {}
     return list(data.get("findings", []))
@@ -230,6 +250,7 @@ def _rcase_summary(cd: Path) -> dict:
         "rounds_used": used.get("rounds", 0),
         "rounds_max": budget.get("rounds_max"),
         "elapsed_minutes": used.get("elapsed_minutes", 0.0),
+        "case_clock_started": pending.get("case_clock_started"),
         "case_minutes": budget.get("case_minutes"),
         "tokens_max_role": (max(tokens_by_role.values())
                             if tokens_by_role else 0),
@@ -240,7 +261,8 @@ def _rcase_summary(cd: Path) -> dict:
         "pending_role": (None if status in ("CLOSED", "APPROVED", "REJECTED")
                          else pending.get("role")),
         "report_versions": versions,
-        "latest_report": versions[-1] if versions else None,
+        "latest_report": (versions[-1] if versions
+                          else ("draft" if _rdraft_report(cd) else None)),
         "deadline": pending.get("deadline"),
         "updated_at": st.get("updated_at"),
     }
@@ -1375,6 +1397,7 @@ def _realt_backend_rows() -> list[dict]:
     rows = []
     for tmpl in _BACKENDS:
         row = dict(tmpl)
+        row["selected"] = row["name"] == _REAL_SELECTED_BACKEND
         if row["name"] in ("replay", "stub"):
             rows.append(row)  # always-available rows stand as-is
             continue
@@ -1392,6 +1415,12 @@ def _realt_backend_rows() -> list[dict]:
             row["detail"] = (f"'{row['name']}' not detected by "
                              "coverageflow.backends.detect_available_backends")
         row["detected"] = ok
+        if row["name"] == "api":
+            row["api_config"] = ok
+            cfg = _real_make_backend("api")._config()
+            row["config"] = {"base_url": cfg["base_url"] or "",
+                             "model": cfg["model"] or "",
+                             "has_api_key": bool(cfg["api_key"])}
         rows.append(row)
     return rows
 
@@ -1414,16 +1443,51 @@ def get_backends() -> dict:
                 "rounds_max": 4, "retries_max": 3}
         return {"backends": _realt_backend_rows(),
                 "usage_by_role": usage_by_role,
-                "caps": caps, "selected": _REAL_SELECTED_BACKEND}
+                "caps": caps, "selected": _REAL_SELECTED_BACKEND,
+                "mode": "controller"}
     usage_by_role = {}
     for c in _CASES.values():
         for role, tok in c.state["budget"]["used"]["tokens_by_role"].items():
             usage_by_role[role] = usage_by_role.get(role, 0) + tok
     caps = {"role_tokens_max": 250_000, "case_minutes": 45, "rounds_max": 4,
             "retries_max": 3}
-    return {"backends": _BACKENDS, "usage_by_role": usage_by_role,
+    return {"backends": _BACKENDS, "usage_by_role": usage_by_role, "mode": "demo",
             "caps": caps, "selected": caps and next(
                 (b["name"] for b in _BACKENDS if b["selected"]), "replay")}
+
+
+def configure_api(payload: dict) -> dict:
+    """Save workspace API settings without returning the secret to the browser."""
+    if not _using_real():
+        raise ConflictError("API configuration requires a controller workspace; demo runs are simulated")
+    base = str(payload.get("base_url") or "").strip().rstrip("/")
+    model = str(payload.get("model") or "").strip()
+    key = str(payload.get("api_key") or "").strip()
+    try:
+        url = urlsplit(base)
+        valid_url = (url.scheme in ("http", "https") and url.hostname
+                     and not url.username and not url.password
+                     and not url.query and not url.fragment and url.port != 0)
+    except ValueError:
+        valid_url = False
+    if not valid_url or not model:
+        raise ValidationError("Enter a valid HTTP or HTTPS base URL and a model name")
+    path = _rws() / ".coverageflow-api.json"
+    if not key and path.is_file():
+        try:
+            key = json.loads(path.read_text(encoding="utf-8")).get("api", {}).get("api_key", "")
+        except (OSError, ValueError, AttributeError):
+            pass
+    data = {"api": {"base_url": base, "model": model, "api_key": key}}
+    fd, tmp = tempfile.mkstemp(prefix=".coverageflow-api-", dir=_rws())
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(data, out)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return select_backend("api")
 
 
 def select_backend(name: str) -> dict:
@@ -1470,6 +1534,7 @@ def _case_summary(c: Case) -> dict:
         "rounds_used": st["budget"]["used"]["rounds"],
         "rounds_max": st["budget"]["rounds_max"],
         "elapsed_minutes": st["budget"]["used"]["elapsed_minutes"],
+        "case_clock_started": st["pending"].get("case_clock_started"),
         "case_minutes": st["budget"]["case_minutes"],
         "tokens_max_role": (max(tokens_by_role.values())
                             if tokens_by_role else 0),
@@ -1955,6 +2020,8 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False,
                 "pending_role": (new_state.get("pending") or {}).get("role"),
                 "trace_tail": len(events)}
     c = _get(case_id)
+    if not replay and backend == "auto":
+        backend = next((b["name"] for b in _BACKENDS if b["selected"]), "replay")
     if backend not in ("auto",) and not any(b["name"] == backend
                                             for b in _BACKENDS):
         raise ValidationError(f"unknown backend: {backend}")
@@ -2054,8 +2121,10 @@ def resume_case(case_id: str) -> dict:
 
 
 def record_approval(case_id: str, decision: str, by: str,
-                    reasoning: str = "") -> dict:
+                    reasoning: str = "",
+                    acknowledge_findings: list[str] | None = None) -> dict:
     """POST /api/cases/{id}/approval — the human gate (auditable record)."""
+    ack = list(acknowledge_findings or [])
     if _using_real():
         cd = _rcase_dir(case_id)
         state = _rstate(cd)
@@ -2084,7 +2153,8 @@ def record_approval(case_id: str, decision: str, by: str,
         try:
             out = orch.record_approval(decision=decision,
                                        by=str(by).strip(),
-                                       reasoning=reasoning or "")
+                                       reasoning=reasoning or "",
+                                       acknowledge_findings=ack)
         except ValueError as exc:
             raise ValidationError(str(exc))
         except RuntimeError as exc:
@@ -2341,33 +2411,130 @@ def _unified_lines(old: str, new: str) -> list[dict]:
     return out
 
 
+_SERIES_META = {"yoy", "qoq", "yoy_computed", "qoq_computed"}
+_FIELD_RX = re.compile(r"\b[a-z_]+(?:\.[a-z_]+)+\b")
+
+
+def _dig(obj: Any, path: str) -> tuple[Any, bool]:
+    """Walk a dotted path through nested dicts."""
+    cur = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None, False
+        cur = cur[part]
+    return cur, True
+
+
+def _latest_in_series(series: dict) -> tuple[str | None, Any]:
+    """The newest period in a model series (meta keys excluded)."""
+    periods = [k for k in series if k not in _SERIES_META]
+    if not periods:
+        return None, None
+    return periods[-1], series[periods[-1]]
+
+
 def _revidence(cd: Path, markers: list[str]) -> list[dict]:
-    """Evidence map from [EV:key] markers resolved against real facts."""
+    """Evidence map from [EV:key] markers.
+
+    A marker names one of three things, and each resolves differently:
+
+    * an extracted fact (``income_statement.revenue``) -- carries the filing
+      citation, which is the strongest evidence;
+    * a derived figure (``derived.gross_margin``, ``segments.ccg.revenue``)
+      -- the model engine publishes the formula and the series, so the
+      evidence is the formula plus the facts it consumes;
+    * a computed figure (``dcf.base.revenue``, ``comps.own_band``) -- the
+      valuation engine's output, evidenced by the artifact and its inputs.
+
+    Resolving only the first kind left every computed number in the note
+    showing "not resolved", which is exactly the numbers a reader most wants
+    to check.
+    """
     facts_by_field: dict[str, dict] = {}
-    for p in cd.glob("rounds/round-*/generator/facts.json"):
+    model: dict = {}
+    valuation: dict = {}
+    for p in sorted(cd.glob("rounds/round-*/generator/facts.json")):
         try:
             data = _real_statestore.read_json(p)
         except Exception:
             continue
         for f in data.get("facts", []):
             facts_by_field[f.get("field")] = f
+    for p in sorted(cd.glob("rounds/round-*/generator/model.json")):
+        model = _real_statestore.read_json_or_none(p) or model
+    for p in sorted(cd.glob("rounds/round-*/generator/valuation.json")):
+        valuation = _real_statestore.read_json_or_none(p) or valuation
     docs = {d.get("doc_id"): d for d in
             ((_real_statestore.read_json_or_none(cd / "inputs" / "manifest.json")
               or {}).get("documents") or [])}
+    series = model.get("series") or {}
+    derivations = model.get("derivations") or {}
+
+    def _fact_citation(field: str) -> dict | None:
+        f = facts_by_field.get(field)
+        if not (f and f.get("citation")):
+            return None
+        cit = dict(f["citation"])
+        doc = docs.get(cit.get("doc_id")) or {}
+        cit.setdefault("doc_sha256", doc.get("sha256") or "unknown")
+        return cit
+
+    def _inputs(formula: str) -> list[dict]:
+        out = []
+        for field in dict.fromkeys(_FIELD_RX.findall(formula or "")):
+            cit = _fact_citation(field)
+            if cit:
+                out.append({"field": field, "citation": cit})
+        return out
+
     out = []
     for k in dict.fromkeys(markers):
-        f = facts_by_field.get(k)
-        if f and f.get("citation"):
-            cit = dict(f["citation"])
-            doc = docs.get(cit.get("doc_id")) or {}
-            cit.setdefault("doc_sha256", doc.get("sha256") or "unknown")
+        cit = _fact_citation(k)
+        if cit:
+            cit["kind"] = "filing"
             out.append({"token": k, "citation": cit})
-        else:
-            out.append({"token": k,
-                        "citation": {"doc_id": None, "slice_id": None,
-                                     "anchor": None, "doc_sha256": None,
-                                     "note": "marker not resolved against "
-                                             "the extracted facts"}})
+            continue
+        if k in derivations:
+            formula = derivations[k]
+            out.append({"token": k, "citation": {
+                "kind": "derived", "doc_id": None, "slice_id": None,
+                "anchor": None, "doc_sha256": None,
+                "source_artifact": "model.json", "formula": formula,
+                "inputs": _inputs(formula),
+                "note": "computed by the model engine from the facts below"}})
+            continue
+        if k in series:
+            period, value = _latest_in_series(series[k] or {})
+            out.append({"token": k, "citation": {
+                "kind": "derived", "doc_id": None, "slice_id": None,
+                "anchor": None, "doc_sha256": None,
+                "source_artifact": "model.json", "period": period,
+                "value": value,
+                "note": "model series, built from the extracted facts"}})
+            continue
+        value, found = _dig(valuation, k)
+        if found:
+            # a whole table (the sensitivity grid, the own-multiple band, the
+            # year-by-year projection) is still evidence: show it compactly
+            # rather than pretending the marker does not resolve.
+            shown = value
+            if isinstance(value, (dict, list)):
+                shown = json.dumps(value, separators=(",", ":"))
+                if len(shown) > 400:
+                    shown = shown[:397] + "..."
+            out.append({"token": k, "citation": {
+                "kind": "computed", "doc_id": None, "slice_id": None,
+                "anchor": None, "doc_sha256": None,
+                "source_artifact": "valuation.json", "path": k,
+                "value": shown,
+                "note": "computed by the valuation engine from the model"}})
+            continue
+        out.append({"token": k,
+                    "citation": {"kind": "unresolved", "doc_id": None,
+                                 "slice_id": None, "anchor": None,
+                                 "doc_sha256": None,
+                                 "note": "marker not resolved against the "
+                                         "facts, the model, or the valuation"}})
     return out
 
 
@@ -2377,8 +2544,26 @@ def get_report(case_id: str, version: str | None = None) -> dict:
         cd = _rcase_dir(case_id)
         versions = _rreport_versions(cd)
         if not versions:
-            raise NotFound(f"case {case_id} has no report versions yet",
-                           case_id=case_id)
+            draft = _rdraft_report(cd)
+            if draft is None:
+                raise NotFound(f"case {case_id} has no report versions yet",
+                               case_id=case_id)
+            round_no, md = draft
+            mandate = (_real_statestore.read_json_or_none(
+                cd / "mandate.json") or {})
+            bounds = (mandate.get("report_policy") or {}).get(
+                "length_words", [0, 1_000_000])
+            words = len(md.split())
+            return {"case_id": case_id, "version": "draft",
+                    "candidate_id": (_rstate(cd).get("candidate") or {}).get(
+                        "candidate_id"),
+                    "round": round_no, "markdown": md, "is_draft": True,
+                    "evidence": _revidence(
+                        cd, re.findall(r"\[EV:([^\]]+)\]", md)),
+                    "versions": ["draft"], "word_count": words,
+                    "word_bounds": bounds,
+                    "within_bounds": bounds[0] <= words <= bounds[-1],
+                    "diff": None}
         if version is not None and version not in versions:
             raise NotFound(
                 f"no report version {version} in case {case_id} "
@@ -2392,7 +2577,7 @@ def get_report(case_id: str, version: str | None = None) -> dict:
         words = len(md.split())
         out = {"case_id": case_id, "version": v,
                "candidate_id": (v.split("-", 1)[1] if "-" in v else None),
-               "round": idx + 1, "markdown": md,
+               "round": idx + 1, "markdown": md, "is_draft": False,
                "evidence": _revidence(cd, re.findall(r"\[EV:([^\]]+)\]", md)),
                "versions": versions, "word_count": words,
                "word_bounds": bounds,

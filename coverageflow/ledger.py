@@ -41,6 +41,12 @@ def normalize_dedup_key(key: str) -> str:
     return re.sub(r"\s+", " ", out).strip().lower()
 
 
+# Severities that stop acceptance. A critic that marks a finding ``minor`` is
+# saying the note can ship with it outstanding; the residual is carried into
+# the deliverable as an advisory note instead of blocking the case forever.
+BLOCKING_SEVERITIES = frozenset({"major", "critical"})
+
+
 class FindingsLedger:
     """The per-case findings ledger (findings.json)."""
 
@@ -73,6 +79,17 @@ class FindingsLedger:
 
     def open_findings(self) -> list[dict]:
         return [r for r in self._rows if r["status"] == "open"]
+
+    def blocking_findings(self) -> list[dict]:
+        """Open findings a critic marked as blocking.
+
+        Severity is the critic's own judgement: a ``minor`` finding is one it
+        says does not stop publication. Treating every remark as blocking made
+        acceptance unreachable -- four critics each raise ~9 findings a round,
+        most of them advisory, so the open count plateaued instead of falling.
+        """
+        return [r for r in self.open_findings()
+                if r.get("severity") in BLOCKING_SEVERITIES]
 
     def carried(self) -> list[dict]:
         """Open findings as carried payload (used in requests/repair packets)."""

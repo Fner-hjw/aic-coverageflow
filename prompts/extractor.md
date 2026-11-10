@@ -1,7 +1,7 @@
---version: 1.2
+--version: 1.3
 --role: extractor
 --produces: facts.json
---read: statement slices (with citation anchors) for one period
+--read: statement slices (with citation anchors) from the scoped filings
 --references: accounting-definitions.md
 
 # CONTRACT: Extraction
@@ -32,6 +32,14 @@ figures are `2026-Q3-YTD`. A 10-Q cash flow statement prints only the
 nine-month column, so every cash-flow fact is `2026-Q3-YTD`. Never label a
 year-to-date column `YYYY` — that is the annual period, and a line item that
 only appears year-to-date is a `YYYY-QN-YTD` fact, not a `missing` one.
+
+**Annual columns.** A 10-K prints fiscal years ("Years Ended Dec 27, 2025 |
+Dec 28, 2024 | Dec 30, 2023"). Those are `2025`, `2024`, `2023` — the `YYYY`
+form, one fact per column. The request's slices may come from more than one
+filing: extract the annual columns from the 10-K slices and the quarterly and
+year-to-date columns from the 10-Q slices, all into the same `facts[]`. A
+field may therefore carry both `2025` and `2026-Q3` facts; that is expected,
+not a duplicate.
 
 ## BOUNDS
 - You see slices only. Never consult other parts of the filing, prior

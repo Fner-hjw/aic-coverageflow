@@ -152,3 +152,74 @@ def test_smoke_real_amd_10q(tmp_path):
     doc = REPO / "data" / "amd-bundle" / "inputs" / "amd-10q-2026q3.htm"
     tags = _smoke_real(doc, "10-Q", tmp_path)
     assert "revenue" in tags["IS"].text.lower()
+
+
+# ------------------------------------------- 10-K: statement vs prose about it
+_ANNUAL_10K = """<html><body>
+<p>We have audited the accompanying consolidated balance sheets of Example
+Corporation as of December 27, 2025 and December 28, 2024, the related
+consolidated statements of operations, cash flows and stockholders' equity.</p>
+<table>
+<tr><td>Inventory Valuation</td></tr>
+<tr><td>Description of the Matter</td><td>The Company's net inventory was
+$11,618 million, and total assets were $211,429 million.</td></tr>
+</table>
+<p>Consolidated Statements of Operations</p>
+<table>
+<tr><td>Years Ended (In Millions, Except Per Share Amounts)</td>
+<td>Dec 27, 2025</td><td>Dec 28, 2024</td></tr>
+<tr><td>Net revenue</td><td>52,853</td><td>53,101</td></tr>
+<tr><td>Net income</td><td>26</td><td>(19,233)</td></tr>
+</table>
+<p>Consolidated Balance Sheets</p>
+<table>
+<tr><td>(In Millions, Except Par Value)</td><td>Dec 27, 2025</td>
+<td>Dec 28, 2024</td></tr>
+<tr><td>Assets</td><td></td><td></td></tr>
+<tr><td>Total assets</td><td>211,429</td><td>196,485</td></tr>
+</table>
+<p>Cash from Operating Activities and Adjusted Free Cash Flow $B</p>
+<table>
+<tr><td>Operating activities</td><td>13,184</td></tr>
+</table>
+<p>Consolidated Statements of Cash Flows</p>
+<table>
+<tr><td>Years Ended (In Millions)</td><td>Dec 27, 2025</td>
+<td>Dec 28, 2024</td></tr>
+<tr><td>Cash provided by operating activities</td><td>13,184</td>
+<td>8,288</td></tr>
+<tr><td>Cash used for investing activities</td><td>(20,259)</td>
+<td>(25,041)</td></tr>
+<tr><td>Cash provided by financing activities</td><td>14,761</td>
+<td>11,138</td></tr>
+</table>
+</body></html>"""
+
+
+class TestTenKStatementSelection:
+    """A 10-K names its statements in the audit report and the MD&A too.
+
+    Keyword matching alone picked the critical-audit-matter table as the
+    balance sheet and a chart caption as the cash-flow statement, so the
+    model had no annual statements and the workbook had no income statement.
+    """
+
+    @pytest.fixture()
+    def tags(self, tmp_path):
+        doc = tmp_path / "annual-10k.htm"
+        doc.write_text(_ANNUAL_10K, "utf-8")
+        return _slice_map(slice_document(doc, "10-K", tmp_path / "out"))
+
+    def test_balance_sheet_is_the_statement_not_the_audit_note(self, tags):
+        text = tags["BS"].text
+        assert "Total assets | 211,429" in text
+        assert "Inventory Valuation" not in text
+
+    def test_cash_flow_is_the_statement_not_a_chart_caption(self, tags):
+        text = tags["CF"].text
+        assert "Cash used for investing activities" in text
+        assert "Adjusted Free Cash Flow" not in text
+
+    def test_income_statement_carries_the_annual_columns(self, tags):
+        text = tags["IS"].text
+        assert "Net revenue | 52,853 | 53,101" in text
