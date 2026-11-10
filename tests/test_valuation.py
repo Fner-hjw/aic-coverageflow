@@ -346,3 +346,84 @@ def test_accepts_raw_dicts_and_is_deterministic():
     assert v1.to_dict() == v2.to_dict()
     assert v1.to_dict()["engine"] == "valuation_engine@1.0"
     assert v1.to_dict()["candidate_id"] == "cand-abc"
+
+
+def test_ebitda_margin_falls_back_to_the_period_that_has_one():
+    """A 10-Q reports D&A only year-to-date, so the latest quarter has no
+    EBITDA margin of its own. Refusing to value the company is not an answer;
+    use the most recent period that has a margin and record which one."""
+    from coverageflow.model_engine import Facts
+    payload = valuation_payload()
+    # quarterly-only case (no FY period) with the Q3 D&A absent, exactly like
+    # a 10-Q whose cash flow statement carries only the nine-month column
+    payload["facts"] = [
+        f for f in payload["facts"]
+        if f["period"] != "FY2025"
+        and not (f["field"] == "income_statement.depreciation_and_amortization"
+                 and f["period"] == "2026-Q3")]
+    model = build_model(Facts.from_payload(payload), "1.0")
+    v = value_company(model, Forecast.from_payload(FORECAST),
+                      Assumptions.from_payload(ASSUMPTIONS))
+    base = v.to_dict()["dcf"]["base"]
+    assert base["period"] == "2026-Q3"          # flows still come from Q3
+    assert base["ebitda_margin_period"] == "2025-Q3"
+    assert base["ebitda_margin"] == pytest.approx((175.0 + 450.0) / 12500.0)
+
+
+def test_year_to_date_column_supplies_the_ebitda_margin():
+    """A 10-Q cash flow statement prints only the nine-month column.
+
+    Labelling that column `2026` (the annual period) is wrong; labelling it
+    `2026-Q3-YTD` keeps the span honest and still lets EBITDA derive, so the
+    valuation has a margin to anchor on while the flows stay quarterly.
+    """
+    from coverageflow.model_engine import Facts
+    payload = valuation_payload()
+    payload["facts"] = [f for f in payload["facts"] if f["period"] != "FY2025"]
+    # the quarter has no D&A of its own; the nine-month column does
+    payload["facts"] = [
+        f for f in payload["facts"]
+        if not (f["field"] == "income_statement.depreciation_and_amortization"
+                and f["period"] == "2026-Q3")]
+    for fld, v in (("income_statement.revenue", 39000.0),
+                   ("income_statement.operating_income", 2400.0),
+                   ("cash_flow.depreciation_amortization", 1500.0)):
+        payload["facts"].append(fh.fact(fld, "2026-Q3-YTD", v))
+
+    model = build_model(Facts.from_payload(payload), "1.0")
+    series = model.to_dict()["series"]
+    assert series["income_statement.ebitda"]["2026-Q3-YTD"] == 2400.0 + 1500.0
+    assert series["derived.ebitda_margin"]["2026-Q3-YTD"] == pytest.approx(
+        (2400.0 + 1500.0) / 39000.0)
+
+    v = value_company(model, Forecast.from_payload(FORECAST),
+                      Assumptions.from_payload(ASSUMPTIONS))
+    base = v.to_dict()["dcf"]["base"]
+    assert base["period"] == "2026-Q3"                 # flows stay quarterly
+    assert base["ebitda_margin_period"] == "2026-Q3-YTD"
+    assert base["ebitda_margin"] == pytest.approx((2400.0 + 1500.0) / 39000.0)
+
+
+def test_year_to_date_cash_flow_is_annualised_by_its_span():
+    """Nine months of FCF is not a quarter of FCF.
+
+    The base period stays the quarter, but the cash-flow lines only exist
+    year-to-date, so they are scaled by 4/3 rather than 4.
+    """
+    from coverageflow.model_engine import Facts
+    payload = valuation_payload()
+    payload["facts"] = [f for f in payload["facts"] if f["period"] != "FY2025"]
+    payload["facts"] = [
+        f for f in payload["facts"]
+        if not (f["field"].startswith("cash_flow.")
+                and f["period"] == "2026-Q3")]
+    for fld, v in (("cash_flow.operating_cash_flow", 9000.0),
+                   ("cash_flow.capital_expenditure", 3000.0)):
+        payload["facts"].append(fh.fact(fld, "2026-Q3-YTD", v))
+
+    model = build_model(Facts.from_payload(payload), "1.0")
+    v = value_company(model, Forecast.from_payload(FORECAST),
+                      Assumptions.from_payload(ASSUMPTIONS))
+    base = v.to_dict()["dcf"]["base"]
+    assert base["period"] == "2026-Q3"
+    assert base["fcf"] == pytest.approx((9000.0 - 3000.0) * 4.0 / 3.0)

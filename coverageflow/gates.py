@@ -411,7 +411,10 @@ def gate_candidate_manifest_integrity(manifest: dict, case_dir: Path | str) -> t
 # gate 7: report evidence-link rule
 # ---------------------------------------------------------------------------
 
-EV_MARKER = re.compile(r"\[EV:([^\]\s]+)\]")
+# The key may contain spaces: as-reported segment ids are
+# `segments.Intel Foundry.revenue`, and a marker the regex cannot see makes
+# every number on the line look unlinked.
+EV_MARKER = re.compile(r"\[EV:([^\]]+)\]", re.IGNORECASE)
 NUMERIC_TOKEN = re.compile(r"(?<![\w])\d[\d,\.]*")
 
 # Labels that are not claims and therefore need no evidence link. Without
@@ -422,7 +425,25 @@ _EXEMPT_SPAN = re.compile(
     r"|\b\d{4}-\d{2}-\d{2}\b"  # ISO dates
     r"|\bFY\s?\d{2,4}\b"       # fiscal-year labels
     r"|\bQ[1-4]\b"              # quarter labels
+    r"|\b(?:19|20)\d{2}\b"      # a bare year is a label, not a claim
+    r"|'\d{2}\b"                # Q3'26 shorthand
 )
+
+
+def _evidence_key(key: str, evidence_index: dict) -> str | None:
+    """Resolve a marker key against the index, tolerating locator decoration.
+
+    The index is keyed by canonical field id. A writer may decorate a marker
+    with the document/slice it came from and the period it covers
+    (``doc/IS:income_statement.revenue:2026-Q3``); that still names a real
+    evidence key, so strip the decoration and look the field up.
+    """
+    if key in evidence_index:
+        return key
+    for part in re.split(r"[:/]", key):
+        if part in evidence_index:
+            return part
+    return None
 
 
 def gate_report_evidence_links(report_md: str,
@@ -439,10 +460,11 @@ def gate_report_evidence_links(report_md: str,
         return True, findings
     lines = report_md.splitlines()
     for ln, line in enumerate(lines, start=1):
-        markers = [(m.start(), m.end(), m.group(1)) for m in EV_MARKER.finditer(line)]
+        markers = [(m.start(), m.end(), m.group(1).strip())
+                   for m in EV_MARKER.finditer(line)]
         if evidence_index is not None:
             for _, _, key in markers:
-                if key not in evidence_index:
+                if _evidence_key(key, evidence_index) is None:
                     findings.append(_finding(
                         "report_evidence_links", f"unknown-ev:{key}",
                         f"evidence marker [EV:{key}] on line {ln} is not in the candidate "
@@ -495,6 +517,10 @@ class CandidateContext:
     valuation_json: dict | None = None
     case_dir: Path | str = "."
     mapping_version: str = "1.0"
+    # The harness computes the evidence index from the verified artifacts. The
+    # lead echoes it into the manifest, but an echo is not a source of truth:
+    # a truncated echo made every marker in a correct report look unknown.
+    evidence_index: dict | None = None
 
 
 def _num_close(a: float, b: float, tol: float = 1e-6) -> bool:
@@ -648,7 +674,9 @@ class GateEngine:
         if gate == "report_evidence_links":
             return gate_report_evidence_links(
                 ctx.report_md,
-                evidence_index=ctx.candidate_manifest.get("evidence_index"),
+                evidence_index=(ctx.evidence_index
+                                if ctx.evidence_index is not None
+                                else ctx.candidate_manifest.get("evidence_index")),
             )
         raise ValueError(f"unknown gate: {gate}")
 

@@ -1,4 +1,4 @@
---version: 1.1
+--version: 1.2
 --role: extractor
 --produces: facts.json
 --read: statement slices (with citation anchors) for one period
@@ -22,8 +22,16 @@ Strict JSON only, matching **facts.json** (contracts §5):
 `role("extractor"), request_id, candidate_id,
 facts[] {field, period, value, unit("USDmm" | "USD" | "shares_mm" | "ratio"),
   confidence (0–1), citation {doc_id, slice_id, anchor, locator}},
-missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.1")`.
-`period` format: `YYYY-QN` or `YYYY`.
+missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.2")`.
+`period` format: `YYYY-QN`, `YYYY-QN-YTD`, or `YYYY`.
+
+**Columns.** Extract every column a statement prints, each under the label
+that matches its true span. A 10-Q income statement prints a three-month and
+a nine-month column: the three-month figures are `2026-Q3`, the nine-month
+figures are `2026-Q3-YTD`. A 10-Q cash flow statement prints only the
+nine-month column, so every cash-flow fact is `2026-Q3-YTD`. Never label a
+year-to-date column `YYYY` — that is the annual period, and a line item that
+only appears year-to-date is a `YYYY-QN-YTD` fact, not a `missing` one.
 
 ## BOUNDS
 - You see slices only. Never consult other parts of the filing, prior
@@ -52,4 +60,4 @@ schema check at dispatch and return as repairable errors. Budgets enforced.
  "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
  "notes":["figures are one period only; comparatives in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.1"}
+ "conformance":"schema 1.0","prompt_version":"1.2"}

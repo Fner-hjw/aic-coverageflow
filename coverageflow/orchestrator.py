@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import budget as budget_mod
+from . import bundle as bundle_mod
 from . import gates, ledger as ledger_mod
 from . import resume as resume_mod
 from . import statestore
@@ -83,6 +84,17 @@ CANDIDATE_FILES = ["ingest-report.json", "facts.json",
                    "forecast_assumptions.json", "report.md",
                    "model.json", "valuation.json"]
 CANDIDATE_ROLES = ("ingest", "extractor", "model", "writer", "engines", "engines")
+
+# What each critic is contracted to read (see the --read line of its card).
+# A critic handed only sha256 digests cannot verify anything and reports
+# "unverifiable" findings every round, so the candidate never converges.
+CRITIC_ARTIFACTS = {
+    "critic_c1": ("facts.json", "report.md", "candidate-manifest.json"),
+    "critic_c2": ("facts.json", "forecast_assumptions.json", "model.json",
+                  "valuation.json"),
+    "critic_c3": ("candidate-manifest.json", "report.md"),
+    "critic_c4": ("candidate-manifest.json", "report.md"),
+}
 
 DEFAULT_CONFIG_VERSIONS = {
     "prompt_cards": {"ingest": "1.0", "extractor": "1.0", "model": "1.0",
@@ -189,7 +201,10 @@ class Orchestrator:
         if gate_engine is None:
             raise TypeError("gate_engine is required (inject engine callables "
                            "per contracts interfaces section 4)")
-        self.case_dir = Path(case_dir)
+        # absolute: the case dir is handed to backends as their working
+        # directory, and a relative path resolves against the backend's own
+        # cwd (which IS that directory) — the CLI then reports it missing
+        self.case_dir = Path(case_dir).resolve()
         self.dispatch = dispatch          # RoleCall -> AgentResult (A3 seam)
         self.gate_engine = gate_engine
         self.clock = clock or (lambda: datetime.now(timezone.utc).timestamp())
@@ -232,12 +247,15 @@ class Orchestrator:
                     clock: Callable[[], float] | None = None,
                     now: Callable[[], str] | None = None,
                     config_versions: dict | None = None,
-                    overwrite: bool = False) -> "Orchestrator":
+                    overwrite: bool = False,
+                    bundle_dir: Path | str | None = None) -> "Orchestrator":
         """Create a case directory (mandate + inputs are IMMUTABLE per case).
 
-        Creation is metadata only: the source filings are fetched into the
-        case inputs directory afterwards. ``run`` verifies they are present
-        before the case leaves CREATED.
+        When ``bundle_dir`` names the frozen bundle the manifest came from,
+        every declared document is copied into the case inputs directory and
+        hash-verified, so the case is runnable the moment it is created. A
+        case created without a bundle starts with an empty inputs directory
+        and ``run`` blocks it until the filings are fetched.
 
         An existing case is NEVER silently re-created: that would reset its
         state, budget and trace while leaving the old artifacts on disk.
@@ -255,6 +273,10 @@ class Orchestrator:
         mandate["case_id"] = case_id
         manifest_sha = statestore.atomic_write_json(
             case_dir / "inputs" / "manifest.json", manifest)
+        if bundle_dir is not None:
+            # the manifest only declares paths; the case needs its own
+            # byte-identical copy of every filing before a role can read them
+            bundle_mod.materialize_case_inputs(case_dir, manifest, bundle_dir)
         statestore.atomic_write_json(case_dir / "mandate.json", mandate)
         state = initial_state(case_id, config_versions)
         # per-case budget limits come from the IMMUTABLE mandate
@@ -288,11 +310,22 @@ class Orchestrator:
     # =========================================================================
     # run
     # =========================================================================
-    def run(self) -> dict:
+    def run(self, extend: bool = False) -> dict:
         state = self.load()
 
         if state["status"] == "CLOSED":
             return self._saved_result(state, "case closed; saved result returned")
+
+        # EXHAUSTED is a budget verdict, not a verdict on the work. A human can
+        # buy more fuel explicitly; without this the only recovery is a brand
+        # new case, which is how a workspace fills with dead cases that all
+        # point at the same frozen bundle.
+        if state["status"] == "EXHAUSTED":
+            if not extend:
+                return self._saved_result(
+                    state, "case is EXHAUSTED; re-run with a budget grant "
+                           "(run --extend) to continue")
+            state = self._grant_budget(state)
 
         # BLOCKED is in TERMINAL, so this branch must come BEFORE the generic
         # terminal check or it is unreachable and the block reason is lost.
@@ -302,21 +335,19 @@ class Orchestrator:
                 return self._summary(
                     state, "blocked (APPROVAL_EXPIRED); re-approval restarts "
                            "acceptance from zero")
+            # Every other block is an instruction ("fix the cause, then
+            # re-run"), not a tombstone. A re-run clears it and resumes from
+            # the last verified stage; otherwise one transient backend
+            # failure forces a brand-new case, and the workspace fills with
+            # dead cases that all point at the same frozen bundle.
             if code == "missing_inputs":
-                # the block is a "fetch the filings, then re-run" instruction,
-                # so a re-run must be able to clear it once they are present
                 missing = missing_input_documents(self.case_dir,
                                                   self.input_manifest())
                 if missing:
                     return self._summary(
                         state, "case blocked: inputs still missing "
                                f"{missing}; fetch them, then re-run")
-                state["status"] = "CREATED"
-                state["reason"] = None
-                self._transition(state, "BLOCKED", "CREATED",
-                                 detail={"unblocked": "inputs present"})
-            else:
-                return self._summary(state, "case blocked")
+            state = self._clear_block(state)
 
         if state["status"] in TERMINAL:
             return self._saved_result(
@@ -664,6 +695,11 @@ class Orchestrator:
         else:
             payload = {"case_id": state["case_id"], "round": arts.round,
                        "carried_findings": self._carried(),
+                       # every role works under the frozen mandate: the writer
+                       # needs the report policy and cutoff, the model needs
+                       # the forecast bounds. Withholding it made the writer
+                       # report the bounds as "not supplied".
+                       "mandate": self.mandate(),
                        "prior_artifacts": self._stage_inputs(arts, stage)}
         if stage == "candidate":
             # the candidate id is only known once all artifacts exist:
@@ -672,6 +708,9 @@ class Orchestrator:
             self._stamp_candidate_id(state, arts, candidate_id)
             payload.update({
                 "candidate_id": candidate_id,
+                "cutoff_date": self.mandate()["cutoff_date"],
+                "input_manifest_sha256": statestore.sha256_json(
+                    self.input_manifest()),
                 "artifacts": self._candidate_artifact_list(arts),
                 "evidence_index": self._evidence_index(arts),
                 "scope_statement": ("full rebuild; stages may short-circuit internal "
@@ -709,7 +748,13 @@ class Orchestrator:
         if stage in ("extractor", "model", "writer", "candidate"):
             out["ingest_report"] = self._lazy(arts, arts.rel("generator",
                                                              "ingest-report.json"))
-            out["slices"] = (out["ingest_report"] or {}).get("slices", [])
+            out["slices"] = self._slice_payload(
+                (out["ingest_report"] or {}).get("slices", []),
+                # the extractor reads the statements themselves: inline the
+                # text so its prompt is self-contained. A prompt that only
+                # names paths forces the model to go read files, which turns
+                # one completion into a multi-minute agentic exploration.
+                inline_text=(stage == "extractor"))
         if stage in ("model", "writer", "candidate"):
             out["facts"] = self._lazy(arts, arts.rel("generator", "facts.json"))
         if stage in ("writer", "candidate"):
@@ -718,6 +763,31 @@ class Orchestrator:
         if stage == "candidate":
             out["model"] = self._lazy(arts, arts.rel("generator", "model.json"))
             out["valuation"] = self._lazy(arts, arts.rel("generator", "valuation.json"))
+        return out
+
+    def _slice_payload(self, slices: Any, *, inline_text: bool) -> list:
+        """Slice descriptors, optionally carrying the slice text itself.
+
+        The text is read from the case directory (the slicer wrote it there)
+        and only when the file still hashes to the declared sha256, so a
+        tampered slice can never reach a role as if it were evidence.
+        """
+        out: list = []
+        for entry in slices or []:
+            if not isinstance(entry, dict):
+                out.append(entry)
+                continue
+            item = dict(entry)
+            if inline_text:
+                rel = item.get("path")
+                path = self.case_dir / rel if rel else None
+                text = None
+                if path is not None and path.is_file():
+                    want = item.get("sha256")
+                    if not want or statestore.sha256_file(path) == want:
+                        text = path.read_text(encoding="utf-8")
+                item["text"] = text
+            out.append(item)
         return out
 
     def _materialize_slices(self, parsed: dict) -> str | None:
@@ -819,15 +889,34 @@ class Orchestrator:
             raise RuntimeError("engine callables not injected "
                                "(contracts interfaces section 4)")
         mandate = self.mandate()
-        model = self.gate_engine.build_model_fn(
-            facts, state["config_versions"]["mapping_tables"])
+        try:
+            model = self.gate_engine.build_model_fn(
+                facts, state["config_versions"]["mapping_tables"])
+        except Exception as exc:
+            # A deterministic engine rejecting its inputs is a fact-quality
+            # problem, not a crash: block with the precise violation so the
+            # case can be repaired and re-run instead of stranding RUNNING.
+            self.blocked(
+                state, "engine_violation",
+                f"the model engine rejected the extracted facts: {exc}",
+                {"stage": "model", "error": str(exc),
+                 "facts_sha256": statestore.sha256_json(facts)})
+            raise StopLoop()
         model = model.to_dict() if hasattr(model, "to_dict") else dict(model)
         model["input_facts_sha256"] = statestore.sha256_json(facts)
         model["input_forecast_sha256"] = statestore.sha256_json(forecast)
         model["candidate_id"] = state["candidate"]["candidate_id"]
         model["cutoff"] = mandate["cutoff_date"]
-        valuation = self.gate_engine.value_fn(
-            model, forecast, mandate["assumptions"])
+        try:
+            valuation = self.gate_engine.value_fn(
+                model, forecast, mandate["assumptions"])
+        except Exception as exc:
+            self.blocked(
+                state, "engine_violation",
+                f"the valuation engine rejected the model: {exc}",
+                {"stage": "valuation", "error": str(exc),
+                 "facts_sha256": model["input_facts_sha256"]})
+            raise StopLoop()
         valuation = (valuation.to_dict() if hasattr(valuation, "to_dict")
                      else dict(valuation))
         valuation["input_facts_sha256"] = model["input_facts_sha256"]
@@ -849,6 +938,16 @@ class Orchestrator:
         return [{"role": role, "artifact": rel,
                  "sha256": self._verified.get(rel)}
                 for role, rel in zip(CANDIDATE_ROLES, rels)]
+
+    def _critic_artifacts(self, arts: Arts, role: str) -> dict:
+        """The candidate artifacts *role* is contracted to read, with content."""
+        out: dict[str, dict] = {}
+        for name in CRITIC_ARTIFACTS.get(role, ()):
+            rel = arts.rel("generator", name)
+            content = self._lazy(arts, rel)
+            if content is not None:
+                out[rel] = content
+        return out
 
     def _candidate_id(self, arts: Arts) -> str:
         """candidate_id = digest over the candidate's artifact CONTENT.
@@ -941,6 +1040,7 @@ class Orchestrator:
                     artifact=gates_rel, artifact_sha256=sha,
                     detail={"gates": [o.gate for o in report.results]})
         led = self.ledger()
+        reproduced: dict[str, set[str]] = {}
         for outcome in report.results:
             self._trace(event="GATE_PASS" if outcome.ok else "GATE_FAIL",
                         round=arts.round, role=outcome.gate,
@@ -950,12 +1050,36 @@ class Orchestrator:
             for f in outcome.findings:
                 f = dict(f)
                 f["source_critic"] = f"gate:{outcome.gate}"
+                reproduced.setdefault(outcome.gate, set()).add(
+                    f.get("dedup_key") or f.get("finding_id"))
                 fid = led.open_finding(f, round=arts.round)
                 self._trace(event="FINDING_OPENED",
                             candidate_id=state["candidate"]["candidate_id"],
                             round=arts.round, role=outcome.gate,
                             detail={"finding_id": fid, "summary": f["summary"],
                                     "gate": outcome.gate})
+        # A gate finding the current run did not reproduce is closed by the
+        # gate itself: it re-ran on this candidate and the defect is gone. Only
+        # a critic can close a critic finding, but a gate finding whose gate
+        # now passes has been verified fixed — leaving it open carries a
+        # phantom defect into every later repair packet.
+        ran = {o.gate for o in report.results}
+        for row in led.open_findings():
+            src = row.get("source_critic") or ""
+            if not src.startswith("gate:"):
+                continue
+            gate = src.split(":", 1)[1]
+            if gate not in ran or row.get("dedup_key") in reproduced.get(gate, set()):
+                continue
+            led.close_finding(row["finding_id"], critic=src, round=arts.round,
+                              verified_evidence={"artifact": gates_rel,
+                                                 "sha256": sha})
+            self._trace(event="FINDING_VERIFIED_CLOSED",
+                        candidate_id=state["candidate"]["candidate_id"],
+                        round=arts.round, role=gate,
+                        artifact=gates_rel, artifact_sha256=sha,
+                        detail={"finding_id": row["finding_id"],
+                                "reason": "gate no longer reproduces it"})
         state["candidate"]["gates_passed"] = report.passed
         if report.passed:
             state["pending"]["stage"] = "critics"
@@ -1001,6 +1125,7 @@ class Orchestrator:
                                                       "valuation.json")),
             case_dir=self.case_dir,
             mapping_version=state["config_versions"]["mapping_tables"],
+            evidence_index=self._evidence_index(arts),
         )
 
     # ================================================================ repair
@@ -1064,11 +1189,30 @@ class Orchestrator:
                 "candidate_id": candidate_id,
                 "built_round": built_round,
                 "candidate_artifacts": candidate_artifacts,
+                "artifacts": self._critic_artifacts(build_arts, role),
                 "carried_findings": self._carried(),
                 "input_manifest": self.input_manifest(),
+                "mandate": self.mandate(),
                 "mandate_summary": {
                     "cutoff_date": self.mandate()["cutoff_date"],
                     "report_policy": self.mandate()["report_policy"]},
+                "dispatch_records": {
+                    "rounds_used": budget.used_rounds(),
+                    "rounds_max": budget.limits.rounds_max,
+                    # the ACCUMULATED clock, not the live one: the live value
+                    # changes between the recording run and the replay run and
+                    # would make the assembled prompt hash differ
+                    "elapsed_minutes": round(budget.used["elapsed_minutes"], 3),
+                    "case_minutes": budget.limits.case_minutes,
+                    "tokens_by_role": dict(budget.used["tokens_by_role"]),
+                    "role_tokens_max": budget.limits.role_tokens_max,
+                    "retries_by_role": dict(budget.used.get("retries_by_role") or {}),
+                    "retries_max": budget.limits.retries_max,
+                    # explicit human budget grants: the effective caps above
+                    # may exceed the frozen mandate's, and the critic must be
+                    # able to see that the difference was authorised
+                    "grants": list(budget.used.get("grants") or []),
+                },
                 "rubric_version": "1.0",
             }
             while True:
@@ -1409,6 +1553,64 @@ class Orchestrator:
         self._transition(state, "RUNNING", "BLOCKED", verified=code,
                          detail={"blocked": code})
         self._write_result(state, "BLOCKED", message, code=code, detail=detail)
+
+    def _clear_block(self, state: dict) -> dict:
+        """Lift a BLOCKED status so the same case can be re-run.
+
+        The block reason stays in the trace and in the checkpoint history as
+        evidence; the repair budget for the role that blocked is reset so the
+        fix the human just made is actually attempted. A case that never
+        started goes back to CREATED (its inputs are re-verified there); a
+        case that was mid-build goes back to RUNNING and the resume planner
+        decides which stage to re-dispatch.
+        """
+        reason = state.get("reason") or {}
+        code = reason.get("code")
+        role = (reason.get("detail") or {}).get("role")
+        budget = self._budget(state)
+        if role:
+            budget.reset_retries(role)
+            budget.reset_tokens(role)
+            self._sync_budget(state, budget)
+        state["pending"]["retry_count"] = 0
+        state["reason"] = None
+        target = ("RUNNING" if state["pending"].get("case_clock_started")
+                  else "CREATED")
+        state["status"] = target
+        self._transition(state, "BLOCKED", target,
+                         detail={"unblocked": code, "retries_reset_for": role})
+        # result.json described a terminal state that no longer holds; the
+        # block itself stays in trace.jsonl and the checkpoint history
+        stale = self.case_dir / statestore.RESULT_FILE
+        if stale.exists():
+            stale.unlink()
+        return state
+
+    def _grant_budget(self, state: dict) -> dict:
+        """Reopen an EXHAUSTED case with an explicit, recorded budget grant.
+
+        The exhausted role's counters restart and the caps grow by one more
+        full allowance, so the grant is spendable. The grant is written into
+        the budget state and the trace; acceptance is still refused on a
+        breach, so this reopens the run without laundering exhaustion into an
+        approval.
+        """
+        reason = state.get("reason") or {}
+        detail = reason.get("detail") or {}
+        role = detail.get("role")
+        budget = self._budget(state)
+        record = budget.grant(role=role, by="human")
+        self._sync_budget(state, budget)
+        state["reason"] = None
+        target = ("RUNNING" if state["pending"].get("case_clock_started")
+                  else "CREATED")
+        state["status"] = target
+        self._transition(state, "EXHAUSTED", target,
+                         detail={"budget_grant": record})
+        stale = self.case_dir / statestore.RESULT_FILE
+        if stale.exists():
+            stale.unlink()
+        return state
 
     def exhausted(self, state: dict, budget: budget_mod.BudgetTracker,
                   reason: budget_mod.BudgetReason) -> None:

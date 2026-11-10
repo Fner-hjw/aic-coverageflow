@@ -112,7 +112,9 @@ def test_limit_parsing_from_mandate_and_defaults():
     assert b.limits.rounds_max == 4
     assert b.limits.retries_max == 3
     assert b.limits.case_minutes == 45
-    assert b.limits.role_tokens_max == 60000
+    # the default has to afford the rounds budget it sits next to: a 4-round
+    # case re-dispatches each role up to 4 times
+    assert b.limits.role_tokens_max == 250000
     assert b.limits.approval_hours == 48
 
 
@@ -162,3 +164,43 @@ def test_acceptance_refuses_a_rounds_overrun():
     ok, reason = b.check_acceptance()
     assert not ok
     assert reason["code"] == "rounds"
+
+
+def test_reset_tokens_clears_only_that_role():
+    """A repaired block must not die of the tokens the broken attempt burned."""
+    b = budget.BudgetTracker(limits=LIMITS, clock=FakeClock())
+    b.add_tokens("model", 40000, 40000)
+    b.add_tokens("extractor", 1000, 1000)
+    b.reset_tokens("model")
+    assert b.used_tokens("model") == 0
+    assert b.used_tokens("extractor") == 2000
+
+
+def test_grant_raises_caps_and_restarts_the_exhausted_role():
+    b = budget.BudgetTracker(limits=LIMITS, clock=FakeClock())
+    b.add_tokens("model", 40000, 34011)
+    ok, reason = b.check_dispatch("model")
+    assert not ok and reason["code"] == "role_tokens"
+
+    record = b.grant(role="model", by="human")
+    assert record["tokens_at_grant"] == {"model": 74011}
+    assert record["role_tokens_max_after"] == 120000
+    assert b.limits.role_tokens_max == 120000
+    assert record["rounds_max_after"] == 8
+    assert b.limits.rounds_max == 8
+    assert b.used_tokens("model") == 0
+    ok, reason = b.check_dispatch("model")
+    assert ok and reason is None
+    assert b.used["grants"] == [record]
+
+
+def test_grant_survives_a_state_round_trip():
+    b = budget.BudgetTracker(limits=LIMITS, clock=FakeClock())
+    b.add_tokens("model", 40000, 34011)
+    b.grant(role="model")
+    state = {"budget": {**b.limits_state(), "used": b.used_state()}}
+    again = budget.BudgetTracker.from_state(state, clock=FakeClock())
+    assert again.limits.role_tokens_max == 120000
+    assert again.limits.rounds_max == 8
+    assert again.used_tokens("model") == 0
+    assert len(again.used["grants"]) == 1

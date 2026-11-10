@@ -271,3 +271,47 @@ def test_accepts_plain_dict_payload(payload):
     m1 = build_model(Facts.from_payload(payload), "1.0")
     m2 = build_model(payload, "1.0")  # convenience: dict accepted directly
     assert m1.to_dict() == m2.to_dict()
+
+
+def test_eps_tolerance_follows_the_reported_precision():
+    """A one-decimal EPS is a rounded figure, not a linkage violation.
+
+    Intel's Q3 2026 10-Q prints diluted EPS as 0.6 while net income 3320 /
+    shares 5307 = 0.6256. A fixed 0.02 tolerance rejected a correct filing.
+    """
+    from coverageflow.model_engine import _eps_tolerance
+
+    assert _eps_tolerance(0.6) == 0.05      # one decimal -> half a digit
+    assert _eps_tolerance(0.61) == 0.02     # two decimals -> floor applies
+    assert _eps_tolerance(0.6256) == 0.02   # full precision -> floor applies
+    assert abs(3320.0 / 5307.0 - 0.6) <= _eps_tolerance(0.6)
+
+
+def test_ebitda_derives_from_cash_flow_da_when_is_alias_absent():
+    """D&A is reported once, in the cash flow statement.
+
+    Intel's 10-Q carries no income-statement D&A line, so the extractor
+    correctly reports `income_statement.depreciation_and_amortization` as
+    missing. EBITDA must still derive from the cash-flow caption, otherwise
+    valuation dies on a missing EBITDA margin.
+    """
+    payload = mini_facts_payload()
+    for f in payload["facts"]:
+        if f["field"] == "income_statement.depreciation_and_amortization":
+            f["field"] = "cash_flow.depreciation_amortization"
+    m = build_model(Facts.from_payload(payload), "1.0")
+    d = m.to_dict()
+    assert d["series"]["income_statement.ebitda"]["2026-Q3"] == 825.0 + 500.0
+    assert d["series"]["derived.ebitda_margin"]["2026-Q3"] == pytest.approx(
+        (825.0 + 500.0) / 13500.0)
+
+
+def test_bare_year_period_normalises_to_the_fy_form():
+    """The reference allows `YYYY` for an annual period; one spelling only."""
+    from coverageflow.model_engine import _normalize_period
+
+    assert _normalize_period("2025") == "FY2025"
+    assert _normalize_period("FY2025") == "FY2025"
+    assert _normalize_period("2026-Q3") == "2026-Q3"
+    assert _normalize_period("2026-Q3-YTD") == "2026-Q3-YTD"
+    assert _normalize_period("2026Q3YTD") == "2026-Q3-YTD"

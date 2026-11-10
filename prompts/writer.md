@@ -1,4 +1,4 @@
---version: 1.0
+--version: 1.1
 --role: writer
 --produces: report.md
 --read: verified facts, model, valuation artifacts, prior note, open findings, mandate report policy
@@ -21,7 +21,19 @@ Markdown), citations[] (evidence keys used in the note), conformance("schema
 1.0"), prompt_version("1.0")`.
 
 In the note every number must carry an inline citation marker
-`[ev:<evidence-key>]` to an evidence key present in the request's ledger.
+`[EV:<evidence-key>]` (uppercase `EV`) to an evidence key present in the
+request's ledger.
+
+**The evidence key is the canonical field id, verbatim** — the ledger is keyed
+by exactly the ids in `references/accounting-definitions.md`
+(`income_statement.revenue`, `derived.ebitda_margin`, `dcf.equity_per_share`,
+`comps.ev_ebitda`, …). Do not invent keys, and do not decorate them with a
+document, slice, or period: `[EV:income_statement.revenue]` resolves,
+`[EV:intc-10q-2026q3/IS:income_statement.revenue:2026-Q3]` does not.
+
+A bare year (`2026`), a fiscal-year label (`FY26`), a quarter (`Q3`), an ISO
+date, and an SEC form name (`10-Q`) are labels, not claims, and need no
+marker. Every other number does.
 
 ## BOUNDS
 - No number absent from the evidence ledger. No prior-note sentence survives
@@ -44,7 +56,7 @@ the verified artifacts are.
 ## WORKED MICRO-EXAMPLE (toy)
 {"role":"writer","request_id":"req-0044","candidate_id":"cand-77",
  "report_md":"# ToyCo Q3'26 Update\n\n## Summary\nRevenue reached 210 USDmm
-[ev:rev-26q3], ahead of the prior year.\n\n## Valuation\nOur DCF cross-check
-stands within tolerance [ev:dcf-77].",
- "citations":["rev-26q3","dcf-77"],
- "conformance":"schema 1.0","prompt_version":"1.0"}
+[EV:income_statement.revenue], ahead of the prior year.\n\n## Valuation\nOur
+DCF cross-check stands within tolerance [EV:dcf.within_tolerance].",
+ "citations":["income_statement.revenue","dcf.within_tolerance"],
+ "conformance":"schema 1.0","prompt_version":"1.1"}

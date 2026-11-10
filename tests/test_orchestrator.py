@@ -170,6 +170,7 @@ class TestFindingsLedger:
 # ===========================================================================
 
 import json
+import types
 from datetime import datetime, timezone
 
 import casekit
@@ -458,6 +459,47 @@ class TestBudgetExhaustion:
         st = load_state(case_dir)
         assert st["status"] == "EXHAUSTED"
         assert st["reason"]["code"] == "case_clock"
+
+    def test_exhausted_case_reopens_with_an_explicit_budget_grant(self, tmp_path):
+        """Exhaustion is a budget verdict, not a tombstone.
+
+        Without this the only recovery is a brand-new case, which is how a
+        workspace fills with dead cases that all point at the same bundle.
+        """
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["role_tokens_max"] = 1000
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
+        dispatch.tokens_in = 700
+        dispatch.tokens_out = 600
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "EXHAUSTED"
+        role = st["reason"]["detail"]["role"]
+
+        # a plain re-run must NOT silently reopen it
+        orch.run()
+        assert load_state(case_dir)["status"] == "EXHAUSTED"
+        assert load_state(case_dir)["budget"]["used"]["grants"] == []
+
+        orch.run(extend=True)
+        st = load_state(case_dir)
+        grants = st["budget"]["used"]["grants"]
+        assert len(grants) == 1
+        assert grants[0]["role"] == role
+        assert grants[0]["by"] == "human"
+        assert grants[0]["role_tokens_max_before"] == 1000
+        assert grants[0]["role_tokens_max_after"] == 2000
+        assert st["budget"]["role_tokens_max"] == 2000
+        # the counters restarted from zero at grant time, so the allowance is
+        # actually spendable (the snapshot proves it)
+        assert grants[0]["tokens_at_grant"]["ingest"] == 1300
+        # the grant reopens the run; it never launders exhaustion into
+        # an approval
+        assert st["status"] != "APPROVED"
+        # and the case is not a dead end: a further grant is still possible
+        orch.run(extend=True)
+        assert len(load_state(case_dir)["budget"]["used"]["grants"]) == 2
 
     def test_exhaustion_never_grants_acceptance(self, tmp_path):
         mandate = json.loads(json.dumps(casekit.MANDATE))
@@ -859,3 +901,298 @@ class TestSlicesAreProducedByTheHarness:
         assert summary["status"] == "EXHAUSTED"
         assert any("not in inputs/manifest.json" in err
                    for err in self._repair_errors(case_dir))
+
+
+class TestCaseCreationMaterializesTheBundle:
+    """A case manifest only declares paths; creation must copy the filings.
+
+    Without this every case is born blocked on missing_inputs, and the only
+    way forward is another case — which is how a workspace fills with dead
+    cases that all point at the same frozen bundle.
+    """
+
+    def _bundle(self, tmp_path):
+        import hashlib
+        import json
+
+        dest = tmp_path / "bundle"
+        (dest / "inputs").mkdir(parents=True)
+        blob = b"<html>10-Q</html>"
+        rel = "inputs/intc-10q-2026q3.htm"
+        (dest / rel).write_bytes(blob)
+        manifest = {
+            "as_of_cutoff": "2026-10-30",
+            "documents": [{
+                "doc_id": "intc-10q-2026q3", "form": "10-Q",
+                "filed": "2026-10-30", "period": "2026-09-26", "path": rel,
+                "sha256": hashlib.sha256(blob).hexdigest(),
+                "bytes": len(blob), "source_url": "https://www.sec.gov/x"}],
+            "bundle_id": "intc-2026-10", "bundle_sha256": "a" * 64,
+        }
+        (dest / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        return dest, manifest
+
+    def test_create_case_copies_the_filings_so_the_case_is_runnable(self, tmp_path):
+        bundle_dir, manifest = self._bundle(tmp_path)
+        dispatch = _stub.StubDispatch()
+        orch = Orchestrator.create_case(
+            tmp_path, "intc-fy2026q3-20261030", casekit.MANDATE, manifest,
+            dispatch=dispatch,
+            gate_engine=gates.GateEngine(
+                schema_path=SCHEMA_PATH, build_model_fn=stub_build_model,
+                value_fn=stub_value_company),
+            bundle_dir=bundle_dir)
+        case_dir = orch.case_dir
+        assert (case_dir / "inputs" / "intc-10q-2026q3.htm").read_bytes() == \
+            (bundle_dir / "inputs" / "intc-10q-2026q3.htm").read_bytes()
+        # the case starts, instead of blocking on inputs it never had
+        summary = orch.run()
+        assert summary["status"] == "PENDING_APPROVAL", summary
+        assert dispatch.calls
+
+    def test_create_case_without_a_bundle_still_blocks_on_missing_inputs(self, tmp_path):
+        _bundle_dir, manifest = self._bundle(tmp_path)
+        orch = Orchestrator.create_case(
+            tmp_path, "intc-fy2026q3-20261030", casekit.MANDATE, manifest,
+            dispatch=_stub.StubDispatch(),
+            gate_engine=gates.GateEngine(
+                schema_path=SCHEMA_PATH, build_model_fn=stub_build_model,
+                value_fn=stub_value_company))
+        summary = orch.run()
+        assert summary["status"] == "BLOCKED"
+        assert summary["reason"]["code"] == "missing_inputs"
+
+
+class TestBlockedCasesAreRerunnable:
+    """A block is an instruction ("fix the cause, then re-run"), not a tombstone.
+
+    Only APPROVAL_EXPIRED needs a fresh decision; every other block must be
+    clearable by re-running the SAME case, so a transient backend failure
+    never forces a brand-new case.
+    """
+
+    def _blocked_mid_build(self, tmp_path, code="invalid_submission",
+                           role="ingest"):
+        """A case that started round 1 and blocked at its first role."""
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        state = load_state(case_dir)
+        state["status"] = "BLOCKED"
+        state["pending"]["round"] = 1
+        state["pending"]["stage"] = "ingest"
+        state["pending"]["role"] = "generator"
+        state["pending"]["case_clock_started"] = clk.iso()
+        state["budget"]["used"]["retries_by_role"] = {role: 99}
+        state["reason"] = {"code": code, "message": "role could not submit",
+                           "detail": {"role": role, "error": "backend timeout"}}
+        statestore.write_state(case_dir, state, now=clk.iso)
+        statestore.atomic_write_json(case_dir / "result.json",
+                                     {"case_id": case_dir.name,
+                                      "terminal": "BLOCKED",
+                                      "reason": state["reason"]})
+        return orch, dispatch, case_dir
+
+    def test_rerun_clears_the_block_and_resumes_the_same_case(self, tmp_path):
+        orch, dispatch, case_dir = self._blocked_mid_build(tmp_path)
+        summary = orch.run()
+        assert summary["status"] == "PENDING_APPROVAL", summary
+        st = load_state(case_dir)
+        assert st["status"] == "PENDING_APPROVAL"
+        assert st["reason"] is None
+        # the stale terminal result is gone; the block stays in the trace
+        assert not (case_dir / "result.json").exists()
+        events = [e["event"] for e in statestore.read_trace(case_dir)]
+        assert "STATE_TRANSITION" in events
+        unblocked = [e for e in statestore.read_trace(case_dir)
+                     if (e.get("detail") or {}).get("unblocked")]
+        assert unblocked and unblocked[-1]["detail"]["unblocked"] == "invalid_submission"
+
+    def test_rerun_resets_the_repair_budget_for_the_blocked_role(self, tmp_path):
+        orch, dispatch, case_dir = self._blocked_mid_build(tmp_path)
+        # one invalid submission would exhaust a 99-deep retry count; the
+        # reset gives the repair the human just made a full budget
+        dispatch.scripts["ingest"] = [{"__invalid": True}]
+        summary = orch.run()
+        assert summary["status"] == "PENDING_APPROVAL", summary
+        st = load_state(case_dir)
+        assert st["budget"]["used"]["retries_by_role"]["ingest"] == 1
+
+    def test_approval_expired_is_not_cleared_by_a_rerun(self, tmp_path):
+        orch, dispatch, case_dir = self._blocked_mid_build(
+            tmp_path, code="APPROVAL_EXPIRED", role=None)
+        summary = orch.run()
+        assert summary["status"] == "BLOCKED"
+        assert "re-approval" in summary["message"]
+        assert dispatch.calls == []
+
+
+class TestCaseDirIsAbsolute:
+    """The case dir is a backend's working directory, so it must be absolute.
+
+    A relative path is resolved by the CLI backend against its own cwd — which
+    IS that directory — so the backend reports the workdir missing and every
+    dispatch fails. That burned the whole retry budget on a path bug.
+    """
+
+    def test_relative_workspace_still_yields_an_absolute_workdir(self, tmp_path,
+                                                                monkeypatch):
+        build_env(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        orch = Orchestrator(
+            Path("cases") / "intc-fy2026q3-20261030",
+            dispatch=_stub.StubDispatch(),
+            gate_engine=gates.GateEngine(
+                schema_path=SCHEMA_PATH, build_model_fn=stub_build_model,
+                value_fn=stub_value_company))
+        assert orch.case_dir.is_absolute()
+        assert orch.case_dir == (tmp_path / "cases" /
+                                 "intc-fy2026q3-20261030").resolve()
+
+    def test_every_dispatch_carries_an_absolute_workdir(self, tmp_path,
+                                                        monkeypatch):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        orch.run()
+        assert dispatch.calls
+        for call in dispatch.calls:
+            assert Path(call.workdir).is_absolute(), call.role
+
+
+class TestExtractorPromptIsSelfContained:
+    """The extractor must receive the statement text, not just its path.
+
+    A prompt that only names ``inputs/slices/.../IS.txt`` forces the model to
+    go read files, which turns one completion into a multi-minute agentic
+    exploration. The text is inlined (hash-verified) so the call is a plain
+    completion.
+    """
+
+    def _case_with_slices(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        return orch, dispatch, case_dir
+
+    def test_extractor_payload_carries_the_slice_text(self, tmp_path):
+        orch, dispatch, case_dir = self._case_with_slices(tmp_path)
+        extractor_calls = dispatch.calls_of("extractor")
+        assert extractor_calls
+        slices = extractor_calls[0].payload["prior_artifacts"]["slices"]
+        assert slices
+        for entry in slices:
+            assert entry.get("text"), entry.get("slice_id")
+            assert "text" in entry
+
+    def test_other_roles_do_not_carry_the_slice_text(self, tmp_path):
+        orch, dispatch, case_dir = self._case_with_slices(tmp_path)
+        for role in ("model", "writer", "generator_lead"):
+            calls = dispatch.calls_of(role)
+            assert calls, role
+            slices = (calls[0].payload.get("prior_artifacts") or {}).get("slices") or []
+            for entry in slices:
+                assert "text" not in entry, role
+
+    def test_a_tampered_slice_is_not_inlined(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        # corrupt a slice after ingest declares it but before the extractor
+        # is dispatched: the hash no longer matches, so no text is inlined
+        original = orch._slice_payload
+
+        def tampering(slices, *, inline_text):
+            # corrupt the slice files BEFORE the text is read, so the
+            # declared sha256 no longer matches
+            for entry in slices or []:
+                rel = (entry or {}).get("path")
+                if rel and (case_dir / rel).is_file():
+                    (case_dir / rel).write_text("TAMPERED", encoding="utf-8")
+            return original(slices, inline_text=inline_text)
+
+        orch._slice_payload = tampering
+        orch.run()
+        slices = dispatch.calls_of("extractor")[0].payload["prior_artifacts"]["slices"]
+        assert all(entry.get("text") is None for entry in slices)
+
+
+class TestGateFindingLifecycle:
+    def test_a_gate_finding_the_gate_no_longer_reproduces_is_closed(self, tmp_path):
+        """A phantom gate finding must not haunt every later repair packet.
+
+        Only a critic can close a critic finding, but a gate finding whose gate
+        now passes has been verified fixed by the gate itself.
+        """
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        fid = orch.ledger().open_finding({
+            "dedup_key": "unlinked-number:1:0:2026",
+            "source_critic": "gate:report_evidence_links",
+            "severity": "major",
+            "summary": 'numeric token "2026" on line 1 lacks an evidence reference',
+            "affected_artifacts": ["report.md"],
+            "required_evidence": 'an [EV:...] evidence reference for "2026"',
+        }, round=1)
+        assert [r["finding_id"] for r in orch.ledger().open_findings()] == [fid]
+
+        orch.run()
+
+        row = orch.ledger().by_id(fid)
+        assert row["status"] == "closed"
+        assert row["closed_by"]["critic"] == "gate:report_evidence_links"
+        assert row["closed_by"]["verified_evidence"]["artifact"].endswith(
+            "gates.json")
+        assert row["closed_by"]["verified_evidence"]["sha256"]
+
+    def test_a_reproduced_gate_finding_stays_open(self, tmp_path):
+        """Closing is decided by reproduction, not by the row merely existing."""
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        finding = {
+            "gate": "report_evidence_links",
+            "dedup_key": "unlinked-number:1:0:2026",
+            "severity": "major", "summary": "x",
+            "affected_artifacts": ["report.md"], "required_evidence": "y",
+        }
+
+        class _AlwaysFailing:
+            build_model_fn = stub_build_model
+            value_fn = stub_value_company
+
+            def run_all(self, ctx):
+                outcome = types.SimpleNamespace(
+                    gate="report_evidence_links", ok=False, findings=[finding])
+                return types.SimpleNamespace(
+                    passed=False, results=[outcome], finding_dicts=[finding])
+
+        orch.gate_engine = _AlwaysFailing()
+        fid = orch.ledger().open_finding(
+            {**finding, "source_critic": "gate:report_evidence_links"}, round=1)
+        orch.run()
+        assert orch.ledger().by_id(fid)["status"] == "open"
+
+
+class TestCriticPayload:
+    def test_critics_receive_the_artifacts_they_are_contracted_to_read(self, tmp_path):
+        """A critic handed only sha256 digests cannot verify anything.
+
+        Every round then produces "unverifiable" findings, the clean-review
+        streak never advances, and the case exhausts with a report nobody
+        actually reviewed.
+        """
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+
+        calls = [c for c in dispatch.calls if c.role.startswith("critic_c")]
+        assert calls
+        by_role = {}
+        for c in calls:
+            by_role.setdefault(c.role, c.payload)
+
+        c1 = by_role["critic_c1"]
+        assert "facts.json" in " ".join(c1["artifacts"])
+        assert any("report.md" in rel for rel in c1["artifacts"])
+        facts = next(v for k, v in c1["artifacts"].items() if k.endswith("facts.json"))
+        assert facts.get("facts"), "facts.json content must be inline, not a digest"
+
+        c2 = by_role["critic_c2"]
+        assert any("valuation.json" in rel for rel in c2["artifacts"])
+        assert c2["mandate"]["assumptions"]["forecast_bounds"], \
+            "C2 needs the mandate bounds"
+
+        c4 = by_role["critic_c4"]
+        assert "tokens_by_role" in c4["dispatch_records"]
+        assert c4["dispatch_records"]["role_tokens_max"] > 0

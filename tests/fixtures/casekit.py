@@ -57,7 +57,7 @@ MANDATE = {
         "dcf_comps_tolerance": 0.25,
     },
     "limits": {
-        "role_tokens_max": 60000,
+        "role_tokens_max": 250000,
         "case_minutes": 45,
         "rounds_max": 4,
         "retries_max": 3,

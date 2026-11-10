@@ -115,8 +115,14 @@ controller decision:
   (`_apply_critic_closures`, `orchestrator.py`) — tampered evidence is
   rejected and the finding stays open.
 - **invalid submission** (schema/stale id): repair at the same role with a
-  new request id, **no round consumed**; the second invalid submission at the
-  same role → `BLOCKED`.
+  new request id, **no round consumed**; the repair budget (`retries_max`,
+  default 3) bounds it, and exhausting it → `EXHAUSTED` with a precise reason.
+- **blocks are instructions, not tombstones.** `BLOCKED` is terminal for the
+  *run*, not for the *case*: a re-run clears the block, resets the repair
+  budget for the role that blocked, and resumes from the last verified stage
+  (`_clear_block`). Only `APPROVAL_EXPIRED` needs a fresh human decision
+  instead. Without this a transient backend failure forced a brand-new case,
+  and the workspace filled with dead cases pointing at the same frozen bundle.
 
 Every transition is **state-first**: validate → write `state.json` + checkpoint
 (`history/checkpoint-NNNN.json`) atomically → append to `trace.jsonl`. A
@@ -230,7 +236,7 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 | Handoffs (roles) | read-scope = bound payload; write-scope = one schema-validated artifact; stale request rejected | `dispatch.py`, §1.1 table |
 | Harness (agency control) | prompt assembly from preamble+card+refs+bound request; no in-model tools; budget+timeout per role call | `_prompt_assembly.py`, `dispatch.py`, `budget.py` |
 | Loop / graph | CREATED…CLOSED states; per-round graph build→gates→critics→merge→decide; state-first transitions | `orchestrator.py` §2 here |
-| Gates | 7 numerical gates, deterministic, rerun per round; invalid submission repairs at role, 2nd → BLOCKED | `gates.py` |
+| Gates | 7 numerical gates, deterministic, rerun per round; invalid submission repairs at role, budget-bounded | `gates.py` |
 | Finding ledger | append-only open/closed findings with critic-verified closure evidence (artifact + sha match) | `ledger.py`, `findings.json` |
 | Repair packets | findings + required evidence issued by orchestrator → full re-build round (fresh eyes) | `repair-packet.json`, `examples/run2-seeded-repair` |
 | Stop rules / budgets / resume | 4 rounds; 3 retries/role; 45 min; 60k tokens/role; 48 h approval; discard-unverified resume of pending role only | `budget.py`, `resume.py`, `examples/run3-kill-resume` |

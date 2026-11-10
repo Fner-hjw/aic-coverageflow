@@ -110,7 +110,8 @@ def create_app() -> FastAPI:
     def case_run(case_id: str, payload: dict | None = None) -> dict:
         p = payload or {}
         return service.run_case(
-            case_id, p.get("backend", "auto"), bool(p.get("replay", False)))
+            case_id, p.get("backend", "auto"), bool(p.get("replay", False)),
+            bool(p.get("extend", False)))
 
     @app.post("/api/cases/{case_id}/resume")
     def case_resume(case_id: str) -> dict:

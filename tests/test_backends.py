@@ -7,6 +7,7 @@ Fake CLIs live under tests/fixtures/fakeclis/ and are placed on PATH.
 from __future__ import annotations
 
 import json
+import pathlib
 import os
 import time
 from pathlib import Path
@@ -151,6 +152,34 @@ class TestCliHappyPaths:
         assert "--output" in argv and "text" in argv
         assert "--max-price" in argv  # per-call cost cap always applied
         assert "--time-limit" in argv  # CLI stops itself before the harness kill
+
+    def test_vibe_runs_single_shot_for_self_contained_roles(self, tmp_path,
+                                                           monkeypatch):
+        """Vibe is an agentic CLI: left alone it explores for minutes.
+
+        Every role whose prompt is self-contained must run as one plain
+        completion — no tools, no agent system prompt, one turn.
+        """
+        log = tmp_path / "argv.jsonl"
+        monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
+        cli.VibeBackend().invoke(make_call(role="extractor"), "hello")
+        argv = json.loads(log.read_text().strip().splitlines()[-1])
+        assert "--system-prompt-file" in argv
+        assert argv[argv.index("--enabled-tools") + 1] == "__none__"
+        assert argv[argv.index("--max-turns") + 1] == "1"
+        # the temp file is cleaned up after the call; the contract is the text
+        assert "Do not use tools" in cli.VibeBackend.SYSTEM_PROMPT
+        assert argv[argv.index("--system-prompt-file") + 1].endswith(".md")
+
+    def test_vibe_keeps_tools_for_ingest(self, tmp_path, monkeypatch):
+        """Ingest must read the filing to find the statements: tools stay on."""
+        log = tmp_path / "argv.jsonl"
+        monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
+        cli.VibeBackend().invoke(make_call(role="ingest"), "hello")
+        argv = json.loads(log.read_text().strip().splitlines()[-1])
+        assert "--system-prompt-file" not in argv
+        assert "--enabled-tools" not in argv
+        assert "--max-turns" not in argv
 
     def test_vibe_passes_case_workdir(self, tmp_path, monkeypatch):
         log = tmp_path / "argv.jsonl"

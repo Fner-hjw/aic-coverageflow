@@ -21,8 +21,10 @@ import sys
 from pathlib import Path
 
 from . import gates, statestore
+from . import bundle as bundle_mod
 from . import registry as registry_mod
-from .orchestrator import Orchestrator, new_case_id
+from .orchestrator import (Orchestrator, missing_input_documents,
+                           new_case_id)
 
 DEFAULT_WORKSPACE = Path.cwd()
 OWNED_BY_OTHER_STREAM_EXIT = 2
@@ -160,6 +162,40 @@ def registry_path(ws: Path) -> Path:
     return ws / "versions" / "registry.json"
 
 
+def bundle_search_dirs(ws: Path) -> list[Path]:
+    """Where frozen bundles live: the workspace, then the repo's data/."""
+    return [ws / "data", Path(__file__).resolve().parent.parent / "data"]
+
+
+def resolve_bundle_dir(ws: Path, explicit: str | None,
+                       manifest: dict) -> Path | None:
+    """Locate the frozen bundle a case manifest came from.
+
+    ``explicit`` is a bundle directory or a bundle_id (``--bundle``); when it
+    is omitted the manifest's own ``bundle_id`` is resolved. Returns None when
+    no bundle can be found, which leaves the case to be blocked on missing
+    inputs rather than failing creation.
+    """
+    data_dirs = bundle_search_dirs(ws)
+    if explicit:
+        cand = Path(explicit)
+        if (cand / "manifest.json").is_file():
+            return cand
+        found = bundle_mod.find_bundle_dir(explicit, workspace=ws,
+                                           data_dirs=data_dirs)
+        if found is None:
+            raise SystemExit(
+                f"no frozen bundle at {explicit!r}: pass a bundle directory "
+                "containing manifest.json, or a bundle_id present under "
+                f"{ws / 'bundles'} or data/*-bundle")
+        return found
+    bundle_id = (manifest or {}).get("bundle_id")
+    if not bundle_id:
+        return None
+    return bundle_mod.find_bundle_dir(bundle_id, workspace=ws,
+                                      data_dirs=data_dirs)
+
+
 def case_state_summary(case_dir: Path) -> dict:
     state = statestore.load_state(case_dir)
     if state is None:
@@ -208,18 +244,23 @@ def cmd_case_new(args, ws: Path) -> int:
         mandate = statestore.read_json(Path(args.mandate))
     dispatch, backend = load_dispatch()
     rg = registry_mod.VersionRegistry(registry_path(ws))
+    bundle_dir = resolve_bundle_dir(ws, args.bundle, manifest)
     try:
         orch = Orchestrator.create_case(
             ws, case_id, mandate, manifest, dispatch=dispatch,
             gate_engine=load_gate_engine(stub_engines=args.stub_engines,
                                          workspace=ws),
-            config_versions=rg.config_versions())
+            config_versions=rg.config_versions(),
+            bundle_dir=bundle_dir)
     except FileExistsError as exc:
         raise SystemExit(str(exc))
     _print({"created": case_id, "case_dir": str(orch.case_dir),
             "backend": backend,
-            "note": "manifest placeholder until A1's bundle builder is wired; "
-                    "overrides: --manifest / --mandate"})
+            "bundle": str(bundle_dir) if bundle_dir else None,
+            "inputs_materialized": len(
+                missing_input_documents(orch.case_dir, manifest)) == 0,
+            "note": "the bundle's filings are copied into the case inputs; "
+                    "overrides: --manifest / --mandate / --bundle"})
     return 0
 
 
@@ -274,7 +315,7 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff),
         },
-        "limits": {"role_tokens_max": 60000, "case_minutes": 45,
+        "limits": {"role_tokens_max": 250000, "case_minutes": 45,
                    "rounds_max": 4, "retries_max": 3, "approval_hours": 48},
         "schema_version": "1.0",
     }
@@ -339,7 +380,7 @@ def cmd_run(args, ws: Path) -> int:
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
                             stub_engines=args.stub_engines, workspace=ws))
-    summary = orch.run()
+    summary = orch.run(extend=getattr(args, "extend", False))
     summary["backend"] = backend_name
     _print(summary)
     return 0
@@ -550,6 +591,10 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--cutoff", required=True)
     new.add_argument("--manifest", default=None)
     new.add_argument("--mandate", default=None)
+    new.add_argument("--bundle", default=None,
+                     help="frozen bundle directory (or bundle_id) whose "
+                          "filings are copied into the case inputs; "
+                          "defaults to the bundle the manifest names")
     new.add_argument("--stub-engines", action="store_true",
                      help="force offline engine double")
     new.set_defaults(handler=cmd_case_new)
@@ -566,6 +611,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--record", action="store_true")
     run.add_argument("--stub-engines", action="store_true",
                      help="force offline engine double")
+    run.add_argument("--extend", action="store_true",
+                     help="EXHAUSTED case: grant one more full budget "
+                          "allowance and continue instead of starting a new case")
     resume = add("resume", cmd_resume)
     resume.add_argument("--case", default=None)
     resume.add_argument("--stub-engines", action="store_true")

@@ -303,6 +303,75 @@ def build_bundle(
     return manifest
 
 
+def find_bundle_dir(bundle_id: str, workspace: Path | str | None = None,
+                    data_dirs: list[Path] | None = None) -> Path | None:
+    """Locate a frozen bundle directory by its bundle_id.
+
+    Search order: ``<workspace>/bundles/<bundle_id>``, then every
+    ``<data_dir>/*/manifest.json`` whose manifest declares that bundle_id.
+    Returns None when no bundle matches.
+    """
+    if not bundle_id:
+        return None
+    if workspace is not None:
+        cand = Path(workspace) / "bundles" / bundle_id
+        if (cand / "manifest.json").is_file():
+            return cand
+    for base in data_dirs or []:
+        base = Path(base)
+        if not base.is_dir():
+            continue
+        for man_path in sorted(base.glob("*/manifest.json")):
+            try:
+                data = json.loads(man_path.read_text("utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if data.get("bundle_id") == bundle_id:
+                return man_path.parent
+    return None
+
+
+def materialize_case_inputs(case_dir: Path | str, manifest: dict,
+                            bundle_dir: Path | str) -> list[str]:
+    """Copy every document *manifest* declares from *bundle_dir* into the case.
+
+    A case manifest carries bundle-relative paths (``inputs/<doc>.htm``); the
+    case directory needs its own byte-identical copy before any role can read
+    them. Each copy is verified against the manifest's ``sha256``/``bytes``
+    when declared, so a case can never start on a corrupted snapshot.
+
+    Returns the case-relative paths that were written. Raises EdgarError when
+    the bundle is missing a declared document or a hash does not match.
+    """
+    case_dir = Path(case_dir)
+    bundle_dir = Path(bundle_dir)
+    written: list[str] = []
+    for doc in (manifest or {}).get("documents") or []:
+        rel = (doc or {}).get("path")
+        if not rel:
+            continue
+        source = bundle_dir / rel
+        if not source.is_file():
+            raise EdgarError(
+                f"bundle {bundle_dir} does not contain {rel} "
+                f"(declared by doc {doc.get('doc_id')!r})")
+        blob = source.read_bytes()
+        want_sha = doc.get("sha256")
+        if want_sha and hashlib.sha256(blob).hexdigest() != want_sha:
+            raise EdgarError(f"sha256 mismatch for {rel} in bundle {bundle_dir}")
+        want_bytes = doc.get("bytes")
+        if want_bytes is not None and len(blob) != int(want_bytes):
+            raise EdgarError(
+                f"size mismatch for {rel}: {len(blob)} bytes, manifest says {want_bytes}")
+        target = case_dir / rel
+        if target.is_file() and target.read_bytes() == blob:
+            written.append(str(rel))
+            continue
+        _atomic_write_bytes(target, blob)
+        written.append(str(rel))
+    return written
+
+
 def load_manifest(bundle_dir: Path) -> Manifest:
     data = json.loads((bundle_dir / "manifest.json").read_text("utf-8"))
     documents = [ManifestDocument(**d) for d in data["documents"]]

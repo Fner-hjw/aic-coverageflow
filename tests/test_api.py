@@ -461,7 +461,7 @@ class TestBackends:
         names = [b["name"] for b in body["backends"]]
         assert names == ["claude", "codex", "kimi", "vibe", "api",
                          "replay", "stub"]
-        assert body["caps"]["role_tokens_max"] == 60_000
+        assert body["caps"]["role_tokens_max"] == 250_000
         assert body["usage_by_role"]["extractor"] > 30_000
 
     def test_select(self, client):

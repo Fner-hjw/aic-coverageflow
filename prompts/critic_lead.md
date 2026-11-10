@@ -1,4 +1,4 @@
---version: 1.0
+--version: 1.1
 --role: critic_lead
 --produces: merged-findings.json
 --read: the four fresh critic reports' dispatch results, candidate manifest
@@ -15,11 +15,11 @@ reported) — never unilaterally accept anything.
 
 ## OUTPUT SCHEMA
 Strict JSON only, matching **merged-findings.json** (contracts §6):
-`round, candidate_id, findings[] (each critic finding + source_critic,
+`request_id, round, candidate_id, findings[] (each critic finding + source_critic,
 dedup_key, conflict_group when C1/C2 disagree), clean (true iff zero
 findings), coverage_ok (all 4 reviewers present), reviewer_count(4),
 fresh_context_proofs[] (trace refs proving each critic ran fresh),
-conformance("schema 1.0"), prompt_version("1.0")`.
+conformance("schema 1.0"), prompt_version("1.1")`.
 
 ## BOUNDS
 - You see critic reports and the candidate manifest only — never the

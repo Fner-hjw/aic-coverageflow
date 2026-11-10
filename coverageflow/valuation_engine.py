@@ -146,15 +146,52 @@ def _latest(values: dict[str, float]) -> tuple[str, float] | None:
     return p, values[p]
 
 
-def _period_key(period: str) -> tuple[int, int]:
+def _period_key(period: str) -> tuple[int, int, int]:
     if period.startswith("FY"):
-        return int(period[2:]), 5
-    year, q = period.split("-Q")
-    return int(year), int(q)
+        return int(period[2:]), 5, 0
+    if period.isdigit():
+        return int(period), 5, 0
+    p, ytd = period, 0
+    if p.endswith("-YTD"):
+        # a year-to-date column ends at the same quarter as the quarter column
+        # but covers more time; rank it just below so flows still come from
+        # the quarter and only the margin fallback reaches for it
+        p, ytd = p[:-4], 1
+    year, q = p.split("-Q")
+    return int(year), int(q), -ytd
 
 
 def _latest_period(values: dict[str, float]) -> str:
     return max(values, key=_period_key)
+
+
+def _span_quarters(period: str) -> int:
+    """How many quarters of activity a period label covers."""
+    if period.startswith("FY") or period.isdigit():
+        return 4
+    q = int(period.split("-Q")[1][0])
+    return q if period.endswith("-YTD") else 1
+
+
+def _annualizer(period: str) -> float:
+    """Factor that turns one period's flow into an annual run-rate."""
+    return 4.0 / _span_quarters(period)
+
+
+def _pick(series: dict[str, float], period: str):
+    """(value, period) preferring *period*, else its year-to-date column.
+
+    A 10-Q prints the cash flow statement year-to-date only, so a quarterly
+    base period has no cash-flow line of its own. The year-to-date column that
+    ends at the same quarter is the same activity over a longer span, which
+    ``_annualizer`` corrects for.
+    """
+    if period in series:
+        return series[period], period
+    ytd = f"{period}-YTD"
+    if ytd in series:
+        return series[ytd], ytd
+    return None, None
 
 
 def _require(value, what: str) -> float:
@@ -267,7 +304,9 @@ def value_company(
             "revenue": revenue0,
             "gross_margin": gross0,
             "ebitda_margin": ebitda_m0,
+            "ebitda_margin_period": base["ebitda_margin_period"],
             "fcf": fcf_base,
+            "fcf_period": base["fcf_period"],
             "fcf_margin": fcf_m0,
         },
         "blended_growth": blended,
@@ -353,18 +392,26 @@ def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
         p = _latest_period(rev_series)
         ann = 4.0
     revenue = rev_series[p] * ann if not p.startswith("FY") else rev_series[p]
-    gm = _series_values(model, "derived.gross_margin").get(p)
-    em = _series_values(model, "derived.ebitda_margin").get(p)
-    fcf = _series_values(model, "derived.fcf").get(p)
+    gm, _ = _pick(_series_values(model, "derived.gross_margin"), p)
+    # EBITDA margin needs D&A, and a 10-Q reports D&A only in the year-to-date
+    # cash flow statement, so the latest quarter often has no margin of its
+    # own. Fall back to the year-to-date column, then to the most recent period
+    # that has one, and record which period was used rather than refusing to
+    # value the company. A margin is span-independent, so no annualisation.
+    em_series = _series_values(model, "derived.ebitda_margin")
+    em, em_period = _pick(em_series, p)
+    if em is None and em_series:
+        em_period, em = _latest(em_series)
+    fcf, fcf_period = _pick(_series_values(model, "derived.fcf"), p)
     if fcf is None:
-        ocf = _series_values(model, "cash_flow.operating_cash_flow").get(p)
-        capex = _series_values(model, "cash_flow.capital_expenditure").get(p)
-        if ocf is None or capex is None:
-            fcf = None
-        else:
-            fcf = ocf - capex
-    if fcf is not None and not p.startswith("FY"):
-        fcf = fcf * ann
+        ocf, ocf_period = _pick(
+            _series_values(model, "cash_flow.operating_cash_flow"), p)
+        capex, capex_period = _pick(
+            _series_values(model, "cash_flow.capital_expenditure"), p)
+        if None not in (ocf, capex) and ocf_period == capex_period:
+            fcf, fcf_period = ocf - capex, ocf_period
+    if fcf is not None:
+        fcf = fcf * _annualizer(fcf_period)
     net_debt = _latest(_series_values(model, "derived.net_debt"))
     nd = net_debt[1] if net_debt else None
     if nd is None:
@@ -374,16 +421,17 @@ def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
         if None not in (st, lt, cash):
             nd = st[1] + lt[1] - cash[1]
     shares = _latest(_series_values(model, "income_statement.diluted_shares_outstanding"))
-    ni_series = _series_values(model, "income_statement.net_income")
-    if p.startswith("FY"):
-        net_income = ni_series.get(p)
-    else:
-        net_income = ni_series.get(p) * ann if p in ni_series else None
+    net_income, ni_period = _pick(
+        _series_values(model, "income_statement.net_income"), p)
+    if net_income is not None:
+        net_income = net_income * _annualizer(ni_period)
     return p, {
         "revenue": revenue,
         "gross_margin": gm,
         "ebitda_margin": em,
+        "ebitda_margin_period": em_period,
         "fcf": fcf,
+        "fcf_period": fcf_period,
         "net_debt": nd,
         "shares": shares[1] if shares else None,
         "net_income": net_income,

@@ -317,21 +317,21 @@ def _rlatest_engine_artifact(cd: Path, name: str) -> dict | None:
         return None
 
 
+def _rfind_bundle_dir(bundle_id: str) -> Path | None:
+    """Resolvable frozen bundle directory: workspace bundles/ then data/*-bundle."""
+    if not bundle_id or _real_bundle is None:
+        return None
+    ws = _rws()
+    return _real_bundle.find_bundle_dir(
+        bundle_id, workspace=ws,
+        data_dirs=[ws / "data", Path(__file__).resolve().parent.parent / "data"])
+
+
 def _rfind_bundle_manifest(bundle_id: str) -> dict | None:
     """Resolvable frozen bundle: workspace bundles/ then data/*-bundle dirs."""
-    ws = _rws()
-    cand = ws / "bundles" / bundle_id / "manifest.json"
-    if cand.is_file():
-        return _real_statestore.read_json(cand)
-    for dirs in (ws / "data", Path(__file__).resolve().parent.parent / "data"):
-        if dirs.is_dir():
-            for m in sorted(dirs.glob("*/manifest.json")):
-                try:
-                    man = _real_statestore.read_json(m)
-                except Exception:
-                    continue
-                if man.get("bundle_id") == bundle_id:
-                    return man
+    found = _rfind_bundle_dir(bundle_id)
+    if found is not None:
+        return _real_statestore.read_json(found / "manifest.json")
     return None
 
 
@@ -491,7 +491,7 @@ def _mandate(ticker: str, cik: str, cutoff: str, doc: str,
             "peer_block": {"as_of": cutoff, "peers": peers},
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff)},
-        "limits": {"role_tokens_max": 60000, "case_minutes": 45, "rounds_max": 4,
+        "limits": {"role_tokens_max": 250000, "case_minutes": 45, "rounds_max": 4,
                    "retries_max": 3, "approval_hours": 48},
         "schema_version": "1.0", "trigger_document": doc,
     }
@@ -1410,7 +1410,7 @@ def get_backends() -> dict:
             for role, tok in ((st.get("budget") or {}).get("used")
                               or {}).get("tokens_by_role", {}).items():
                 usage_by_role[role] = usage_by_role.get(role, 0) + tok
-        caps = {"role_tokens_max": 60_000, "case_minutes": 45,
+        caps = {"role_tokens_max": 250_000, "case_minutes": 45,
                 "rounds_max": 4, "retries_max": 3}
         return {"backends": _realt_backend_rows(),
                 "usage_by_role": usage_by_role,
@@ -1419,7 +1419,7 @@ def get_backends() -> dict:
     for c in _CASES.values():
         for role, tok in c.state["budget"]["used"]["tokens_by_role"].items():
             usage_by_role[role] = usage_by_role.get(role, 0) + tok
-    caps = {"role_tokens_max": 60_000, "case_minutes": 45, "rounds_max": 4,
+    caps = {"role_tokens_max": 250_000, "case_minutes": 45, "rounds_max": 4,
             "retries_max": 3}
     return {"backends": _BACKENDS, "usage_by_role": usage_by_role,
             "caps": caps, "selected": caps and next(
@@ -1648,13 +1648,20 @@ def create_case(payload: dict) -> dict:
                                           payload.get("trigger_document"))
         dispatch, _bn = _real_cli.load_dispatch(backend="auto", workspace=ws)
         gate_engine = _real_cli.load_gate_engine(workspace=ws)
+        # the manifest only declares paths: copy the frozen filings into the
+        # case inputs so the case is runnable the moment it is created
+        bundle_dir = _rfind_bundle_dir(str(manifest.get("bundle_id") or ""))
         orch = _real_orchestrator.Orchestrator.create_case(
             ws, case_id, mandate, manifest, dispatch=dispatch,
-            gate_engine=gate_engine, config_versions=_config_versions())
+            gate_engine=gate_engine, config_versions=_config_versions(),
+            bundle_dir=bundle_dir)
         _emit(case_id, "CASE_CREATED",
               {"ticker": ticker, "cutoff": cutoff, "real": True})
         return {"case_id": case_id, "status": "CREATED",
                 "mandate_id": mandate["mandate_id"],
+                "bundle": str(bundle_dir) if bundle_dir else None,
+                "inputs_materialized": not _real_orchestrator.missing_input_documents(
+                    orch.case_dir, manifest),
                 "documents_visible_at_cutoff": [
                     d["doc_id"] for d in manifest["documents"]
                     if d["filed"] <= cutoff],
@@ -1889,8 +1896,13 @@ def read_replay(case_id: str, request_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
-    """POST /api/cases/{id}/run {backend, replay} — kick the orchestrator."""
+def run_case(case_id: str, backend: str = "auto", replay: bool = False,
+             extend: bool = False) -> dict:
+    """POST /api/cases/{id}/run {backend, replay, extend} — kick the orchestrator.
+
+    ``extend`` reopens an EXHAUSTED case with one more full budget allowance
+    instead of forcing the operator to clone it into a new case.
+    """
     if _using_real():
         cd = _rcase_dir(case_id)
         if backend not in ("auto",) and not any(b["name"] == backend
@@ -1914,7 +1926,7 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
             cd, dispatch=dispatch,
             gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
         try:
-            orch.run()
+            orch.run(extend=extend)
         except Exception as exc:
             # a synchronous run can die mid-flight (backend dispatch raised,
             # subprocess error path, ...). The case then sits in RUNNING

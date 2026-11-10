@@ -15,12 +15,12 @@ One canonical name per line. Extraction, model, and forecast artifacts use these
 - `income_statement.operating_expenses` — Operating Expenses (USDmm); derived: research_and_development + selling_general_and_administrative + other_operating_income_expenses
 - `income_statement.ebitda` — EBITDA (USDmm); derived: operating_income + depreciation_and_amortization
 - `income_statement.operating_income` — Operating Income (USDmm)
-- `income_statement.depreciation_and_amortization` — Depreciation And Amortization (USDmm)
+- `income_statement.depreciation_and_amortization` — Depreciation And Amortization (USDmm). Alias of `cash_flow.depreciation_amortization`: the figure is reported once, in the cash flow statement. Extract it under the cash-flow name and leave this one absent rather than duplicating the value.
 - `income_statement.interest_expense` — Interest Expense (USDmm)
 - `income_statement.other_non_operating_income` — Other Non-Operating Income (Expense), Net (USDmm)
 - `income_statement.income_before_tax` — Pretax Income (USDmm)
 - `income_statement.income_tax_expense` — Income Tax Expense (USDmm)
-- `income_statement.net_income` — Net Income (USDmm)
+- `income_statement.net_income` — Net Income attributable to the parent (USDmm). Use the "net income attributable to <issuer>" line, NOT the pre-attribution "net income (loss)" total: it must tie to diluted EPS x diluted shares, and the non-controlling-interest line is excluded.
 - `income_statement.basic_eps` — Basic EPS (USD)
 - `income_statement.diluted_eps` — Diluted EPS (USD)
 - `income_statement.diluted_shares_outstanding` — Weighted Average Diluted Shares (millions)
@@ -115,7 +115,9 @@ Quarterly facts use the AS-REPORTED full segment names from the filing (e.g. `se
 - `derived.diluted_eps_yoy` — Diluted EPS Growth YoY (fraction); expr: yoy(income_statement.diluted_eps)
 - `derived.net_income_yoy` — Net Income Growth YoY (fraction); expr: yoy(income_statement.net_income)
 
-## ratio conventions
+## period conventions
 
 - Periods label as `YYYY-QN` (quarterly) or `FY2024`/annual `YYYY`.
+- A column that covers more than the quarter it ends at is labelled `YYYY-QN-YTD` (e.g. the nine-month column of a Q3 10-Q is `2026-Q3-YTD`). Never label a year-to-date column `YYYY`: that is the annual period and the two are not interchangeable.
+- Extract every column a statement prints, each under the label that matches its true span. A line item that only appears in a year-to-date column is a `YYYY-QN-YTD` fact, not a missing one.
 - YoY = vs. same period prior year; QoQ = vs. prior quarter (A1 engine computes).

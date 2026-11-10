@@ -40,7 +40,7 @@ versions/registry.json    prompts/ (cards)       references/ (pinned knowledge)
     "built_round": 2                                // round whose generator output is current
   },
   "budget": {"rounds_max": 4, "retries_max": 3, "case_minutes": 45,
-             "role_tokens_max": 60000,
+             "role_tokens_max": 250000,
              "used": {"rounds": 2, "elapsed_minutes": 12.4, "tokens_by_role": {"extractor": 38210}}},
   "inputs_manifest_ref": "inputs/manifest.json",    // + sha256 recorded
   "config_versions": {"prompt_cards": {"ingest": "1.0", "extractor": "1.0", "model": "1.0",
@@ -80,7 +80,7 @@ The trace never logs full prompts/responses (those live in `replay/` when record
      "peers": [{"ticker":"AMD","p_e_ttm":null,"ev_ebitda":null,"p_s":null,
                 "rev_growth_yoy":null,"notional_note":"filled at mandate creation"}]},
    "dcf_comps_tolerance": 0.25},
- "limits": {"role_tokens_max": 60000, "case_minutes": 45, "rounds_max": 4, "retries_max": 3,
+ "limits": {"role_tokens_max": 250000, "case_minutes": 45, "rounds_max": 4, "retries_max": 3,
               "approval_hours": 48},
  "schema_version": "1.0"}
 ```

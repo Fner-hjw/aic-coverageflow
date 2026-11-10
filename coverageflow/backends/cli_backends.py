@@ -66,6 +66,20 @@ def _extract_usage(obj: object) -> tuple[int | None, int | None]:
     )
 
 
+class _TempFiles:
+    """Cleanup handle for several temp files (the runner calls ``unlink``)."""
+
+    def __init__(self, *paths: Path) -> None:
+        self._paths = paths
+
+    def unlink(self) -> None:
+        for path in self._paths:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
 class _CliBackendBase:
     """Shared runner: timeout, non-zero exit, missing binary -> ok=False.
 
@@ -506,6 +520,23 @@ class VibeBackend(_CliBackendBase):
     cli_binary = "vibe"
     soft_exit_codes = frozenset({3})  # CLI's own --time-limit stop
 
+    # Roles that must read the case directory to do their job. Everything
+    # else gets a self-contained prompt and runs single-shot: Vibe is an
+    # agentic CLI, and left to itself it spends its turns listing directories
+    # and reading files, turning one role call into a five-to-seven minute
+    # exploration instead of a completion.
+    TOOL_ROLES = frozenset({"ingest"})
+
+    # Replaces Vibe's own agent system prompt. Without this the model is told
+    # it is an agent that inspects and edits a workspace — and it does.
+    SYSTEM_PROMPT = (
+        "You are a single-shot JSON emitter inside an automated harness.\n"
+        "Answer the user message directly in one reply.\n"
+        "Do not use tools. Do not inspect the filesystem. Do not ask questions.\n"
+        "Do not write files. Do not explain.\n"
+        "Emit exactly one JSON object and nothing else.\n"
+    )
+
     def _build_args(self, prompt: str, call: "RoleCall",
                     timeout: float) -> tuple[list[str], Path | None]:
         fd, name = tempfile.mkstemp(prefix="cf-prompt-", suffix=".md")
@@ -517,9 +548,18 @@ class VibeBackend(_CliBackendBase):
         workdir = getattr(call, "workdir", None)
         if workdir:
             args += ["--workdir", str(workdir)]
+        cleanup: Path | None = path
+        if getattr(call, "role", None) not in self.TOOL_ROLES:
+            sys_fd, sys_name = tempfile.mkstemp(prefix="cf-sys-", suffix=".md")
+            with os.fdopen(sys_fd, "w", encoding="utf-8") as handle:
+                handle.write(self.SYSTEM_PROMPT)
+            args += ["--system-prompt-file", sys_name,
+                     "--enabled-tools", "__none__",   # disables every tool
+                     "--max-turns", "1"]
+            cleanup = _TempFiles(path, Path(sys_name))
         # leave the CLI room to stop itself and export before the harness kill
         args += ["--time-limit", f"{max(30.0, timeout - _GRACE_SECONDS):g}"]
-        return args, path
+        return args, cleanup
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         text = (stdout or "").strip("\n")

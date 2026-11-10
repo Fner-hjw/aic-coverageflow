@@ -23,7 +23,12 @@ DEFAULT_LIMITS = {
     "rounds_max": 4,
     "retries_max": 3,
     "case_minutes": 45,
-    "role_tokens_max": 60000,
+    # A revision round re-dispatches every role, so a 4-round case dispatches
+    # each role up to 4 times (plus repairs). Measured cost per dispatch is
+    # ~20k tokens for the heavy roles, so a 60k cap guaranteed EXHAUSTED on
+    # any case that needed a second round — the cap has to afford the rounds
+    # budget it sits next to, or it is not a runaway guard, it is a trap.
+    "role_tokens_max": 250000,
     "approval_hours": 48,
 }
 
@@ -33,7 +38,10 @@ DEFAULT_LIMITS = {
 # time than ingest. Mandates override any entry via limits.role_timeouts.
 DEFAULT_ROLE_TIMEOUTS = {
     "default": 240.0,
-    "ingest": 240.0,
+    # ingest is the only tool-using role: it opens every filing in the bundle
+    # and cuts the statement slices, so it needs materially more wall clock
+    # than a single-shot role. At 240s it hit the CLI's own deadline mid-cut.
+    "ingest": 420.0,
     "extractor": 600.0,
     "model": 300.0,
     "writer": 600.0,
@@ -119,6 +127,8 @@ class BudgetTracker:
             # count on each _sync_budget -> _budget cycle, so check_retry
             # always saw zero and the retries budget could never fire.
             "retries_by_role": dict(used.get("retries_by_role", {})),
+            # audit trail of explicit human budget grants (see grant())
+            "grants": list(used.get("grants") or []),
         }
         self.clock_started: float | None = clock_started
 
@@ -145,6 +155,7 @@ class BudgetTracker:
             "elapsed_minutes": round(self.used["elapsed_minutes"], 3),
             "tokens_by_role": dict(self.used["tokens_by_role"]),
             "retries_by_role": dict(self.used.get("retries_by_role") or {}),
+            "grants": list(self.used.get("grants") or []),
         }
 
     def limits_state(self) -> dict:
@@ -199,6 +210,67 @@ class BudgetTracker:
         re = self.used.setdefault("retries_by_role", {})
         re[role] = re.get(role, 0) + 1
         return re[role]
+
+    def reset_retries(self, role: str) -> None:
+        """Clear the repair count for *role* after a human cleared a block.
+
+        A block is an instruction to fix the cause and re-run; the repair the
+        human just made must get a full retry budget, otherwise the case is
+        blocked again on the first hiccup.
+        """
+        (self.used.get("retries_by_role") or {}).pop(role, None)
+
+    def reset_tokens(self, role: str) -> None:
+        """Clear the token count for *role* after a human cleared a block.
+
+        Same reasoning as reset_retries: the tokens the failed attempt burned
+        were spent on inputs that were wrong. Charging the repaired attempt for
+        them means the case dies of a budget breach before the fix is ever
+        tried, which is how a repairable case turns into a dead one.
+        """
+        self.used["tokens_by_role"].pop(role, None)
+
+    def grant(self, role: str | None = None, tokens: int | None = None,
+              minutes: float | None = None, rounds: int | None = None,
+              by: str = "human") -> dict:
+        """Grant extra budget to an EXHAUSTED case and record the grant.
+
+        Exhaustion is a budget decision, not a verdict on the work: a human may
+        explicitly buy more fuel. Every dimension grows by one more full
+        allowance — rounds, clock, and tokens — because a case that ran out of
+        one is about to run out of the others. The grant is appended to
+        ``used.grants`` so
+        the audit trail shows the case only continued because someone said so,
+        and the per-role counters restart from zero so the grant is actually
+        spendable. Acceptance is still never granted on a breach (see
+        check_acceptance) — this only reopens the run.
+        """
+        tokens = int(tokens if tokens is not None
+                     else self.limits.role_tokens_max)
+        minutes = float(minutes if minutes is not None
+                        else self.limits.case_minutes)
+        rounds = int(rounds if rounds is not None else self.limits.rounds_max)
+        record = {
+            "role": role,
+            "by": by,
+            "tokens_at_grant": dict(self.used["tokens_by_role"]),
+            "role_tokens_max_before": self.limits.role_tokens_max,
+            "role_tokens_max_after": self.limits.role_tokens_max + tokens,
+            "case_minutes_before": self.limits.case_minutes,
+            "case_minutes_after": self.limits.case_minutes + minutes,
+            "rounds_max_before": self.limits.rounds_max,
+            "rounds_max_after": self.limits.rounds_max + rounds,
+        }
+        self.limits.role_tokens_max += tokens
+        self.limits.case_minutes += minutes
+        self.limits.rounds_max += rounds
+        # The grant is one more full allowance for the CASE, not just for the
+        # role that happened to breach first: the re-run re-dispatches every
+        # role from the resume point, and a role sitting just under its old cap
+        # would breach on its first dispatch and waste the grant.
+        self.used["tokens_by_role"] = {}
+        self.used.setdefault("grants", []).append(record)
+        return record
 
     # ---------------------------------------------------------------- checks
     def _breach(self, code: str, message: str, detail: dict) -> BudgetReason:

@@ -63,8 +63,15 @@ def _normalize_period(raw: str) -> str:
         return f"{m.group(1)}-Q{m.group(2)}"
     if re.match(r"^\d{4}Q[1-4]$", p):
         return f"{p[:4]}-Q{p[5]}"
+    m = re.match(r"^(\d{4})-?Q([1-4])-?YTD$", p)
+    if m:
+        return f"{m.group(1)}-Q{m.group(2)}-YTD"
     if p.startswith("FY") and len(p) >= 6:
         return f"FY{p[2:6]}"
+    if re.match(r"^\d{4}$", p):
+        # the reference allows a bare year for an annual period; normalise it
+        # to the FY form so every downstream consumer sees one spelling
+        return f"FY{p}"
     return p
 
 
@@ -204,6 +211,22 @@ _EPS_TOL = 0.02
 _ABS_TOL = 0.5
 
 
+def _eps_tolerance(reported: float) -> float:
+    """Rounding allowance for a reported EPS.
+
+    Filers print diluted EPS to one or two decimals ("0.6", "0.61"), so the
+    implied net-income/shares quotient can legitimately differ from the
+    printed figure by half of the last digit. Comparing against a fixed
+    absolute tolerance rejected correct filings: 3320/5307 = 0.6256 against a
+    reported 0.6 is a rounding artefact, not a linkage violation.
+    """
+    text = repr(float(reported))
+    if "e" in text or "E" in text:
+        return _EPS_TOL
+    decimals = len(text.split(".")[1]) if "." in text else 0
+    return max(_EPS_TOL, 0.5 * 10 ** -decimals)
+
+
 def build_model(
     facts: Facts | dict | list,
     mapping_version: str,
@@ -287,7 +310,7 @@ def _reconciliation_checks(model: Model, tol: float) -> None:
         eps = model.series.get("income_statement.diluted_eps", {}).get(p)
         if None not in (ni, sh, eps):
             implied = ni / sh
-            if abs(implied - eps) <= _EPS_TOL:
+            if abs(implied - eps) <= _eps_tolerance(eps):
                 eps_check[p] = "ok"
             else:
                 raise BoundsViolation(
@@ -335,7 +358,14 @@ def _derive_levels(model: Model) -> None:
     # EBITDA = operating income + D&A; FCF = OCF - capex; net debt
     for p in model.periods:
         oi = model.series.get("income_statement.operating_income", {}).get(p)
-        da = model.series.get("income_statement.depreciation_and_amortization", {}).get(p)
+        # D&A is reported once, in the cash flow statement; the income-statement
+        # name is an alias. Accept either so a filing that only carries the
+        # cash-flow caption still yields EBITDA.
+        da = model.series.get("income_statement.depreciation_and_amortization",
+                              {}).get(p)
+        if da is None:
+            da = model.series.get("cash_flow.depreciation_amortization",
+                                  {}).get(p)
         if None not in (oi, da):
             model.series.setdefault("income_statement.ebitda", {})[p] = oi + da
         ocf = model.series.get("cash_flow.operating_cash_flow", {}).get(p)

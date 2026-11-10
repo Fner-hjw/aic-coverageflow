@@ -474,3 +474,84 @@ class TestAuditRegressions:
         assert ok, findings
         ok, findings = gates.gate_facts_schema({"a": 5}, schema)
         assert not ok
+
+
+class TestEvidenceLinkLabels:
+    """A year is a label, not a claim.
+
+    Intel's note says "Q3 2026" and "fiscal 2025" throughout. Treating those
+    as unlinked numeric claims produced ~100 findings per round and no report
+    could ever converge.
+    """
+
+    def test_bare_year_needs_no_marker(self):
+        md = "In 2026 the company reported revenue of 13,500 [EV:income_statement.revenue]."
+        ok, findings = gates.gate_report_evidence_links(md)
+        assert ok, findings
+
+    def test_apostrophe_year_shorthand_needs_no_marker(self):
+        md = "Q3'26 revenue was 13,500 [EV:income_statement.revenue]."
+        ok, findings = gates.gate_report_evidence_links(md)
+        assert ok, findings
+
+    def test_a_real_number_still_needs_a_marker(self):
+        md = "In 2026 revenue was 13,500."
+        ok, findings = gates.gate_report_evidence_links(md)
+        assert not ok
+        assert any("13,500" in f["summary"] for f in findings)
+
+    def test_lowercase_marker_is_accepted(self):
+        md = "Revenue was 13,500 [ev:income_statement.revenue]."
+        ok, findings = gates.gate_report_evidence_links(md)
+        assert ok, findings
+
+    def test_decorated_marker_resolves_to_its_field(self):
+        """A marker carrying locator context still names a real evidence key."""
+        md = ("Revenue was 13,500 "
+              "[EV:intc-10q-2026q3/IS:income_statement.revenue:2026-Q3].")
+        ok, findings = gates.gate_report_evidence_links(
+            md, evidence_index={"income_statement.revenue": "facts.json"})
+        assert ok, findings
+
+    def test_decorated_marker_with_an_unknown_field_still_fails(self):
+        md = "Revenue was 13,500 [EV:intc-10q-2026q3/IS:made.up.field:2026-Q3]."
+        ok, findings = gates.gate_report_evidence_links(
+            md, evidence_index={"income_statement.revenue": "facts.json"})
+        assert not ok
+
+
+def test_marker_key_may_contain_spaces():
+    """As-reported segment ids carry spaces: `segments.Intel Foundry.revenue`.
+
+    A marker the regex cannot see makes every number on the line look
+    unlinked, which is a false positive that no rewrite can clear.
+    """
+    md = ("| Intel Foundry | 6,697 [EV:segments.Intel Foundry.revenue] "
+          "| (1,853) [EV:segments.Intel Foundry.operating_income] |")
+    ok, findings = gates.gate_report_evidence_links(
+        md, evidence_index={"segments.Intel Foundry.revenue": "facts.json",
+                            "segments.Intel Foundry.operating_income": "facts.json"})
+    assert ok, findings
+
+
+def test_harness_evidence_index_wins_over_the_lead_echo(tmp_path):
+    """The lead echoes the evidence index into the manifest; an echo is not a
+    source of truth. A truncated echo made every marker in a correct report
+    look unknown, and the report could never pass."""
+    manifest = TestManifestIntegrityAndPipeline()._materials(tmp_path)
+    manifest["evidence_index"] = {}          # the lead's echo, truncated
+    ctx = gates.CandidateContext(
+        facts=GOOD_FACTS,
+        forecast=GOOD_FORECAST,
+        report_md="Revenue rose to 13,500 [EV:income_statement.revenue].",
+        candidate_manifest=manifest,
+        input_manifest=casekit.MANIFEST,
+        mandate=casekit.MANDATE,
+        model_json=TestRecomputeGate.MODEL_JSON,
+        valuation_json=TestRecomputeGate.VALUATION_JSON,
+        case_dir=tmp_path,
+        evidence_index={"income_statement.revenue": "facts.json"},
+    )
+    report = make_engine().run_all(ctx)
+    links = next(r for r in report.results if r.gate == "report_evidence_links")
+    assert links.ok, links.findings

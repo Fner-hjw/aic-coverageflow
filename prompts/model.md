@@ -1,4 +1,4 @@
---version: 1.0
+--version: 1.1
 --role: model
 --produces: forecast_assumptions.json
 --read: facts ledger (verified facts), mandate assumptions & bounds
@@ -15,9 +15,9 @@ the facts (period values, segment history) that motivate it.
 
 ## OUTPUT SCHEMA
 Strict JSON only, matching **forecast_assumptions.json** (contracts §5):
-`role("model"), horizon_years(5), segments[] {segment, growth[5],
+`role("model"), request_id, candidate_id, horizon_years(5), segments[] {segment, growth[5],
 drivers[] {text, citation {…}}}, margin_glide {gross[5]},
-terminal_basis("mandate"), conformance("schema 1.0"), prompt_version("1.0")`.
+terminal_basis("mandate"), conformance("schema 1.0"), prompt_version("1.1")`.
 `segment` ∈ CCG, DCAI, NEX, Foundry, Altera, Mobileye (as provided in the
 request's mandate blocks). `growth` and margins are ratios (0.18 = +18%).
 
@@ -40,7 +40,7 @@ Bounds checked by the orchestrator's gate against the mandate. DCF/sensitivity
 math is engine code. Your proposal's changes reset the candidate clean-streak.
 
 ## WORKED MICRO-EXAMPLE (toy)
-{"role":"model","horizon_years":5,
+{"role":"model","request_id":"req-0043","candidate_id":"cand-77","horizon_years":5,
  "segments":[{"segment":"DCAI","growth":[0.10,0.09,0.08,0.07,0.06],
    "drivers":[{"text":"segment revenue rose 2 quarters in a row in ledger",
      "citation":{"doc_id":"toy-10q-2026q3","slice_id":"toy-10q-2026q3/SEG",

@@ -100,7 +100,11 @@ on submission; stale request_id rejected. No in-LLM tool calling in v1.
   the same candidate (any change resets the streak); all carried findings closed by
   critic-verified repairs; human approval.
 - **Invalid submissions:** repair at the same role (new request, no round consumed);
-  second invalid submission at the same role → BLOCKED.
+  the repair budget (`retries_max`) bounds it, and exhausting it → EXHAUSTED.
+- **Blocks are re-runnable:** BLOCKED is terminal for the run, not the case. A re-run
+  clears the block, resets the blocked role's repair budget and resumes from the last
+  verified stage; only APPROVAL_EXPIRED requires a fresh decision. EXHAUSTED stays
+  terminal — the budget is a hard safety control.
 - **Budgets:** 4 revision rounds; 3 retries per specialist dispatch; 45-minute case
   clock; per-role token cap (configurable). Checked at every dispatch; breach →
   EXHAUSTED with precise record.

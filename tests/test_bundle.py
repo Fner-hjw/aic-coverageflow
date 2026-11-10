@@ -156,3 +156,90 @@ def test_fetcher_throttle_sleeps(monkeypatch):
     monkeypatch.setattr("time.monotonic", lambda: 0.1)
     f.throttle()  # 0.1s elapsed -> sleep 0.2s
     assert slept and abs(slept[-1] - 0.2) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# case input materialization: a case manifest only declares paths, so the
+# frozen filings must be copied into the case before any role can read them
+# ---------------------------------------------------------------------------
+
+def _frozen_bundle(tmp_path):
+    """A tiny frozen bundle on disk + the manifest that describes it."""
+    dest = tmp_path / "bundle"
+    (dest / "inputs").mkdir(parents=True)
+    docs = []
+    for doc_id, blob in (("aaa-10q", b"<html>10Q</html>"),
+                         ("aaa-8k", b"<html>8K</html>")):
+        rel = f"inputs/{doc_id}.htm"
+        (dest / rel).write_bytes(blob)
+        docs.append({"doc_id": doc_id, "form": "10-Q", "filed": "2026-04-25",
+                     "period": "2026-03-28", "path": rel,
+                     "sha256": hashlib.sha256(blob).hexdigest(),
+                     "bytes": len(blob), "source_url": "https://www.sec.gov/x"})
+    manifest = {"as_of_cutoff": "2026-04-25", "documents": docs,
+                "bundle_id": "aaa-2026-04", "bundle_sha256": "a" * 64}
+    (dest / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return dest, manifest
+
+
+def test_materialize_case_inputs_copies_every_declared_document(tmp_path):
+    from coverageflow.bundle import materialize_case_inputs
+
+    bundle_dir, manifest = _frozen_bundle(tmp_path)
+    case_dir = tmp_path / "cases" / "aaa-fy2026q1-20260425"
+    case_dir.mkdir(parents=True)
+
+    written = materialize_case_inputs(case_dir, manifest, bundle_dir)
+
+    assert sorted(written) == ["inputs/aaa-10q.htm", "inputs/aaa-8k.htm"]
+    for doc in manifest["documents"]:
+        assert (case_dir / doc["path"]).read_bytes() == \
+            (bundle_dir / doc["path"]).read_bytes()
+
+
+def test_materialize_case_inputs_rejects_a_hash_mismatch(tmp_path):
+    from coverageflow.bundle import materialize_case_inputs
+
+    bundle_dir, manifest = _frozen_bundle(tmp_path)
+    (bundle_dir / "inputs" / "aaa-10q.htm").write_bytes(b"<html>tampered</html>")
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+
+    with pytest.raises(EdgarError, match="sha256 mismatch"):
+        materialize_case_inputs(case_dir, manifest, bundle_dir)
+
+
+def test_materialize_case_inputs_rejects_a_missing_bundle_document(tmp_path):
+    from coverageflow.bundle import materialize_case_inputs
+
+    bundle_dir, manifest = _frozen_bundle(tmp_path)
+    (bundle_dir / "inputs" / "aaa-8k.htm").unlink()
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+
+    with pytest.raises(EdgarError, match="does not contain"):
+        materialize_case_inputs(case_dir, manifest, bundle_dir)
+
+
+def test_find_bundle_dir_resolves_by_id_from_data_dirs(tmp_path):
+    from coverageflow.bundle import find_bundle_dir
+
+    bundle_dir, manifest = _frozen_bundle(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir()
+    bundle_dir.rename(data / "aaa-bundle")
+
+    assert find_bundle_dir("aaa-2026-04", data_dirs=[data]) == data / "aaa-bundle"
+    assert find_bundle_dir("nope-2026-04", data_dirs=[data]) is None
+
+
+def test_find_bundle_dir_prefers_the_workspace_bundles_dir(tmp_path):
+    from coverageflow.bundle import find_bundle_dir
+
+    bundle_dir, manifest = _frozen_bundle(tmp_path)
+    ws = tmp_path / "ws"
+    (ws / "bundles").mkdir(parents=True)
+    bundle_dir.rename(ws / "bundles" / "aaa-2026-04")
+
+    assert find_bundle_dir("aaa-2026-04", workspace=ws) == \
+        ws / "bundles" / "aaa-2026-04"

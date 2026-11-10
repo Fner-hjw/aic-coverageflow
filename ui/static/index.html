@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- CoverageFlow web UI — vanilla ES2022 SPA shell (stream A4).
+<!-- CoverageFlow web UI. Vanilla ES2022 SPA shell (stream A4).
      Hash-routed; all rendering happens in app.js; every UI action hits
      the FastAPI endpoints under /api (the UI never writes state files).
      Shell layout: fixed sidebar (grouped nav, collapse toggle) + topbar
@@ -8,7 +8,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CoverageFlow — coverage desk</title>
+  <title>CoverageFlow | Research operations</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a8a4d'/%3E%3Cpath d='M5 23 L11 10 L16 18 L21 8 L27 15' stroke='white' stroke-width='2.5' fill='none' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
 </head>
@@ -21,53 +21,54 @@
         <span class="logo" aria-hidden="true">
           <svg viewBox="0 0 32 32" width="30" height="30">
             <rect width="32" height="32" rx="9" class="logo-bg"></rect>
-            <path d="M5 23 L11 10 L16 18 L21 8 L27 15" class="logo-path"></path>
+            <path d="M7 9v14M12 6v17M17 12v11M22 8v15M26 15v8" class="logo-path"></path>
           </svg>
         </span>
         <span class="wm-text">Coverage<em>Flow</em>
-          <span class="no">verified coverage desk</span>
+          <span class="no">Research operations</span>
         </span>
       </a>
 
       <nav class="sidenav" id="sidenav">
-        <div class="side-group">Coverage</div>
+        <div class="side-group">Desk</div>
         <a href="#/dashboard">
           <svg class="ic" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="6.5" height="8" rx="1.6"/><rect x="11" y="2.5" width="6.5" height="5" rx="1.6"/><rect x="2.5" y="12.5" width="6.5" height="5" rx="1.6"/><rect x="11" y="9.5" width="6.5" height="8" rx="1.6"/></svg>
-          Dashboard</a>
+          Today</a>
         <a href="#/new">
           <svg class="ic" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" class="stroke"/></svg>
-          New case</a>
+          Start coverage</a>
         <a href="#/bundles">
           <svg class="ic" viewBox="0 0 20 20"><path d="M3 5.5h9M3 10h9M3 14.5h6" class="stroke"/><rect x="13.5" y="10.5" width="4.5" height="6" rx="1.2" class="fill"/></svg>
-          Bundle builder</a>
+          Source bundles</a>
 
-        <div class="side-group">System</div>
+        <div class="side-group">Tools</div>
         <a href="#/evolution">
           <svg class="ic" viewBox="0 0 20 20"><path d="M4 15c3 0 3-10 6-10s3 10 6 10" class="stroke" fill="none"/><circle cx="16" cy="15" r="2" class="fill"/></svg>
-          Evolution</a>
+          Methods lab</a>
         <a href="#/demo">
           <svg class="ic" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2.5" class="stroke" fill="none"/><path d="M7 8h6M7 12h4" class="stroke"/></svg>
-          Demo panel</a>
+          Rehearsal</a>
         <a href="#/replay">
           <svg class="ic" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" class="stroke" fill="none"/><path d="M8 7.5l5 2.5-5 2.5z" class="fill"/></svg>
-          Replay viewer</a>
+          Run replays</a>
         <a href="#/terminal">
           <svg class="ic" viewBox="0 0 20 20"><path d="M4 6l3.5 4L4 14" class="stroke"/><path d="M9.5 14h6" class="stroke"/></svg>
-          Live terminal</a>
+          Activity log</a>
         <a href="#/backends">
           <svg class="ic" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="5" rx="1.5" class="stroke" fill="none"/><rect x="3" y="11" width="14" height="5" rx="1.5" class="stroke" fill="none"/><circle cx="6.2" cy="6.5" r="1" class="fill"/><circle cx="6.2" cy="13.5" r="1" class="fill"/></svg>
-          Backends</a>
+          Model routing</a>
       </nav>
 
       <div class="side-promo">
-        <b>Evidence-linked output</b>
-        <p>Every number in every report cites its source line from the frozen bundle.</p>
-        <a class="btn primary wide" href="#/dashboard">Open the desk</a>
+        <span class="promo-mark" aria-hidden="true">↗</span>
+        <b>Source-linked reports</b>
+        <p>Click any reported figure to inspect its filing, slice, anchor, and hash.</p>
+        <a class="btn primary wide" href="#/dashboard">View cases</a>
       </div>
 
       <div class="side-foot">
-        <div class="conn-strip" id="conn-strip" title="live event feed">
-          <span class="dot"></span><span id="conn-label">connecting</span>
+        <div class="conn-strip" id="conn-strip" title="Live event feed">
+          <span class="dot"></span><span id="conn-label">Connecting</span>
         </div>
         <button class="side-collapse btn small" id="side-collapse" title="Collapse sidebar">
           <svg class="ic" viewBox="0 0 20 20"><path d="M12.5 4l-6 6 6 6" class="stroke"/></svg>
@@ -86,7 +87,7 @@
         <div class="search-wrap">
           <svg class="ic search-ic" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5" class="stroke" fill="none"/><path d="M13.2 13.2L17 17" class="stroke"/></svg>
           <input id="quick-search" type="text" autocomplete="off"
-                 placeholder="Quick search — case id or ticker…">
+                 placeholder="Find a ticker or case…">
           <div class="search-pop" id="search-pop"></div>
         </div>
 
@@ -94,18 +95,18 @@
 
         <a class="btn primary" href="#/new">
           <svg class="ic" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" class="stroke"/></svg>
-          New case</a>
+          Start coverage</a>
 
-        <div class="profile" title="operatorʼs desk">
+        <div class="profile" title="Operatorʼs desk">
           <span class="avatar" aria-hidden="true">CF</span>
-          <span class="who"><b>Coverage desk</b>
-            <span>sell-side research · approved &amp; versioned</span>
+          <span class="who"><b>Research desk</b>
+            <span>Local workspace</span>
           </span>
         </div>
       </header>
 
       <main id="view" class="view">
-        <div class="loading">loading workspace…</div>
+        <div class="loading">Opening the desk…</div>
       </main>
     </div>
 

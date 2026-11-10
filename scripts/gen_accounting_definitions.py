@@ -48,6 +48,8 @@ def _render_field(field: dict) -> str:
         parts.append(f"; {field['sign_convention']}")
     if field.get("optional"):
         parts.append("; optional residual")
+    if field.get("note"):
+        parts.append(f". {field['note']}")
     return "".join(parts) + "\n"
 
 
@@ -123,8 +125,15 @@ def render(schema: dict) -> str:
         lines.append(f"- `{metric['id']}` — {metric['label']} ({unit})"
                      f"; expr: {metric['expr']}\n")
     lines.append(
-        "\n## ratio conventions\n\n"
+        "\n## period conventions\n\n"
         "- Periods label as `YYYY-QN` (quarterly) or `FY2024`/annual `YYYY`.\n"
+        "- A column that covers more than the quarter it ends at is labelled "
+        "`YYYY-QN-YTD` (e.g. the nine-month column of a Q3 10-Q is "
+        "`2026-Q3-YTD`). Never label a year-to-date column `YYYY`: that is the "
+        "annual period and the two are not interchangeable.\n"
+        "- Extract every column a statement prints, each under the label that "
+        "matches its true span. A line item that only appears in a "
+        "year-to-date column is a `YYYY-QN-YTD` fact, not a missing one.\n"
         "- YoY = vs. same period prior year; QoQ = vs. prior quarter "
         "(A1 engine computes).\n"
     )
