@@ -85,9 +85,44 @@ MANIFEST = {
 }
 
 
+def materialize_inputs(workspace: Path, case_id: str) -> None:
+    """Write a placeholder file for every document the case manifest declares.
+
+    A case is only runnable once its source filings are in the inputs
+    directory; ``Orchestrator.run`` blocks a CREATED case whose manifest
+    points at absent files. The statement slices the offline stub declares are
+    materialized too, so a replayed ingest (which writes no files) still
+    leaves the extractor's payload references resolvable.
+    """
+    from coverageflow._dispatch_test_stub import _slice_text
+
+    case_dir = Path(workspace) / "cases" / case_id
+    manifest = json.loads((case_dir / "inputs" / "manifest.json").read_text())
+    for doc in manifest.get("documents") or []:
+        rel = (doc or {}).get("path")
+        if not rel:
+            continue
+        target = case_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            target.write_text(f"<html>{doc.get('doc_id', 'doc')}</html>\n",
+                              encoding="utf-8")
+        doc_id = doc.get("doc_id")
+        if not doc_id:
+            continue
+        slice_path = case_dir / "inputs" / "slices" / doc_id / "IS.txt"
+        slice_path.parent.mkdir(parents=True, exist_ok=True)
+        if not slice_path.exists():
+            slice_path.write_text(_slice_text(doc_id), encoding="utf-8")
+
+
 def make_case_dir(root: Path, case_id: str = "intc-fy2026q3-20261030",
                   mandate: dict | None = None, manifest: dict | None = None) -> Path:
-    """Build a synthetic, valid case directory (mandate + inputs manifest)."""
+    """Build a synthetic, valid case directory (mandate + inputs manifest).
+
+    Every document the manifest declares is materialized as a small placeholder
+    file: a case whose inputs are absent is not a runnable case.
+    """
     mand = json.loads(json.dumps(mandate if mandate is not None else MANDATE))
     mand["case_id"] = case_id
     mfst = json.loads(json.dumps(manifest if manifest is not None else MANIFEST))
@@ -95,4 +130,5 @@ def make_case_dir(root: Path, case_id: str = "intc-fy2026q3-20261030",
     (case_dir / "inputs").mkdir(parents=True, exist_ok=True)
     statestore.atomic_write_json(case_dir / "mandate.json", mand)
     statestore.atomic_write_json(case_dir / "inputs" / "manifest.json", mfst)
+    materialize_inputs(root, case_id)
     return case_dir

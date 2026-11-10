@@ -139,3 +139,26 @@ def test_exhausted_never_grants_acceptance_helper():
     assert b.is_exhausted()
     ok, _ = b.check_acceptance()
     assert not ok  # exhaustion NEVER grants acceptance
+
+
+def test_acceptance_is_granted_on_the_last_allowed_round():
+    """Converging on the final round is success, not exhaustion."""
+    clk = FakeClock()
+    b = budget.BudgetTracker(limits=LIMITS, clock=clk)
+    b.start_clock()
+    for _ in range(LIMITS["rounds_max"]):
+        b.note_round()
+    assert b.used_rounds() == LIMITS["rounds_max"]
+    ok, reason = b.check_acceptance()
+    assert ok, reason
+
+
+def test_acceptance_refuses_a_rounds_overrun():
+    clk = FakeClock()
+    b = budget.BudgetTracker(limits=LIMITS, clock=clk)
+    b.start_clock()
+    for _ in range(LIMITS["rounds_max"] + 1):
+        b.note_round()
+    ok, reason = b.check_acceptance()
+    assert not ok
+    assert reason["code"] == "rounds"

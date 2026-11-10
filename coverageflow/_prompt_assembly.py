@@ -91,15 +91,26 @@ def parse_role_card(path: Path) -> dict:
     """
     text = _read(path)
     headers: dict[str, str] = {}
-    for line in text.splitlines():
-        m = _HEADER_RE.match(line.strip())
+    in_header = True
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        m = _HEADER_RE.match(stripped)
         if m:
+            if not in_header:
+                # A header below the body used to be dropped without a word,
+                # so a card could silently lose its --references pinning.
+                raise AssemblyError(
+                    f"role card {path} line {lineno}: header --{m.group(1)} "
+                    "appears after the card body has started; every --header "
+                    "must be in the block at the top of the file"
+                )
             key, value = m.group(1), m.group(2).strip()
             if key not in headers:  # first occurrence wins
                 headers[key] = value
-        if headers.get("role") and line.strip() and not line.strip().startswith("--"):
+            continue
+        if stripped and headers.get("role"):
             # first non-header, non-empty line ends the header block
-            break
+            in_header = False
     for required in CARD_HEADERS:
         if not headers.get(required):
             raise AssemblyError(

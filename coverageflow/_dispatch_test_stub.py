@@ -17,7 +17,9 @@ At integration the coordinator swaps StubDispatch for the real dispatch.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 
@@ -35,6 +37,7 @@ class RoleCall:
     output_schema: str
     budget: dict
     write_scope: list[str]
+    workdir: str | None = None
 
 
 @dataclass
@@ -58,22 +61,39 @@ class ReplayScriptError(RuntimeError):
 # default per-role outputs (deterministic, gate-satisfying)
 # ---------------------------------------------------------------------------
 
+def _slice_text(doc_id: str) -> str:
+    """Deterministic stand-in for a statement slice's plain text."""
+    return (
+        f"Consolidated Statements of Operations | {doc_id}\n"
+        "Revenue | 13,500\n"
+        "Cost of sales | 7,400\n"
+    )
+
+
 def _default_ingest(payload: dict) -> dict:
     manifest = payload.get("input_manifest") or {}
     docs = manifest.get("documents") or [{}]
     doc = docs[0]
     doc_id = doc.get("doc_id", "intc-10q-2026q3")
+    text = _slice_text(doc_id)
     slices = [
         {
             "slice_id": f"{doc_id}/IS",
             "kind": "income_statement",
             "path": f"inputs/slices/{doc_id}/IS.txt",
-            "sha256": _stable_sha(doc_id + "/IS"),
+            # hash of the bytes the stub actually writes, so the extractor's
+            # payload verification can check them like a real slice
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "anchors": {"first_line": "Consolidated Statements of Operations"},
         }
     ]
     return {
         "role": "ingest",
+        # contract-required identity fields: the real ingest stage stamps the
+        # document it classified and the candidate it belongs to (null before
+        # a candidate exists), and dispatch enforces their presence
+        "doc_id": doc_id,
+        "candidate_id": None,
         "classification": {
             "form": doc.get("form", "10-Q"),
             "affects": ["extraction", "model", "valuation", "report"],
@@ -227,6 +247,13 @@ def _default_writer(payload: dict) -> dict:
     return {
         "role": "writer",
         "report_md": DEFAULT_REPORT_MD,
+        # every claim in the report must carry a citation; the stub cites the
+        # facts it was handed so the envelope matches the contract
+        "citations": [
+            {"claim": "revenue growth", "field": "income_statement.revenue",
+             "doc_id": _doc_id_from_payload(payload), "slice_id": "IS",
+             "anchor": "Consolidated Statements of Operations"},
+        ],
         "conformance": "schema 1.0",
         "prompt_version": "1.0",
     }
@@ -407,13 +434,11 @@ class StubDispatch:
                 return AgentResult(ok=False, error=f"stub has no output for role {call.role!r}")
             parsed = builder(call.payload)
             parsed = self._echo_identity(parsed, call)
-            return AgentResult(ok=True, parsed=parsed, output_text=str(parsed),
-                               tokens_in=self.tokens_in, tokens_out=self.tokens_out)
+            return self._ok(call, parsed)
         if callable(entry):
             parsed = entry(call.payload)
             parsed = self._echo_identity(parsed, call)
-            return AgentResult(ok=True, parsed=parsed, output_text=str(parsed),
-                               tokens_in=self.tokens_in, tokens_out=self.tokens_out)
+            return self._ok(call, parsed)
         # dict entry with magic keys
         if entry.get("__invalid"):
             return AgentResult(ok=False, error="stub: malformed output (not parseable JSON)",
@@ -425,21 +450,51 @@ class StubDispatch:
         if entry.get("__stale"):
             parsed["request_id"] = "req-stale-9999"  # wrong id on purpose
         parsed = self._echo_identity(parsed, call)
+        return self._ok(call, parsed)
+
+    def _ok(self, call: RoleCall, parsed: dict) -> AgentResult:
+        """Successful result, after materializing any files the role declares."""
+        self._write_slices(call, parsed)
         return AgentResult(ok=True, parsed=parsed, output_text=str(parsed),
                            tokens_in=self.tokens_in, tokens_out=self.tokens_out)
 
     @staticmethod
+    def _write_slices(call: RoleCall, parsed: dict) -> None:
+        """Write the slice files an ingest report declares.
+
+        The real ingest stage produces these through the slicer; the stub
+        stands in for the whole stage, so it must leave the same files on
+        disk or the extractor's payload references would not resolve.
+        """
+        if call.role != "ingest":
+            return
+        workdir = getattr(call, "workdir", None)
+        if not workdir:
+            return
+        for entry in parsed.get("slices") or []:
+            rel = (entry or {}).get("path")
+            if not rel:
+                continue
+            target = Path(workdir) / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            doc_id = str(entry.get("slice_id", "")).split("/")[0] or "doc"
+            target.write_text(_slice_text(doc_id), encoding="utf-8")
+
+    @staticmethod
     def _echo_identity(parsed: dict, call: RoleCall) -> dict:
-        if isinstance(parsed, dict) and "request_id" not in parsed:
-            parsed = dict(parsed)
-        if isinstance(parsed, dict):
-            out = dict(parsed)
-            if "request_id" not in out or out.get("request_id") is None:
-                out["request_id"] = call.request_id
-            if call.candidate_id is not None:
-                out.setdefault("candidate_id", call.candidate_id)
-            return out
-        return parsed
+        """Stamp the identity fields every artifact envelope must carry.
+
+        ``candidate_id`` is always present, null before a candidate exists:
+        the contract requires the key, and dispatch enforces it.
+        """
+        if not isinstance(parsed, dict):
+            return parsed
+        out = dict(parsed)
+        if out.get("request_id") is None:
+            out["request_id"] = call.request_id
+        if out.get("candidate_id") is None:
+            out["candidate_id"] = call.candidate_id
+        return out
 
     # -------------------------------------------------------------- helpers
     def calls_of(self, role: str) -> list[RoleCall]:

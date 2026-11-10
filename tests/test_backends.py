@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -105,13 +106,21 @@ class TestCliHappyPaths:
     def test_prompt_passed_on_fresh_argv(self, name, tmp_path, monkeypatch):
         log = tmp_path / "argv.jsonl"
         monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
+        copy = tmp_path / "prompt.txt"
+        monkeypatch.setenv("FAKE_PROMPT_COPY", str(copy))
         backend = make_backend(name)
         res = backend.invoke(make_call(role="extractor"), "PROMPT-MARKER-12345")
         assert res.ok, res.error
         lines = log.read_text().strip().splitlines()
         argvs = [json.loads(x) for x in lines if x.strip()]
         assert argvs, "CLI was never invoked"
-        assert any("PROMPT-MARKER-12345" in a for a in argvs)
+        if name == "vibe":
+            # the prompt travels in a file, not argv: role prompts embed
+            # whole statement slices and must not hit ARG_MAX
+            assert copy.read_text() == "PROMPT-MARKER-12345"
+            assert any("--prompt-file" in a for a in argvs)
+        else:
+            assert any("PROMPT-MARKER-12345" in a for a in argvs)
 
     def test_claude_uses_contract_flags(self, tmp_path, monkeypatch):
         log = tmp_path / "argv.jsonl"
@@ -138,9 +147,20 @@ class TestCliHappyPaths:
         cli.VibeBackend().invoke(make_call(), "hello")
         argv = json.loads(log.read_text().strip().splitlines()[-1])
         assert str(argv[0]).endswith("vibe")
-        assert "-p" in argv
+        assert "--prompt-file" in argv
         assert "--output" in argv and "text" in argv
         assert "--max-price" in argv  # per-call cost cap always applied
+        assert "--time-limit" in argv  # CLI stops itself before the harness kill
+
+    def test_vibe_passes_case_workdir(self, tmp_path, monkeypatch):
+        log = tmp_path / "argv.jsonl"
+        monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
+        call = make_call(role="extractor")
+        call = type(call)(**{**call.__dict__, "workdir": str(tmp_path)})
+        cli.VibeBackend().invoke(call, "hello")
+        argv = json.loads(log.read_text().strip().splitlines()[-1])
+        assert "--workdir" in argv
+        assert argv[argv.index("--workdir") + 1] == str(tmp_path)
 
     def test_claude_real_usage_surfaced(self, monkeypatch):
         monkeypatch.setenv("FAKE_RESULT_TEXT", "x" * 40)
@@ -222,6 +242,64 @@ class TestCliFailureModes:
         else:
             assert res.ok is True
             assert res.output_text == "pong! (not json)"
+
+
+class TestCliTimeoutAndPartialOutput:
+    """A call that runs out of time must not lose what the CLI already wrote."""
+
+    def test_partial_output_preserved_on_timeout(self, monkeypatch):
+        # the capture logic lives in the shared base runner; the vibe fake is
+        # the one that can emit-then-hang
+        monkeypatch.setenv("FAKE_BEHAVIOR", "partial")
+        monkeypatch.setenv("FAKE_SLEEP_SECONDS", "30")
+        res = cli.VibeBackend().invoke(make_call(timeout_seconds=1.0), "hello")
+        assert res.ok is False
+        assert "timeout" in res.error.lower()
+        assert "partial output" in res.error.lower()
+        assert res.output_text and '{"role": "extractor"' in res.output_text
+        assert res.tokens_out is not None and res.tokens_out > 0
+
+    def test_soft_exit_code_with_output_is_accepted(self, monkeypatch):
+        # the CLI's own --time-limit stop writes its export and exits 3
+        monkeypatch.setenv("FAKE_BEHAVIOR", "soft_stop")
+        monkeypatch.setenv("FAKE_RESULT_TEXT", '{"stopped": "early"}')
+        res = cli.VibeBackend().invoke(make_call(), "hello")
+        assert res.ok is True, res.error
+        assert res.output_text == '{"stopped": "early"}'
+        assert "stopped early" in (res.error or "")
+
+    def test_soft_exit_code_without_output_is_an_error(self, monkeypatch):
+        monkeypatch.setenv("FAKE_BEHAVIOR", "soft_stop")
+        monkeypatch.setenv("FAKE_RESULT_TEXT", "")
+        res = cli.VibeBackend().invoke(make_call(), "hello")
+        assert res.ok is False
+
+    def test_utf8_output_survives_a_non_utf8_locale(self, monkeypatch):
+        monkeypatch.setenv("LC_ALL", "en_US.ISO8859-1")
+        monkeypatch.setenv("LANG", "en_US.ISO8859-1")
+        monkeypatch.setenv("FAKE_RESULT_TEXT", "营收 13,500 — 同比增长")
+        res = cli.VibeBackend().invoke(make_call(), "hello")
+        assert res.ok, res.error
+        assert res.output_text == "营收 13,500 — 同比增长"
+
+    def test_timeout_kills_the_whole_process_group(self, tmp_path, monkeypatch):
+        # the fake spawns a grandchild; a timeout must not orphan it
+        pid_file = tmp_path / "child.pid"
+        monkeypatch.setenv("FAKE_BEHAVIOR", "partial")
+        monkeypatch.setenv("FAKE_SLEEP_SECONDS", "30")
+        monkeypatch.setenv("FAKE_CHILD_PID", str(pid_file))
+        res = cli.VibeBackend().invoke(make_call(timeout_seconds=1.0), "hello")
+        assert res.ok is False
+        assert pid_file.exists(), "fake never spawned its grandchild"
+        pid = int(pid_file.read_text())
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return  # grandchild is gone: the group kill worked
+            time.sleep(0.1)
+        pytest.fail("grandchild survived the timeout kill (orphaned process)")
 
 
 class TestClaudeExtras:
@@ -464,6 +542,86 @@ class TestApiBackend:
         assert est.estimated_tokens == 100
         assert est.method == "chars/4"
 
+    def test_usage_absent_falls_back_to_estimated_tokens_in(self):
+        """Local OpenAI-compatible servers omit `usage`; tokens_in must survive."""
+        payload = {"choices": [{"message": {"content": CANNED}}]}
+        backend = self._backend(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=payload))
+        )
+        res = backend.invoke(make_call(), "P" * 400)
+        assert res.ok, res.error
+        assert res.tokens_in == 100  # chars/4 of the prompt we actually sent
+        assert res.tokens_out == bbase.estimate_tokens_chars_per_four(CANNED)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"choices": [{"message": None}]},
+            {"choices": [None]},
+            {"choices": ["not-an-object"]},
+            {"choices": [{"message": "not-an-object"}]},
+        ],
+    )
+    def test_non_object_choice_or_message_fails_cleanly(self, payload):
+        backend = self._backend(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=payload))
+        )
+        res = backend.invoke(make_call(), "x")
+        assert res.ok is False
+        assert res.error and "content" in res.error
+
+    def test_timeout_budget_is_per_call_not_per_attempt(self, monkeypatch):
+        """Three 240s attempts must not outlive a 240s budget."""
+        from coverageflow.backends import api_backend as api
+
+        class Clock:
+            now = 0.0
+
+            def monotonic(self):
+                return self.now
+
+            def sleep(self, _seconds):
+                pass
+
+        clock = Clock()
+        monkeypatch.setattr(api, "time", clock)
+        attempts = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            clock.now += 200.0  # each attempt burns 200s of the 240s budget
+            raise httpx.ConnectTimeout("timed out")
+
+        backend = self._backend(transport=httpx.MockTransport(handler))
+        res = backend.invoke(make_call(timeout_seconds=240), "hello")
+        assert res.ok is False
+        assert len(attempts) == 2, "third attempt would exceed the call budget"
+        assert "attempts=2" in res.error
+
+    def test_exhausted_budget_makes_no_attempt(self):
+        attempts = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempts.append(1)
+            return _stub_handler(request)
+
+        backend = self._backend(transport=httpx.MockTransport(handler))
+        res = backend.invoke(make_call(timeout_seconds=0), "hello")
+        assert res.ok is False
+        assert attempts == []
+        assert "exhausted" in res.error
+
+    def test_invalid_url_is_reported_not_raised(self):
+        from coverageflow.backends import api_backend as api
+
+        backend = api.ApiBackend(
+            base_url="ht!tp://bad url", model="m", api_key=None,
+            transport=httpx.MockTransport(_stub_handler),
+        )
+        res = backend.invoke(make_call(), "x")
+        assert res.ok is False
+        assert res.error and "backend api" in res.error
+
 
 # --------------------------------------------------------------------------
 # replay_backends.py - RecordingBackend + ReplayBackend roundtrip
@@ -565,6 +723,18 @@ class TestRecordReplay:
         assert res.ok is False
         assert res.raw_response_ref is None  # nothing recorded
         assert list(tmp_path.glob("*.json")) == []
+
+    def test_non_object_recording_is_skipped_not_fatal(self, tmp_path):
+        """A stray list/string JSON file in the replay dir must not crash."""
+        from coverageflow.backends import replay_backends as rp
+
+        (tmp_path / "a-list.json").write_text("[1, 2, 3]", encoding="utf-8")
+        (tmp_path / "a-string.json").write_text('"nope"', encoding="utf-8")
+        (tmp_path / "bad-fields.json").write_text(
+            json.dumps({"role": 5, "assembled_prompt_sha256": None,
+                        "response_text": "x"}), encoding="utf-8")
+        backend = rp.ReplayBackend(str(tmp_path))
+        assert backend.healthcheck().ok is False  # nothing usable loaded
 
     def test_replay_healthcheck(self, tmp_path):
         from coverageflow.backends import replay_backends as rp

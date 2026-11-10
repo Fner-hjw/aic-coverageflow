@@ -130,22 +130,37 @@ class ApiBackend:
         }
         timeout = float(call.budget.get("timeout_seconds", self._default_timeout))
         started = time.monotonic()
+        # timeout_seconds is the budget for the whole call, not per attempt:
+        # three 240s attempts would blow a 240s budget three times over.
+        deadline = started + timeout
         last_error = "no attempt made"
+        attempts = 0
         with httpx.Client(transport=self._transport) as client:
             for attempt in range(1, _MAX_ATTEMPTS + 1):
-                failed, error = _post_once(client, url, headers, body, timeout)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    last_error = (
+                        f"budget timeout_seconds={timeout:g} exhausted after "
+                        f"{attempts} attempt(s)"
+                    )
+                    break
+                attempts = attempt
+                failed, error = _post_once(client, url, headers, body, remaining)
                 if failed is None:  # success
-                    return _normalize(error, self.name, started)
+                    return _normalize(error, self.name, started, assembled_prompt)
                 last_error = error
                 if not failed:  # non-retryable (4xx, malformed payload)
                     break
                 if attempt < _MAX_ATTEMPTS:
-                    self._sleep(_INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1)))
+                    backoff = _INITIAL_BACKOFF_SECONDS * (2 ** (attempt - 1))
+                    if time.monotonic() + backoff >= deadline:
+                        break
+                    self._sleep(backoff)
         return AgentResult(
             ok=False,
             error=(
                 f"backend api: {last_error} "
-                f"(attempts={_MAX_ATTEMPTS}, endpoint={url})"
+                f"(attempts={attempts}, endpoint={url})"
             ),
             backend=self.name,
             elapsed_seconds=time.monotonic() - started,
@@ -173,7 +188,11 @@ def _post_once(
     """
     try:
         resp = client.post(url, json=body, headers=headers, timeout=timeout)
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+        # HTTPError covers TimeoutException/TransportError plus the rest of the
+        # hierarchy. InvalidURL is not an HTTPError, and a malformed base_url
+        # surfaces as a bare ValueError from urllib inside httpx's cookie
+        # handling - both would otherwise escape invoke() as a crash.
         return (True, f"request failed with {type(exc).__name__}: {exc}")
     if resp.status_code >= 500:
         return (True, f"HTTP {resp.status_code}: {resp.text[:300]}")
@@ -186,7 +205,7 @@ def _post_once(
     return (None, data)
 
 
-def _normalize(data: Any, name: str, started: float) -> AgentResult:
+def _normalize(data: Any, name: str, started: float, prompt: str = "") -> AgentResult:
     elapsed = time.monotonic() - started
     if not isinstance(data, dict) or not isinstance(data.get("choices"), list) or not data["choices"]:
         return AgentResult(
@@ -194,23 +213,31 @@ def _normalize(data: Any, name: str, started: float) -> AgentResult:
             error="backend api: response missing 'choices' array",
             backend=name,
             elapsed_seconds=elapsed,
+            tokens_in=estimate_tokens_chars_per_four(prompt),
         )
     first = data["choices"][0]
-    content = (first or {}).get("message", {}).get("content")
+    # choices[0] and choices[0].message are server-controlled: either can be
+    # null or a non-object, and .get() on those raises AttributeError.
+    message = first.get("message") if isinstance(first, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str):
         return AgentResult(
             ok=False,
             error="backend api: choices[0].message.content missing or not a string",
             backend=name,
             elapsed_seconds=elapsed,
+            tokens_in=estimate_tokens_chars_per_four(prompt),
         )
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     tokens_in = usage.get("prompt_tokens") if isinstance(usage.get("prompt_tokens"), int) else None
     tokens_out = (
         usage.get("completion_tokens") if isinstance(usage.get("completion_tokens"), int) else None
     )
-    # Input-side usage cannot be derived from the response; leave it None
-    # (unknown) rather than misreporting. Output-side uses chars/4 fallback.
+    # Local OpenAI-compatible servers often omit `usage` entirely. Dropping
+    # tokens_in to None there loses the only cost signal we have, so fall back
+    # to the chars/4 estimate of the prompt we actually sent.
+    if tokens_in is None:
+        tokens_in = estimate_tokens_chars_per_four(prompt)
     if tokens_out is None:
         tokens_out = estimate_tokens_chars_per_four(content)
     return AgentResult(

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Fake `vibe` CLI for offline backend tests.
 
-Accepts: vibe --help | vibe -p PROMPT [--output text] [--max-price N]
+Accepts: vibe --help | vibe --prompt-file PATH [--output text] [--max-price N]
+         [--workdir DIR] [--time-limit SECONDS]
 Prints FAKE_RESULT_TEXT (plain text) to stdout, mirroring headless
 programmatic mode.  Same FAKE_BEHAVIOR protocol as the other fake CLIs.
+
+FAKE_PROMPT_COPY=<path> copies the prompt the CLI received to that path, so
+tests can assert the prompt travelled intact without it being in argv.
 """
 import os
 import sys
@@ -19,13 +23,44 @@ if "--help" in sys.argv:
     print("Vibe CLI")
     print("Usage: vibe            start interactive session")
     print("       vibe -p, --prompt [<PROMPT>]   run in headless mode")
+    print("       vibe --prompt-file <PATH>      run in headless mode from a file")
     print("       vibe --output <OUTPUT>   text | json | streaming")
     sys.exit(0)
+
+prompt = ""
+if "--prompt-file" in sys.argv:
+    prompt_path = sys.argv[sys.argv.index("--prompt-file") + 1]
+    with open(prompt_path, encoding="utf-8") as fh:
+        prompt = fh.read()
+elif "-p" in sys.argv:
+    prompt = sys.argv[sys.argv.index("-p") + 1]
+
+prompt_copy = os.environ.get("FAKE_PROMPT_COPY")
+if prompt_copy:
+    with open(prompt_copy, "w", encoding="utf-8") as fh:
+        fh.write(prompt)
 
 behavior = os.environ.get("FAKE_BEHAVIOR", "ok")
 
 if behavior == "sleep":
     time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
+if behavior == "partial":
+    # write some output, spawn a grandchild, then hang: exercises both
+    # partial-output preservation and process-group cleanup
+    import subprocess
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"])
+    pid_file = os.environ.get("FAKE_CHILD_PID")
+    if pid_file:
+        with open(pid_file, "w", encoding="utf-8") as fh:
+            fh.write(str(child.pid))
+    sys.stdout.write('{"role": "extractor", "facts": [')
+    sys.stdout.flush()
+    time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
+if behavior == "soft_stop":
+    # the CLI's own --time-limit stop: writes its export and exits 3
+    print(os.environ.get("FAKE_RESULT_TEXT", '{"stopped": "early"}'))
+    sys.exit(3)
 if behavior == "fail":
     sys.stderr.write("vibe: login expired\n")
     sys.exit(4)

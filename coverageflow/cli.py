@@ -138,16 +138,22 @@ def _try_import_attr(module: str, attr: str):
 
 
 def find_schema_path(workspace: Path | None = None) -> Path:
-    """references/model-schema.json (owned by stream A1) if present."""
+    """The JSON Schema the facts_schema gate validates against.
+
+    ``references/facts-schema.json`` is the real schema; ``model-schema.json``
+    is the field catalogue and is only a last-resort fallback (the gate fails
+    closed when it finds no validation keywords).
+    """
     bases = [Path(workspace) if workspace else None, DEFAULT_WORKSPACE,
              Path(__file__).resolve().parent.parent]
-    for base in bases:
-        if base is None:
-            continue
-        candidate = base / "references" / "model-schema.json"
-        if candidate.exists():
-            return candidate
-    return Path("references") / "model-schema.json"
+    for name in ("facts-schema.json", "model-schema.json"):
+        for base in bases:
+            if base is None:
+                continue
+            candidate = base / "references" / name
+            if candidate.exists():
+                return candidate
+    return Path("references") / "facts-schema.json"
 
 
 def registry_path(ws: Path) -> Path:
@@ -202,11 +208,14 @@ def cmd_case_new(args, ws: Path) -> int:
         mandate = statestore.read_json(Path(args.mandate))
     dispatch, backend = load_dispatch()
     rg = registry_mod.VersionRegistry(registry_path(ws))
-    orch = Orchestrator.create_case(
-        ws, case_id, mandate, manifest, dispatch=dispatch,
-        gate_engine=load_gate_engine(stub_engines=args.stub_engines,
-                                     workspace=ws),
-        config_versions=rg.config_versions())
+    try:
+        orch = Orchestrator.create_case(
+            ws, case_id, mandate, manifest, dispatch=dispatch,
+            gate_engine=load_gate_engine(stub_engines=args.stub_engines,
+                                         workspace=ws),
+            config_versions=rg.config_versions())
+    except FileExistsError as exc:
+        raise SystemExit(str(exc))
     _print({"created": case_id, "case_dir": str(orch.case_dir),
             "backend": backend,
             "note": "manifest placeholder until A1's bundle builder is wired; "

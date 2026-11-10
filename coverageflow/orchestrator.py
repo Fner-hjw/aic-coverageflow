@@ -58,6 +58,7 @@ from . import gates, ledger as ledger_mod
 from . import resume as resume_mod
 from . import statestore
 from ._dispatch_test_stub import RoleCall  # contract envelope (mirrors A3's)
+from .dispatch import output_schema_for
 
 # ---------------------------------------------------------------------------
 # constants
@@ -144,6 +145,29 @@ class StopLoop(RuntimeError):
     """Internal control-flow signal: a terminal state was written mid-loop."""
 
 
+class InputVerificationError(RuntimeError):
+    """A case cannot start: its manifest references inputs that are absent.
+
+    Raised at case creation so a case never enters RUNNING with an inputs
+    directory that cannot satisfy the roles that read it. Without this, the
+    first role that needs a file is dispatched anyway and burns its whole
+    timeout discovering the file is not there.
+    """
+
+
+def missing_input_documents(case_dir: Path | str, manifest: dict) -> list[str]:
+    """Case-relative document paths declared by *manifest* that are absent/empty."""
+    missing: list[str] = []
+    for doc in (manifest or {}).get("documents") or []:
+        rel = (doc or {}).get("path")
+        if not rel:
+            continue
+        path = Path(case_dir) / rel
+        if not path.is_file() or path.stat().st_size == 0:
+            missing.append(str(rel))
+    return missing
+
+
 @dataclass
 class Arts:
     """Lazy cache of verified artifacts for the active round."""
@@ -207,9 +231,25 @@ class Orchestrator:
                     manifest: dict, *, dispatch, gate_engine: gates.GateEngine,
                     clock: Callable[[], float] | None = None,
                     now: Callable[[], str] | None = None,
-                    config_versions: dict | None = None) -> "Orchestrator":
-        """Create a case directory (mandate + inputs are IMMUTABLE per case)."""
+                    config_versions: dict | None = None,
+                    overwrite: bool = False) -> "Orchestrator":
+        """Create a case directory (mandate + inputs are IMMUTABLE per case).
+
+        Creation is metadata only: the source filings are fetched into the
+        case inputs directory afterwards. ``run`` verifies they are present
+        before the case leaves CREATED.
+
+        An existing case is NEVER silently re-created: that would reset its
+        state, budget and trace while leaving the old artifacts on disk.
+        Pass ``overwrite=True`` to deliberately start over.
+        """
         case_dir = Path(workspace) / "cases" / case_id
+        if (case_dir / "state.json").exists() and not overwrite:
+            raise FileExistsError(
+                f"case {case_id!r} already exists at {case_dir}; refusing to "
+                "overwrite its state, budget and trace. Use a new case id, or "
+                "pass overwrite=True to deliberately discard the existing case."
+            )
         case_dir.mkdir(parents=True, exist_ok=True)
         mandate = dict(mandate)
         mandate["case_id"] = case_id
@@ -253,6 +293,31 @@ class Orchestrator:
 
         if state["status"] == "CLOSED":
             return self._saved_result(state, "case closed; saved result returned")
+
+        # BLOCKED is in TERMINAL, so this branch must come BEFORE the generic
+        # terminal check or it is unreachable and the block reason is lost.
+        if state["status"] == "BLOCKED":
+            code = (state.get("reason") or {}).get("code")
+            if code == "APPROVAL_EXPIRED":
+                return self._summary(
+                    state, "blocked (APPROVAL_EXPIRED); re-approval restarts "
+                           "acceptance from zero")
+            if code == "missing_inputs":
+                # the block is a "fetch the filings, then re-run" instruction,
+                # so a re-run must be able to clear it once they are present
+                missing = missing_input_documents(self.case_dir,
+                                                  self.input_manifest())
+                if missing:
+                    return self._summary(
+                        state, "case blocked: inputs still missing "
+                               f"{missing}; fetch them, then re-run")
+                state["status"] = "CREATED"
+                state["reason"] = None
+                self._transition(state, "BLOCKED", "CREATED",
+                                 detail={"unblocked": "inputs present"})
+            else:
+                return self._summary(state, "case blocked")
+
         if state["status"] in TERMINAL:
             return self._saved_result(
                 state, f"case is {state['status']}; saved result returned")
@@ -265,15 +330,21 @@ class Orchestrator:
                            "(APPROVAL_EXPIRED); re-approval restarts acceptance")
             return self._summary(state, "awaiting human approval")
 
-        if state["status"] == "BLOCKED":
-            code = (state.get("reason") or {}).get("code")
-            if code == "APPROVAL_EXPIRED":
-                return self._summary(
-                    state, "blocked (APPROVAL_EXPIRED); re-approval restarts "
-                           "acceptance from zero")
-            return self._summary(state, "case blocked")
-
         if state["status"] == "CREATED":
+            missing = missing_input_documents(self.case_dir, self.input_manifest())
+            if missing:
+                # Fail before any role is dispatched: a role handed a payload
+                # that points at absent files can only burn its whole timeout
+                # discovering they are not there.
+                self.blocked(
+                    state, "missing_inputs",
+                    "case inputs are incomplete: the manifest declares "
+                    f"{len(missing)} document(s) that are absent or empty under "
+                    f"{self.case_dir / 'inputs'}: {missing}. Fetch the source "
+                    "filings into the case inputs directory, then re-run.",
+                    {"missing": missing,
+                     "inputs_dir": str(self.case_dir / "inputs")})
+                return self._summary(state, "case blocked: inputs missing")
             state["status"] = "RUNNING"
             state["pending"]["case_clock_started"] = self.now()
             state["pending"]["stage"] = None
@@ -324,9 +395,14 @@ class Orchestrator:
                 state["pending"]["role"] = "generator"
                 state["pending"]["retry_count"] = 0
         budget = self._budget(state)
-        budget.resume_clock()
+        if budget.clock_started is None:
+            budget.resume_clock()
         if budget.clock_started is not None:
-            state["pending"]["case_clock_started"] = _iso_from_epoch(self.clock())
+            # Preserve the ORIGINAL start: rewriting it to "now" on every
+            # resume reset elapsed_minutes to zero and made the case clock
+            # unable to ever fire.
+            state["pending"]["case_clock_started"] = _iso_from_epoch(
+                budget.clock_started)
         self._sync_budget(state, budget)
         self._persist(state)
         self._trace(event="BUDGET_CHECK",
@@ -428,25 +504,36 @@ class Orchestrator:
             raise StopLoop()
         req_id = self._bind_request(state, role, payload, candidate_id)
         call = RoleCall(role=role, request_id=req_id, candidate_id=candidate_id,
-                        role_card={"path": f"prompts/{role}.md", "version": "1.0",
+                        # version/sha are resolved from the card on disk by
+                        # dispatch, so the trace records what actually ran
+                        role_card={"path": f"prompts/{role}.md", "version": None,
                                    "sha256": None},
-                        payload=payload, output_schema="references/schemas/1.0",
+                        # the artifact this role must emit, so dispatch can
+                        # enforce its required top-level keys
+                        payload=payload, output_schema=output_schema_for(role),
                         budget={"tokens_max": budget.limits.role_tokens_max,
-                                "timeout_seconds": 240},
-                        write_scope=write_scope)
+                                "timeout_seconds": budget.limits.timeout_for(role)},
+                        write_scope=write_scope,
+                        workdir=str(self.case_dir))
         self._trace(event="AGENT_DISPATCHED", request_id=req_id, role=role,
                     candidate_id=candidate_id, round=state["pending"]["round"])
         result = self.dispatch(call)
         budget.add_tokens(role, getattr(result, "tokens_in", None),
                           getattr(result, "tokens_out", None))
         self._sync_budget(state, budget)
+        # merge the dispatch record so the prompt sha and the real role-card
+        # version reach trace.jsonl instead of being dropped at the seam
+        dispatch_trace = getattr(result, "trace", None) or {}
+        detail = {"ok": bool(getattr(result, "ok", False)),
+                  "error": getattr(result, "error", None)}
+        detail.update(dispatch_trace.get("detail") or {})
         self._trace(event="AGENT_RESULT", request_id=req_id, role=role,
                     candidate_id=candidate_id, round=state["pending"]["round"],
                     backend=getattr(result, "backend", None),
                     tokens_in=getattr(result, "tokens_in", None),
                     tokens_out=getattr(result, "tokens_out", None),
-                    detail={"ok": bool(getattr(result, "ok", False)),
-                            "error": getattr(result, "error", None)})
+                    prompt_versions=dispatch_trace.get("prompt_versions"),
+                    detail=detail)
         return result
 
     def _validate_submission(self, role: str, req_id: str, result) -> str | None:
@@ -486,22 +573,31 @@ class Orchestrator:
                     return f"merged report missing required key {k!r}"
         return None
 
+    def _block_if_unrunnable(self, state: dict, role: str, result) -> None:
+        """A failure no retry can fix (absent inputs) blocks instead of retrying."""
+        if not getattr(result, "blocking", False):
+            return
+        error = getattr(result, "error", None)
+        self.blocked(state, "missing_inputs",
+                     f"role {role} cannot run: {error}",
+                     {"role": role, "error": error})
+        raise StopLoop()
+
     def _handle_invalid(self, state: dict, budget: budget_mod.BudgetTracker,
                         role: str, error: str) -> None:
         """Repair at the SAME role, new request, WITHOUT consuming a round.
-        Second invalid submission at the same role -> BLOCKED."""
+
+        The retries budget (mandate ``retries_max``) decides how many repairs
+        a role gets; exhausting it transitions to EXHAUSTED. A hard block is
+        reserved for the case where the repair itself cannot be attempted.
+        """
         p = state["pending"]
-        if p["retry_count"] >= 1:
-            self.blocked(state, "invalid_submission",
-                         f"second invalid submission at role {role}: {error}",
-                         {"role": role, "error": error, "retry_count": p["retry_count"]})
-            raise StopLoop()
-        p["retry_count"] += 1
         used = budget.note_retry(role)
         ok, reason = budget.check_retry(role)
         if not ok:
             self.exhausted(state, budget, reason)
             raise StopLoop()
+        p["retry_count"] += 1
         self._sync_budget(state, budget)
         self._persist(state)
         self._trace(event="STATE_TRANSITION",
@@ -585,10 +681,15 @@ class Orchestrator:
         while True:
             result = self._dispatch_role(state, budget, role, payload,
                                          candidate_id, [rel])
+            self._block_if_unrunnable(state, role, result)
             err = self._validate_submission(role, state["pending"]["request_id"],
                                             result)
             if err is None and stage == "candidate":
                 err = self._check_lead_manifest(arts, result.parsed)
+            if err is None and stage == "ingest":
+                # the declared slices must exist on disk before the extractor
+                # is handed their paths
+                err = self._materialize_slices(result.parsed)
             if err is None:
                 state["pending"]["retry_count"] = 0
                 break
@@ -618,6 +719,58 @@ class Orchestrator:
             out["model"] = self._lazy(arts, arts.rel("generator", "model.json"))
             out["valuation"] = self._lazy(arts, arts.rel("generator", "valuation.json"))
         return out
+
+    def _materialize_slices(self, parsed: dict) -> str | None:
+        """Produce the slice files ingest declared, verifying its sha256 claims.
+
+        Ingest only *declares* slices; the deterministic slicer produces them.
+        Nothing called the slicer before, so a real ingest left the extractor's
+        payload references pointing at files that never existed. Returns None
+        on success, or a repairable error for the ingest role.
+        """
+        from . import slicer
+
+        declared = parsed.get("slices")
+        if not isinstance(declared, list) or not declared:
+            return "ingest submission must declare at least one slice"
+        manifest = self.input_manifest()
+        docs = {d.get("doc_id"): d for d in manifest.get("documents") or []
+                if isinstance(d, dict)}
+        inputs_dir = self.case_dir / "inputs"
+        sliced: set[str] = set()
+        for entry in declared:
+            if not isinstance(entry, dict):
+                return f"slice entry is not an object: {entry!r}"
+            slice_id = entry.get("slice_id")
+            rel = entry.get("path")
+            if not isinstance(slice_id, str) or not isinstance(rel, str):
+                return (f"slice entry {entry!r} must carry string slice_id and path")
+            doc_id = slice_id.split("/")[0]
+            doc = docs.get(doc_id)
+            if doc is None:
+                return (f"slice {slice_id!r} names document {doc_id!r}, which is "
+                        "not in inputs/manifest.json")
+            target = self.case_dir / rel
+            if not target.is_file() and doc_id not in sliced:
+                doc_path = self.case_dir / str(doc.get("path") or "")
+                if not doc_path.is_file():
+                    return (f"slice {slice_id!r} needs {doc.get('path')!r}, which "
+                            "is absent from the case inputs")
+                try:
+                    slicer.slice_document(doc_path, str(doc.get("form") or ""),
+                                          out_dir=inputs_dir)
+                except slicer.SliceError as exc:
+                    return f"cannot slice {doc_id}: {exc}"
+                sliced.add(doc_id)
+            if not target.is_file():
+                return (f"slice {slice_id!r} declares {rel}, but the slicer "
+                        f"produced no such slice for {doc_id}")
+            claimed = entry.get("sha256")
+            actual = statestore.sha256_file(target)
+            if isinstance(claimed, str) and claimed and claimed != actual:
+                return (f"slice {slice_id!r} declares sha256 {claimed[:12]}, but "
+                        f"{rel} hashes to {actual[:12]}")
+        return None
 
     def _stage_side_effects(self, state: dict, budget: budget_mod.BudgetTracker,
                             arts: Arts, stage: str) -> None:
@@ -709,14 +862,16 @@ class Orchestrator:
         for name in CANDIDATE_FILES:
             rel = arts.rel("generator", name)
             content = self._lazy(arts, rel)
+            # digest the artifact NAME, not the round-scoped path: identical
+            # content rebuilt in round 2 must yield the same candidate id
             if isinstance(content, dict):
                 stripped = {k: v for k, v in content.items()
                             if k != "candidate_id"}
-                digest_pairs.append([rel, statestore.sha256_json(stripped)])
+                digest_pairs.append([name, statestore.sha256_json(stripped)])
             else:
                 path = self.case_dir / rel
                 digest_pairs.append(
-                    [rel, statestore.sha256_file(path) if path.exists() else None])
+                    [name, statestore.sha256_file(path) if path.exists() else None])
         return "cand-" + statestore.sha256_json(digest_pairs)[:12]
 
     def _stamp_candidate_id(self, state: dict, arts: Arts, cand_id: str) -> None:
@@ -947,14 +1102,16 @@ class Orchestrator:
                    for role in CRITIC_ROLES]
         rel = arts.rel("critic", "merged-findings.json")
         reports = [r for r in reports if r is not None]
+        # built ONCE, outside the loop: rebuilding it each iteration threw
+        # away the submission_feedback the repair depends on
+        payload = {
+            "case_id": state["case_id"], "round": round_no,
+            "candidate_id": candidate_id,
+            "critic_reports": reports,
+            "carried_findings": self._carried(),
+            "built_round": state["candidate"]["built_round"],
+        }
         while True:
-            payload = {
-                "case_id": state["case_id"], "round": round_no,
-                "candidate_id": candidate_id,
-                "critic_reports": reports,
-                "carried_findings": self._carried(),
-                "built_round": state["candidate"]["built_round"],
-            }
             result = self._dispatch_role(state, budget, "critic_lead", payload,
                                          candidate_id, [rel])
             err = self._validate_submission("critic_lead",
@@ -985,10 +1142,14 @@ class Orchestrator:
                         role=f.get("source_critic"),
                         detail={"finding_id": fid, "summary": f.get("summary")})
         # orchestrator-verified cleanliness: never trust the lead alone
+        # reviewer_count is model-supplied: a string or null must not raise
+        raw_count = merged.get("reviewer_count")
+        reviewer_count = raw_count if isinstance(raw_count, int) and \
+            not isinstance(raw_count, bool) else None
         clean = (bool(reports) and
                  all(rep.get("verdict") == "clean" for rep in reports) and
                  bool(merged.get("coverage_ok")) and
-                 int(merged.get("reviewer_count", 0)) == len(reports))
+                 reviewer_count == len(reports))
         no_open = not led.open_findings()
         if clean and no_open:
             cand = state["candidate"]
@@ -1023,9 +1184,12 @@ class Orchestrator:
         that matches the CURRENT candidate artifacts (tamper-proof)."""
         round_no = arts.round
         built_arts = Arts(round=state["candidate"]["built_round"])
+        # ONLY the candidate under review may serve as closure evidence.
+        # Merging self._verified here would also admit artifacts from other
+        # rounds (critic reports, gates, superseded candidates), letting a
+        # finding close against evidence that no longer describes the build.
         expected_sha = {r["artifact"]: r["sha256"]
                         for r in self._candidate_artifact_list(built_arts)}
-        expected_sha.update(self._verified)
         for rep in reports:
             role = rep.get("role") or "critic"
             for res in rep.get("verified_resolutions") or []:
@@ -1143,9 +1307,17 @@ class Orchestrator:
         if not ok:
             self.exhausted(state, budget, reason)
             raise RuntimeError(f"exhaustion never grants acceptance: {reason.message}")
+        # the report about to be published must still be the artifact the
+        # gates and critics verified: a tampered or missing report.md must
+        # never reach report/vN-*.md
+        report_rel = self._report_rel_of(state)
+        if not self._artifact_intact(report_rel):
+            raise RuntimeError(
+                f"cannot publish {report_rel}: it is missing or its sha256 no "
+                "longer matches the verified artifact"
+            )
         self._approval_record(state, "APPROVED", by, reasoning)
         # versioned report publication
-        report_rel = self._report_rel_of(state)
         cand8 = (cand["candidate_id"] or "unknown")[:8]
         reports_dir = self.case_dir / "report"
         reports_dir.mkdir(parents=True, exist_ok=True)

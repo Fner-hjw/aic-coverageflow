@@ -16,6 +16,7 @@ The registry never touches case directories except read-only
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -47,13 +48,37 @@ class VersionRegistry:
 
     def __init__(self, path: Path | str):
         self.path = Path(path)
-        data = statestore.read_json_or_none(self.path) if self.path.exists() else None
-        if not data:
+        if self.path.exists():
+            # A corrupt registry must NOT be silently replaced by the baseline:
+            # the next save() would overwrite the audit trail of every version
+            # ever registered. Fail loudly and let a human restore the file.
+            try:
+                data = statestore.read_json(self.path)
+            except (OSError, ValueError) as exc:
+                raise ValueError(
+                    f"version registry at {self.path} is unreadable ({exc}); "
+                    "refusing to reset it to the baseline - restore the file "
+                    "or move it aside deliberately"
+                ) from exc
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"version registry at {self.path} is not a JSON object; "
+                    "refusing to reset it to the baseline"
+                )
+            if not isinstance(data.get("versions"), list) or not data["versions"]:
+                raise ValueError(
+                    f"version registry at {self.path} has no version entries; "
+                    "refusing to reset it to the baseline"
+                )
+            if not isinstance(data.get("active"), str) or not data["active"]:
+                raise ValueError(
+                    f"version registry at {self.path} has no active pointer; "
+                    "refusing to reset it to the baseline"
+                )
+        else:
             data = {"active": BASELINE_VERSION,
-                    "versions": [dict(_BASELINE_ENTRY)]}
+                    "versions": [copy.deepcopy(_BASELINE_ENTRY)]}
         self._data = data
-        if not self._data.get("versions"):
-            raise ValueError("registry has no version entries")
 
     # ---------------------------------------------------------------- io
     def save(self) -> None:
@@ -89,6 +114,10 @@ class VersionRegistry:
             if key not in entry:
                 raise ValueError(f"version entry missing required key {key!r}")
         version = entry["version"]
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError(
+                f"version must be a non-empty string, got {version!r}"
+            )
         if self._has(version):
             raise ValueError(f"version {version!r} already registered")
         parent = entry["parent"]
@@ -126,6 +155,13 @@ class VersionRegistry:
         if decision not in ("APPROVED", "REJECTED", "DEFERRED"):
             raise ValueError("decision must be APPROVED|REJECTED|DEFERRED")
         entry = self.get(version)
+        if decision != "APPROVED" and version == self.active():
+            # rejecting the active version would leave the pointer aimed at a
+            # rejected config; rollback is the supported way to move off it
+            raise RuntimeError(
+                f"cannot {decision.lower()} {version!r}: it is the active "
+                "version; use rollback to move the pointer first"
+            )
         review = entry.get("review") or {}
         if decision == "APPROVED" and not review.get("regressions_all_pass"):
             raise RuntimeError("cannot approve a version whose fresh-critic "
@@ -152,23 +188,55 @@ class VersionRegistry:
             raise RuntimeError(f"cannot roll back to unapproved {to_version!r}")
         if approved_prior.get("rollback_to") is not None:
             raise RuntimeError(f"cannot roll back to a rolled-back version")
-        self.get(active)["rollback_to"] = to_version
+        rolled = self.get(active)
+        rolled["rollback_to"] = to_version
+        # the audit trail lives in the file, not only in this return value
+        rolled["rollback"] = {"to": to_version, "by": by, "reason": reason,
+                              "ts": statestore.utc_now_iso()}
         self._data["active"] = to_version
         self.save()
         return {"active": to_version, "rolled_back_from": active,
                 "by": by, "reason": reason}
 
     # ------------------------------------------------------- config bundles
+    def _inherited(self, version: str, key: str) -> Any:
+        """Merge ``tested[key]`` along the parent chain, child winning per key.
+
+        A version that only changes one prompt card must inherit the rest from
+        its parent, not silently fall back to the baseline bundle.
+        """
+        seen: set[str] = set()
+        chain: list[dict] = []
+        cur: str | None = version
+        while cur is not None and cur not in seen:
+            seen.add(cur)
+            entry = self.get(cur)
+            chain.append(entry)
+            cur = entry.get("parent")
+        merged: Any = None
+        for entry in reversed(chain):  # root first, child last
+            value = (entry.get("tested") or {}).get(key)
+            if value is None:
+                continue
+            if isinstance(value, dict):
+                merged = {**(merged if isinstance(merged, dict) else {}), **value}
+            else:
+                merged = value
+        return merged
+
     def config_versions(self, version: str | None = None) -> dict:
         """The pinned config bundle (prompt cards, mappings, engines) a NEW
         case should be created with, taken from the active (or given) entry."""
-        entry = self.get(version or self.active())
-        tested = entry.get("tested") or {}
+        version = version or self.active()
+        self.get(version)  # raises LookupError for an unknown version
+        # deep copy: prompt_cards holds a nested list ("critics"), and a
+        # shallow dict() would hand callers a live alias into the registry
         return {
-            "prompt_cards": dict(tested.get("prompt_cards")
-                                 or _BASELINE_ENTRY["tested"]["prompt_cards"]),
-            "mapping_tables": tested.get("model") or "1.0",
-            "engines": tested.get("engines") or "1.0",
+            "prompt_cards": copy.deepcopy(
+                self._inherited(version, "prompt_cards")
+                or _BASELINE_ENTRY["tested"]["prompt_cards"]),
+            "mapping_tables": self._inherited(version, "model") or "1.0",
+            "engines": self._inherited(version, "engines") or "1.0",
             "schema": "1.0",
         }
 

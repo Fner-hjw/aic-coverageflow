@@ -378,3 +378,99 @@ class TestManifestIntegrityAndPipeline:
         ok, findings = eng._schema_findings({"role": "extractor", "facts": []})
         assert not ok
         assert any("schema" in f["summary"].lower() for f in findings)
+
+
+# ===========================================================================
+# regressions found by the backend/dispatch audit
+# ===========================================================================
+
+class TestAuditRegressions:
+    def test_margin_glide_length_is_checked_against_the_horizon(self):
+        import copy
+        fc = copy.deepcopy(GOOD_FORECAST)
+        fc["margin_glide"]["gross"] = [0.40, 0.41]  # horizon is 5
+        ok, findings = gates.gate_forecast_bounds(
+            fc, casekit.MANDATE["assumptions"]["forecast_bounds"])
+        assert not ok
+        assert any("margin_glide" in f["summary"] for f in findings)
+
+    def test_empty_margin_glide_is_flagged(self):
+        import copy
+        fc = copy.deepcopy(GOOD_FORECAST)
+        fc["margin_glide"]["gross"] = []
+        ok, findings = gates.gate_forecast_bounds(
+            fc, casekit.MANDATE["assumptions"]["forecast_bounds"])
+        assert not ok
+        assert any("margin_glide" in f["summary"] for f in findings)
+
+    def test_missing_valuation_json_is_a_finding_not_a_silent_pass(self):
+        eng = make_engine()
+        rep = eng.run_recompute(GOOD_FACTS, GOOD_FORECAST, casekit.MANDATE,
+                                TestRecomputeGate.MODEL_JSON, None)
+        assert not rep.passed
+        assert any("valuation.json" in f["summary"] for f in rep.finding_dicts)
+
+    def test_comps_values_are_recomputed(self):
+        import copy
+        val = copy.deepcopy(TestRecomputeGate.VALUATION_JSON)
+        val["comps"]["per_share"] = 99.0
+        eng = make_engine()
+        rep = eng.run_recompute(GOOD_FACTS, GOOD_FORECAST, casekit.MANDATE,
+                                TestRecomputeGate.MODEL_JSON, val)
+        assert not rep.passed
+        assert any("comps" in f["summary"] for f in rep.finding_dicts)
+
+    def test_form_names_and_dates_need_no_evidence_link(self):
+        md = ("# INTC 10-Q, FY2026 Q3\n"
+              "Filed 2026-10-30 for the quarter ended Q3 FY26.\n")
+        ok, findings = gates.gate_report_evidence_links(md)
+        assert ok, findings
+
+    def test_two_identical_numbers_on_one_line_get_distinct_keys(self):
+        ok, findings = gates.gate_report_evidence_links("Two numbers 7 and 7 again.\n")
+        assert not ok
+        keys = [f["dedup_key"] for f in findings]
+        assert len(keys) == 2 and len(set(keys)) == 2
+
+    def test_cutoff_gate_parses_dates_instead_of_comparing_strings(self):
+        manifest = {"documents": [
+            {"doc_id": "d1", "filed": "11/15/2026"},   # sorts before 2026-10-30
+            {"doc_id": "d2", "filed": "2026-10-30"},
+        ]}
+        ok, findings = gates.gate_manifest_cutoff(manifest, "2026-10-30")
+        assert not ok
+        assert any("d1" in f["summary"] for f in findings)
+
+    def test_cutoff_gate_fails_closed_on_a_missing_filed_date(self):
+        manifest = {"documents": [{"doc_id": "d1"}]}
+        ok, findings = gates.gate_manifest_cutoff(manifest, "2026-10-30")
+        assert not ok
+        assert any("filing date" in f["summary"] for f in findings)
+
+    def test_cutoff_gate_fails_closed_on_an_unparsable_cutoff(self):
+        ok, findings = gates.gate_manifest_cutoff({"documents": []}, "30/10/2026")
+        assert not ok
+        assert findings[0]["dedup_key"] == "cutoff:unparsable"
+
+    def test_facts_schema_gate_refuses_a_field_catalogue(self, tmp_path):
+        catalogue = tmp_path / "model-schema.json"
+        catalogue.write_text('{"fields": [{"name": "revenue", "unit": "USDmm"}]}',
+                             encoding="utf-8")
+        ok, findings = gates.gate_facts_schema({"facts": []}, catalogue)
+        assert not ok
+        assert findings[0]["dedup_key"] == "schema:not-a-schema"
+
+    def test_facts_schema_gate_accepts_a_real_schema(self):
+        ok, findings = gates.gate_facts_schema(GOOD_FACTS, SCHEMA)
+        assert ok, findings
+
+    def test_schema_type_union_is_supported(self, tmp_path):
+        schema = tmp_path / "s.json"
+        schema.write_text(
+            '{"type": "object", "required": ["a"],'
+            ' "properties": {"a": {"type": ["string", "null"]}}}',
+            encoding="utf-8")
+        ok, findings = gates.gate_facts_schema({"a": None}, schema)
+        assert ok, findings
+        ok, findings = gates.gate_facts_schema({"a": 5}, schema)
+        assert not ok

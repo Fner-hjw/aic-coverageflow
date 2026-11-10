@@ -1916,6 +1916,20 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False) -> dict:
         try:
             orch.run()
         except Exception as exc:
+            # a synchronous run can die mid-flight (backend dispatch raised,
+            # subprocess error path, ...). The case then sits in RUNNING
+            # with nothing executing — leave EVIDENCE in the trace so the
+            # terminal shows the cause instead of an ambiguous hang.
+            try:
+                _real_statestore.append_trace(cd, {
+                    "event": "AGENT_RESULT",
+                    "role": (state.get("pending") or {}).get("role") or "unknown",
+                    "round": (state.get("pending") or {}).get("round"),
+                    "detail": {"ok": False, "stage": "run_aborted",
+                               "error": (f"{exc.__class__.__name__}: "
+                                         f"{exc}")[:400], "real": True}})
+            except Exception:
+                pass   # the original failure is what must reach the caller
             raise ServiceError(
                 f"real controller run failed for case {case_id}: {exc}",
                 case_id=case_id, backend=backend_name)
@@ -1980,6 +1994,16 @@ def resume_case(case_id: str) -> dict:
         try:
             orch.run()   # run() resumes in-flight cases via resume_check
         except Exception as exc:
+            try:
+                _real_statestore.append_trace(cd, {
+                    "event": "AGENT_RESULT",
+                    "role": (state.get("pending") or {}).get("role") or "unknown",
+                    "round": (state.get("pending") or {}).get("round"),
+                    "detail": {"ok": False, "stage": "resume_aborted",
+                               "error": (f"{exc.__class__.__name__}: "
+                                         f"{exc}")[:400], "real": True}})
+            except Exception:
+                pass
             raise ServiceError(
                 f"verified resume failed for case {case_id}: {exc}",
                 case_id=case_id)
@@ -2023,7 +2047,14 @@ def record_approval(case_id: str, decision: str, by: str,
     if _using_real():
         cd = _rcase_dir(case_id)
         state = _rstate(cd)
-        if state["status"] != "PENDING_APPROVAL":
+        # the orchestrator supports exactly one recovery from a blocked
+        # case: BLOCKED(APPROVAL_EXPIRED) + APPROVED restarts acceptance
+        # from zero (docs/design-decisions.md §3). Everything else is a
+        # genuine human-gate refusal.
+        _blocked_reapprove = (state["status"] == "BLOCKED"
+                              and (state.get("reason") or {}).get("code")
+                              == "APPROVAL_EXPIRED" and decision == "APPROVED")
+        if state["status"] != "PENDING_APPROVAL" and not _blocked_reapprove:
             raise ConflictError(
                 f"case {case_id} is {state['status']}, not "
                 "PENDING_APPROVAL; approval is only recorded at the "

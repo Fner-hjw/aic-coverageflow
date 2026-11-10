@@ -51,7 +51,7 @@ def make_call(
         role=role,
         request_id=request_id,
         candidate_id=candidate_id,
-        role_card={"path": f"prompts/{role}.md", "version": "1.0", "sha256": "00" * 32},
+        role_card={"path": f"prompts/{role}.md", "version": None, "sha256": None},
         payload={},
         output_schema=f"{role}-report.json",
         budget={"tokens_max": 60000, "timeout_seconds": timeout_seconds},

@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -98,6 +99,24 @@ _TYPE_MAP = {
 }
 
 
+_SCHEMA_KEYWORDS = frozenset({
+    "type", "enum", "required", "properties", "items", "minItems",
+    "minLength", "minimum", "maximum", "anyOf", "allOf", "oneOf", "$ref",
+})
+
+
+def is_json_schema(schema: Any) -> bool:
+    """True when *schema* actually constrains an instance.
+
+    ``references/model-schema.json`` is a field catalogue (canonical field
+    names, units, period labels), not a JSON Schema. Validating against it
+    finds no keywords and passes everything, so the gate must refuse it.
+    """
+    if not isinstance(schema, dict):
+        return False
+    return any(keyword in schema for keyword in _SCHEMA_KEYWORDS)
+
+
 def validate_against_schema(instance: Any, schema: dict, path: str = "$") -> list[str]:
     """Validate *instance* against a JSON-schema subset.
 
@@ -107,11 +126,17 @@ def validate_against_schema(instance: Any, schema: dict, path: str = "$") -> lis
     errors: list[str] = []
     t = schema.get("type")
     if t is not None:
-        py = _TYPE_MAP.get(t)
-        if py is None:
-            errors.append(f"{path}: unknown schema type {t!r}")
-        elif not isinstance(instance, py):
-            errors.append(f"{path}: expected {t}, got {type(instance).__name__}")
+        # JSON Schema allows "type": ["string", "null"]; a list is not a dict
+        # key, so _TYPE_MAP.get(t) would raise TypeError on it.
+        types = t if isinstance(t, list) else [t]
+        unknown = [x for x in types if x not in _TYPE_MAP]
+        if unknown:
+            errors.append(f"{path}: unknown schema type {unknown[0]!r}")
+        elif not any(isinstance(instance, _TYPE_MAP[x]) for x in types):
+            errors.append(
+                f"{path}: expected {'|'.join(str(x) for x in types)}, "
+                f"got {type(instance).__name__}"
+            )
     if "enum" in schema and instance not in schema["enum"]:
         errors.append(f"{path}: {instance!r} not in enum {schema['enum']}")
     if isinstance(instance, dict):
@@ -119,11 +144,12 @@ def validate_against_schema(instance: Any, schema: dict, path: str = "$") -> lis
             if req not in instance:
                 errors.append(f"{path}: missing required property {req!r}")
         props = schema.get("properties", {})
-        for key, sub in props.items():
-            if key in instance:
-                errors.extend(validate_against_schema(instance[key], sub, f"{path}.{key}"))
+        if isinstance(props, dict):
+            for key, sub in props.items():
+                if key in instance and isinstance(sub, dict):
+                    errors.extend(validate_against_schema(instance[key], sub, f"{path}.{key}"))
     if isinstance(instance, list):
-        if "items" in schema:
+        if isinstance(schema.get("items"), dict):
             for i, item in enumerate(instance):
                 errors.extend(validate_against_schema(item, schema["items"], f"{path}[{i}]"))
         if "minItems" in schema and len(instance) < schema["minItems"]:
@@ -142,16 +168,51 @@ def validate_against_schema(instance: Any, schema: dict, path: str = "$") -> lis
 # gate 1: input-manifest cutoff discipline
 # ---------------------------------------------------------------------------
 
+def _parse_iso_date(value: object) -> date | None:
+    """Parse an ISO-8601 date, or None when absent/unparsable."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
 def gate_manifest_cutoff(manifest: dict, cutoff_date: str) -> tuple[bool, list[dict]]:
-    """Every document in the manifest must be filed on or before the cutoff."""
+    """Every document in the manifest must be filed on or before the cutoff.
+
+    Dates are parsed, never compared as strings: lexicographic comparison
+    admits ``"11/15/2026"`` (which sorts before ``"2026-10-30"``) and treats a
+    missing ``filed`` as ``""``, i.e. always before the cutoff.
+    """
     findings: list[dict] = []
-    cutoff = str(cutoff_date)
+    cutoff = _parse_iso_date(cutoff_date)
+    if cutoff is None:
+        return False, [_finding(
+            "input_cutoff", "cutoff:unparsable",
+            f"information cutoff {cutoff_date!r} is not an ISO-8601 date "
+            "(YYYY-MM-DD); the gate cannot compare and fails closed",
+            ["inputs/manifest.json"],
+            required_evidence="an ISO-8601 cutoff date",
+        )]
     for doc in manifest.get("documents", []):
-        if str(doc.get("filed", "")) > cutoff:
+        doc = doc or {}
+        doc_id = doc.get("doc_id")
+        filed = _parse_iso_date(doc.get("filed"))
+        if filed is None:
             findings.append(_finding(
-                "input_cutoff", f"post-cutoff:{doc.get('doc_id')}",
-                f"document {doc.get('doc_id')} filed {doc.get('filed')} is after "
-                f"the information cutoff {cutoff}",
+                "input_cutoff", f"filed:unparsable:{doc_id}",
+                f"document {doc_id} has no parsable ISO-8601 filing date "
+                f"({doc.get('filed')!r}); the cutoff cannot be verified",
+                ["inputs/manifest.json"],
+                required_evidence="an ISO-8601 filed date for every document",
+            ))
+            continue
+        if filed > cutoff:
+            findings.append(_finding(
+                "input_cutoff", f"post-cutoff:{doc_id}",
+                f"document {doc_id} filed {doc.get('filed')} is after "
+                f"the information cutoff {cutoff_date}",
                 ["inputs/manifest.json"],
                 required_evidence="an input manifest containing only documents filed "
                                   "on or before the cutoff",
@@ -173,6 +234,17 @@ def gate_facts_schema(facts: Any, schema_path: Path | str) -> tuple[bool, list[d
             ["facts.json"], required_evidence="schema file present at the configured path",
         )]
     schema = statestore.read_json(schema_path)
+    if not is_json_schema(schema):
+        # references/model-schema.json is a field catalogue, not a JSON Schema:
+        # validating against it silently passes every instance.
+        return False, [_finding(
+            "facts_schema", "schema:not-a-schema",
+            f"{schema_path} carries no JSON Schema validation keywords at its "
+            "root (type/required/properties/items/enum/...), so it cannot "
+            "constrain facts.json — gate fails closed",
+            ["facts.json"],
+            required_evidence="a JSON Schema for facts.json at the configured path",
+        )]
     errors = validate_against_schema(facts, schema, "$")
     findings = [
         _finding("facts_schema", f"schema:{e}", f"facts.json schema violation: {e}",
@@ -260,6 +332,17 @@ def gate_forecast_bounds(forecast: dict, bounds: dict) -> tuple[bool, list[dict]
     floor = bounds.get("margin_floor_gross")
     ceiling = bounds.get("margin_ceiling_gross")
     glide = (forecast.get("margin_glide") or {}).get("gross", [])
+    # A short or empty glide path silently passes every per-year bound check
+    # below, so its length is checked against the horizon explicitly.
+    if not isinstance(glide, list) or len(glide) != horizon:
+        findings.append(_finding(
+            "forecast_bounds", "margin-glide:horizon",
+            f"margin_glide.gross has {len(glide) if isinstance(glide, list) else 'no'} "
+            f"values but the mandate horizon is {horizon} years",
+            ["forecast_assumptions.json"],
+            required_evidence=f"exactly {horizon} gross-margin values",
+        ))
+        glide = glide if isinstance(glide, list) else []
     for i, m in enumerate(glide):
         if floor is not None and m < floor:
             findings.append(_finding(
@@ -287,7 +370,24 @@ def gate_candidate_manifest_integrity(manifest: dict, case_dir: Path | str) -> t
     findings: list[dict] = []
     case_dir = Path(case_dir)
     for rep in manifest.get("reports", []):
+        if not isinstance(rep, dict):
+            findings.append(_finding(
+                "candidate_manifest_integrity", "malformed-entry",
+                f"candidate-manifest reports entry is not an object: {rep!r}",
+                ["candidate-manifest.json"],
+                required_evidence="each reports entry as {artifact, sha256, ...}",
+            ))
+            continue
         rel = rep.get("artifact", "")
+        recorded = rep.get("sha256")
+        if not isinstance(recorded, str) or not recorded:
+            findings.append(_finding(
+                "candidate_manifest_integrity", f"missing-sha256:{rel}",
+                f"candidate-manifest entry for {rel!r} records no sha256",
+                ["candidate-manifest.json"],
+                required_evidence="a sha256 for every listed candidate artifact",
+            ))
+            continue
         path = case_dir / rel
         if not path.exists():
             findings.append(_finding(
@@ -297,11 +397,11 @@ def gate_candidate_manifest_integrity(manifest: dict, case_dir: Path | str) -> t
             ))
             continue
         actual = statestore.sha256_file(path)
-        if actual != rep.get("sha256"):
+        if actual != recorded:
             findings.append(_finding(
                 "candidate_manifest_integrity", f"hash-mismatch:{rel}",
                 f"candidate artifact sha256 mismatch for {rel}: manifest records "
-                f"{rep.get('sha256')[:12]}…, disk holds {actual[:12]}…",
+                f"{recorded[:12]}…, disk holds {actual[:12]}…",
                 [rel], required_evidence="artifact bytes matching the recorded sha256",
             ))
     return (not findings, findings)
@@ -313,6 +413,16 @@ def gate_candidate_manifest_integrity(manifest: dict, case_dir: Path | str) -> t
 
 EV_MARKER = re.compile(r"\[EV:([^\]\s]+)\]")
 NUMERIC_TOKEN = re.compile(r"(?<![\w])\d[\d,\.]*")
+
+# Labels that are not claims and therefore need no evidence link. Without
+# these exemptions "10-Q" and "2026-10-30" tokenize as numbers and no report
+# could ever satisfy the rule.
+_EXEMPT_SPAN = re.compile(
+    r"\b(?:10|8)-[QK]\b"        # SEC form names: 10-Q, 10-K, 8-K
+    r"|\b\d{4}-\d{2}-\d{2}\b"  # ISO dates
+    r"|\bFY\s?\d{2,4}\b"       # fiscal-year labels
+    r"|\bQ[1-4]\b"              # quarter labels
+)
 
 
 def gate_report_evidence_links(report_md: str,
@@ -342,10 +452,12 @@ def gate_report_evidence_links(report_md: str,
                                           f"evidence index",
                     ))
         marker_spans = [(s, e) for s, e, _ in markers]
+        exempt_spans = [(m.start(), m.end()) for m in _EXEMPT_SPAN.finditer(line)]
         tokens = [
             (m.start(), m.end(), m.group(0))
             for m in NUMERIC_TOKEN.finditer(line)
             if not any(s <= m.start() < e for s, e in marker_spans)  # inside [EV:..]
+            and not any(s <= m.start() < e for s, e in exempt_spans)  # form/date label
         ]
         if not tokens:
             continue
@@ -355,7 +467,9 @@ def gate_report_evidence_links(report_md: str,
             covered = any(ms >= te and ms < boundary for ms in marker_starts)
             if not covered:
                 findings.append(_finding(
-                    "report_evidence_links", f"unlinked-number:{ln}:{tok}",
+                    # the column keeps two identical numbers on one line
+                    # from collapsing into a single dedup_key
+                    "report_evidence_links", f"unlinked-number:{ln}:{ts}:{tok}",
                     f'numeric token "{tok}" on line {ln} lacks an evidence reference '
                     f"[EV:key] before the next number",
                     [REPORT_ARTIFACT],
@@ -460,6 +574,14 @@ class GateEngine:
                         required_evidence=f"recomputed {series_key}[{period}] agreeing "
                                           f"with the engine output"))
         # valuation comparison
+        if self.value_fn is not None and valuation_json is None:
+            # a missing valuation.json used to skip this whole block silently
+            findings.append(_finding(
+                "recompute", "valuation:missing",
+                "no valuation.json submitted; the valuation engine output "
+                "cannot be verified",
+                ["valuation.json"],
+                required_evidence="valuation.json produced by the valuation engine"))
         if valuation_json is not None and self.value_fn is not None:
             try:
                 val = self.value_fn(model, forecast, mandate.get("assumptions", {}))
@@ -471,7 +593,13 @@ class GateEngine:
                 val = None
             if val is not None:
                 val = val.get("payload", val) if not hasattr(val, "payload") else val.payload
-                for section, keys in (("dcf", ("equity_value", "per_share")),):
+                # per_diluted_share is what the engine emits; per_share is the
+                # stub fallback. comps was never compared at all.
+                for section, keys in (
+                    ("dcf", ("equity_value", "per_diluted_share", "per_share",
+                             "ev", "dcf_upside")),
+                    ("comps", ("comps_price", "comps_upside", "per_share")),
+                ):
                     for k in keys:
                         rec_v = (val.get(section) or {}).get(k)
                         sub_v = (valuation_json.get(section) or {}).get(k)

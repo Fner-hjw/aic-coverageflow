@@ -27,6 +27,19 @@ DEFAULT_LIMITS = {
     "approval_hours": 48,
 }
 
+# Per-role wall-clock ceilings for one backend invocation, in seconds.
+# A single flat timeout starves the heavy roles: the extractor reads every
+# statement slice and emits the full facts set, so it needs materially more
+# time than ingest. Mandates override any entry via limits.role_timeouts.
+DEFAULT_ROLE_TIMEOUTS = {
+    "default": 240.0,
+    "ingest": 240.0,
+    "extractor": 600.0,
+    "model": 300.0,
+    "writer": 600.0,
+    "critic": 300.0,
+}
+
 
 @dataclass
 class Limits:
@@ -36,17 +49,34 @@ class Limits:
     case_minutes: float = 45.0
     role_tokens_max: int = 60000
     approval_hours: float = 48.0
+    role_timeouts: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_ROLE_TIMEOUTS))
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Limits":
         d = d or {}
+        timeouts = dict(DEFAULT_ROLE_TIMEOUTS)
+        for role, seconds in (d.get("role_timeouts") or {}).items():
+            timeouts[str(role)] = float(seconds)
         return cls(
             rounds_max=int(d.get("rounds_max", DEFAULT_LIMITS["rounds_max"])),
             retries_max=int(d.get("retries_max", DEFAULT_LIMITS["retries_max"])),
             case_minutes=float(d.get("case_minutes", DEFAULT_LIMITS["case_minutes"])),
             role_tokens_max=int(d.get("role_tokens_max", DEFAULT_LIMITS["role_tokens_max"])),
             approval_hours=float(d.get("approval_hours", DEFAULT_LIMITS["approval_hours"])),
+            role_timeouts=timeouts,
         )
+
+    def timeout_for(self, role: str) -> float:
+        """Wall-clock ceiling for one invocation of *role*.
+
+        Exact role match wins, then the ``critic`` family, then ``default``.
+        """
+        if role in self.role_timeouts:
+            return float(self.role_timeouts[role])
+        if role.startswith("critic") and "critic" in self.role_timeouts:
+            return float(self.role_timeouts["critic"])
+        return float(self.role_timeouts.get("default", 240.0))
 
 
 @dataclass
@@ -85,6 +115,10 @@ class BudgetTracker:
             "rounds": int(used.get("rounds", 0)),
             "elapsed_minutes": float(used.get("elapsed_minutes", 0.0)),
             "tokens_by_role": dict(used.get("tokens_by_role", {})),
+            # carried across state round-trips: dropping it reset every retry
+            # count on each _sync_budget -> _budget cycle, so check_retry
+            # always saw zero and the retries budget could never fire.
+            "retries_by_role": dict(used.get("retries_by_role", {})),
         }
         self.clock_started: float | None = clock_started
 
@@ -110,6 +144,7 @@ class BudgetTracker:
             "rounds": self.used["rounds"],
             "elapsed_minutes": round(self.used["elapsed_minutes"], 3),
             "tokens_by_role": dict(self.used["tokens_by_role"]),
+            "retries_by_role": dict(self.used.get("retries_by_role") or {}),
         }
 
     def limits_state(self) -> dict:
@@ -119,6 +154,7 @@ class BudgetTracker:
             "case_minutes": self.limits.case_minutes,
             "role_tokens_max": self.limits.role_tokens_max,
             "approval_hours": self.limits.approval_hours,
+            "role_timeouts": dict(self.limits.role_timeouts),
         }
 
     # ------------------------------------------------------------- clocking
@@ -232,9 +268,17 @@ class BudgetTracker:
         ok, reason = self._check_clock_only()
         if not ok:
             return False, reason
-        ok, reason = self.check_new_round()
-        if not ok:
-            return False, reason
+        # Acceptance is evaluated AFTER the final round is consumed, so a case
+        # that converges on its last allowed round has rounds == rounds_max.
+        # check_new_round() refuses at >= rounds_max and would turn every such
+        # convergence into EXHAUSTED; only an actual overrun is a breach.
+        rounds = self.used_rounds()
+        if rounds > self.limits.rounds_max:
+            return False, self._breach(
+                "rounds",
+                f"rounds budget overrun: {rounds} of {self.limits.rounds_max} rounds used",
+                {"rounds": rounds, "max": self.limits.rounds_max},
+            )
         # per-role caps: any role at cap means the case ran out of fuel
         for role, tokens in self.used["tokens_by_role"].items():
             if tokens >= self.limits.role_tokens_max:

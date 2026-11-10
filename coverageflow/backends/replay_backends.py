@@ -111,7 +111,16 @@ class ReplayBackend:
                 record = json.loads(entry.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue  # non-recording JSON in the dir: skip, not fatal
+            # a recording must be a JSON object with string identity fields;
+            # `f in record` on a list/str would raise TypeError, and a
+            # non-string role would poison the index key
+            if not isinstance(record, dict):
+                continue
             if not all(f in record for f in RECORD_FIELDS):
+                continue
+            if not isinstance(record["role"], str) or \
+                    not isinstance(record["assembled_prompt_sha256"], str) or \
+                    not isinstance(record["response_text"], str):
                 continue
             key = (record["role"], record["assembled_prompt_sha256"])
             # first recording wins on duplicate keys (ordered by filename)

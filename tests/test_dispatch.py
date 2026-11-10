@@ -152,7 +152,7 @@ def build_call(**over):
         role="ingest",
         request_id="req-0001",
         candidate_id="cand-1",
-        role_card={"path": "prompts/ingest.md", "version": "1.0", "sha256": "00" * 32},
+        role_card={"path": "prompts/ingest.md", "version": "1.0", "sha256": None},
         payload={"mandate": {"ticker": "TOY"}, "doc_id": "toy-10q-2026q3"},
         output_schema="ingest-report.json",
         budget={"tokens_max": 60000, "timeout_seconds": 240},
@@ -239,12 +239,29 @@ class TestStrictParsing:
         assert result.ok is False
         assert "repair" in result.error.lower()
 
-    def test_unknown_schema_still_requires_dict(self, tree):
+    def test_unknown_schema_ref_fails_closed_without_invoking(self, tree):
+        """An unregistered ref is a wiring bug: block, do not accept anything."""
         backend = StubBackend(output_text=json.dumps({"anything": "goes", "n": 1}))
-        result, _ = disp.dispatch_role(
+        result, trace = disp.dispatch_role(
             build_call(output_schema="unknown-artifact.json"), backend, root=str(tree)
         )
-        assert result.ok, result.error
+        assert result.ok is False
+        assert result.blocking is True
+        assert "unknown output schema ref" in result.error
+        assert backend.invoked_prompts == [], "no time may be spent on the model"
+        assert trace["detail"]["ok"] is False
+
+    def test_parse_output_strict_rejects_unknown_ref(self):
+        parsed, err = disp.parse_output_strict('{"a": 1}', "unknown-artifact.json")
+        assert parsed is None
+        assert err and "unknown output schema ref" in err
+
+    def test_role_output_schema_covers_every_role(self):
+        for role in ("ingest", "extractor", "model", "writer", "generator_lead",
+                     "critic_lead", "critic_c1", "critic_c4"):
+            assert disp.output_schema_for(role) in disp._SCHEMA_REQUIRED_KEYS
+        with pytest.raises(LookupError):
+            disp.output_schema_for("nobody")
 
     def test_writer_report_envelope_schema(self, tree):
         writer_card = tree / "prompts" / "writer.md"
@@ -268,7 +285,7 @@ class TestStrictParsing:
         result, _ = disp.dispatch_role(
             build_call(
                 role="writer",
-                role_card={"path": "prompts/writer.md", "version": "1.0", "sha256": "00" * 32},
+                role_card={"path": "prompts/writer.md", "version": "1.0", "sha256": None},
                 output_schema="report.md",
                 write_scope=["report/v1-cand1.md"],
             ),

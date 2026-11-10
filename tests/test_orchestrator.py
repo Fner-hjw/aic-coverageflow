@@ -349,18 +349,30 @@ class TestInvalidSubmissions:
         # retry counter reset after the valid submission
         assert st["pending"]["retry_count"] == 0
 
-    def test_second_invalid_submission_at_role_blocks(self, tmp_path):
+    def test_invalid_submissions_are_repaired_not_blocked(self, tmp_path):
+        # retries_max=3: two invalid submissions are repaired at the same role
+        # and the third attempt succeeds - the case is not blocked.
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"extractor": [{"__invalid": True}, {"__invalid": True}]})
-        out = orch.run()
+        orch.run()
         st = load_state(case_dir)
-        assert st["status"] == "BLOCKED"
-        assert st["reason"]["code"] == "invalid_submission"
+        assert st["status"] == "PENDING_APPROVAL"
+        assert len(dispatch.calls_of("extractor")) == 3
+        assert st["budget"]["used"]["retries_by_role"]["extractor"] == 2
+
+    def test_retries_exhausted_ends_exhausted_with_precise_reason(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"extractor": [{"__invalid": True}] * 10})
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "EXHAUSTED"
+        assert st["reason"]["code"] == "retries"
         assert "extractor" in st["reason"]["message"]
         result = statestore.read_json(case_dir / "result.json")
-        assert result["terminal"] == "BLOCKED"
-        assert result["reason"]["code"] == "invalid_submission"
-        assert len(dispatch.calls_of("extractor")) == 2
+        assert result["terminal"] == "EXHAUSTED"
+        assert result["reason"]["code"] == "retries"
+        # one initial dispatch + retries_max repairs
+        assert len(dispatch.calls_of("extractor")) == 4
 
     def test_stale_request_id_rejected_as_invalid(self, tmp_path):
         orch, dispatch, clk, case_dir = build_env(
@@ -617,6 +629,7 @@ class TestCLI:
         out = json.loads(capsys.readouterr().out)
         case_id = out["created"]
         assert case_id == "intc-fy2026q3-20261030"
+        casekit.materialize_inputs(ws, case_id)
 
         rc = cli.main(["--workspace", str(ws), "case", "list"])
         assert rc == 0
@@ -660,6 +673,7 @@ class TestCLI:
                   "--ticker", "INTC", "--trigger-doc", "intc-10q-2026q3",
                   "--cutoff", "2026-10-30"])
         capsys.readouterr()
+        casekit.materialize_inputs(ws, "intc-fy2026q3-20261030")
         rc = cli.main(["--workspace", str(ws), "demo", "seed-finding",
                        "--case", "intc-fy2026q3-20261030"])
         assert rc == 0
@@ -671,3 +685,177 @@ class TestCLI:
         perturb = json.loads(capsys.readouterr().out)["perturbation"]
         assert perturb["deterministic_recompute"] is True
         assert perturb["no_post_cutoff_documents"] is True
+
+
+class TestCaseCreationIsNotDestructive:
+    def test_create_case_refuses_to_overwrite_an_existing_case(self, tmp_path):
+        orch, _dispatch, _clk, case_dir = build_env(tmp_path)
+        before = (case_dir / "state.json").read_bytes()
+        with pytest.raises(FileExistsError, match="already exists"):
+            Orchestrator.create_case(
+                tmp_path, "intc-fy2026q3-20261030", casekit.MANDATE,
+                casekit.MANIFEST, dispatch=_stub.StubDispatch(),
+                gate_engine=gates.GateEngine(
+                    schema_path=SCHEMA_PATH, build_model_fn=stub_build_model,
+                    value_fn=stub_value_company))
+        assert (case_dir / "state.json").read_bytes() == before
+
+    def test_create_case_overwrite_is_explicit(self, tmp_path):
+        _orch, _dispatch, _clk, case_dir = build_env(tmp_path)
+        statestore.write_state(case_dir, {**statestore.load_state(case_dir),
+                                          "status": "EXHAUSTED"})
+        fresh = Orchestrator.create_case(
+            tmp_path, "intc-fy2026q3-20261030", casekit.MANDATE,
+            casekit.MANIFEST, dispatch=_stub.StubDispatch(),
+            gate_engine=gates.GateEngine(
+                schema_path=SCHEMA_PATH, build_model_fn=stub_build_model,
+                value_fn=stub_value_company),
+            overwrite=True)
+        assert statestore.load_state(fresh.case_dir)["status"] == "CREATED"
+
+    def test_cli_case_new_reports_the_conflict_cleanly(self, tmp_path, capsys):
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        argv = ["--workspace", str(ws), "case", "new", "--ticker", "INTC",
+                "--trigger-doc", "intc-10q-2026q3", "--cutoff", "2026-10-30"]
+        assert cli.main(argv) == 0
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            cli.main(argv)
+        assert "already exists" in str(exc.value)
+
+
+class TestMissingInputsBlock:
+    def _case_without_inputs(self, tmp_path):
+        """A case whose manifest declares a filing that is not on disk."""
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        for path in (case_dir / "inputs").rglob("*"):
+            if path.is_file() and path.name != "manifest.json":
+                path.unlink()
+        return orch, dispatch, case_dir
+
+    def test_run_blocks_immediately_without_dispatching_any_role(self, tmp_path):
+        orch, dispatch, case_dir = self._case_without_inputs(tmp_path)
+        summary = orch.run()
+        assert summary["status"] == "BLOCKED"
+        assert summary["reason"]["code"] == "missing_inputs"
+        assert "intc-10q-2026q3" in summary["reason"]["message"]
+        assert dispatch.calls == [], "no role may be dispatched into missing inputs"
+        # the block is recorded as a result.json a human can read
+        result = statestore.read_json(case_dir / "result.json")
+        assert result["terminal"] == "BLOCKED"
+        assert result["reason"]["code"] == "missing_inputs"
+
+    def test_blocked_case_reports_the_reason_on_re_run(self, tmp_path):
+        orch, _dispatch, _case_dir = self._case_without_inputs(tmp_path)
+        orch.run()
+        again = orch.run()
+        assert again["status"] == "BLOCKED"
+        assert "still missing" in again["message"]
+
+    def test_fetching_the_inputs_unblocks_the_case(self, tmp_path):
+        orch, dispatch, case_dir = self._case_without_inputs(tmp_path)
+        assert orch.run()["status"] == "BLOCKED"
+        # the human fetches the filing, then re-runs
+        casekit.materialize_inputs(tmp_path, case_dir.name)
+        summary = orch.run()
+        assert summary["status"] == "PENDING_APPROVAL", summary
+        assert dispatch.calls, "the run resumed after the inputs arrived"
+
+
+class TestSlicesAreProducedByTheHarness:
+    """Ingest only DECLARES slices; the deterministic slicer must produce them.
+
+    Nothing called slicer.slice_document before, so a real ingest left the
+    extractor's payload pointing at files that never existed on disk.
+    """
+
+    def _case_with_a_real_filing(self, tmp_path, monkeypatch):
+        # a real agent declares slices but writes no files; the stub writes
+        # them itself, so disable that to exercise the harness path
+        monkeypatch.setattr(_stub.StubDispatch, "_write_slices",
+                            staticmethod(lambda call, parsed: None))
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        # replace the placeholder filing with the hand-written mini 10-Q
+        import shutil
+        from pathlib import Path as _P
+        fixture = _P(__file__).parent / "fixtures" / "mini-10q.htm"
+        target = case_dir / "inputs" / "intc-10q-2026q3.htm"
+        shutil.copyfile(fixture, target)
+        for path in (case_dir / "inputs" / "slices").rglob("*.txt"):
+            path.unlink()
+        return orch, dispatch, case_dir
+
+    @staticmethod
+    def _repair_errors(case_dir) -> list[str]:
+        """Submission errors fed back to the ingest role for repair."""
+        return [e["detail"].get("error") or ""
+                for e in statestore.read_trace(case_dir)
+                if e["event"] == "STATE_TRANSITION"
+                and (e.get("detail") or {}).get("repair_at_same_role") == "ingest"]
+
+    def test_declared_slices_are_written_from_the_source_filing(self, tmp_path,
+                                                               monkeypatch):
+        import hashlib
+        orch, dispatch, case_dir = self._case_with_a_real_filing(tmp_path, monkeypatch)
+        # an ingest that declares a slice but writes no file (like a real agent)
+        declared = {
+            "role": "ingest", "doc_id": "intc-10q-2026q3",
+            "classification": {"form": "10-Q", "affects": ["extraction"],
+                               "reason": "new quarterly statements"},
+            "slices": [{
+                "slice_id": "intc-10q-2026q3/IS", "kind": "income_statement",
+                "path": "inputs/slices/intc-10q-2026q3/IS.txt",
+                "sha256": None, "anchors": {"first_line": "Net revenue"},
+            }],
+            "superseded": [], "conformance": "schema 1.0", "prompt_version": "1.0",
+        }
+        dispatch.scripts["ingest"] = declared
+        summary = orch.run()
+        assert summary["status"] == "PENDING_APPROVAL", summary
+        produced = case_dir / "inputs" / "slices" / "intc-10q-2026q3" / "IS.txt"
+        assert produced.is_file(), "the harness must produce the declared slice"
+        text = produced.read_text(encoding="utf-8")
+        assert "Net revenue | 13,500 | 12,500" in text
+        assert hashlib.sha256(produced.read_bytes()).hexdigest()
+
+    def test_a_false_slice_sha256_is_repaired_not_accepted(self, tmp_path,
+                                                          monkeypatch):
+        orch, dispatch, case_dir = self._case_with_a_real_filing(tmp_path, monkeypatch)
+        bad = {
+            "role": "ingest", "doc_id": "intc-10q-2026q3",
+            "classification": {"form": "10-Q", "affects": ["extraction"],
+                               "reason": "new quarterly statements"},
+            "slices": [{
+                "slice_id": "intc-10q-2026q3/IS", "kind": "income_statement",
+                "path": "inputs/slices/intc-10q-2026q3/IS.txt",
+                "sha256": "0" * 64, "anchors": {"first_line": "Net revenue"},
+            }],
+            "superseded": [], "conformance": "schema 1.0", "prompt_version": "1.0",
+        }
+        dispatch.scripts["ingest"] = bad
+        summary = orch.run()
+        assert summary["status"] == "EXHAUSTED"
+        assert summary["reason"]["code"] == "retries"
+        assert any("declares sha256" in err
+                   for err in self._repair_errors(case_dir))
+
+    def test_a_slice_for_an_unknown_document_is_rejected(self, tmp_path,
+                                                        monkeypatch):
+        orch, dispatch, case_dir = self._case_with_a_real_filing(tmp_path, monkeypatch)
+        bad = {
+            "role": "ingest", "doc_id": "intc-10q-2026q3",
+            "classification": {"form": "10-Q", "affects": ["extraction"],
+                               "reason": "new quarterly statements"},
+            "slices": [{
+                "slice_id": "not-in-the-manifest/IS", "kind": "income_statement",
+                "path": "inputs/slices/not-in-the-manifest/IS.txt",
+                "sha256": None, "anchors": {"first_line": "x"},
+            }],
+            "superseded": [], "conformance": "schema 1.0", "prompt_version": "1.0",
+        }
+        dispatch.scripts["ingest"] = bad
+        summary = orch.run()
+        assert summary["status"] == "EXHAUSTED"
+        assert any("not in inputs/manifest.json" in err
+                   for err in self._repair_errors(case_dir))

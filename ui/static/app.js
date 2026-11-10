@@ -357,7 +357,7 @@ async function render() {
   const { page, rest } = Route.parse();
   try {
     if (page === "dashboard") await Views.dashboard(view);
-    else if (page === "new") await Views.newCase(view);
+    else if (page === "new") await Views.newCase(view, rest[0]);
     else if (page === "bundles") await Views.bundles(view);
     else if (page === "evolution") await Views.evolution(view);
     else if (page === "demo") await Views.demo(view);
@@ -680,18 +680,28 @@ function renderCaseOverview(body, c) {
         labeledPanel("Run control",
           h("div", { class: "actions" },
             (st.status === "CREATED" || st.status === "RUNNING")
-              ? h("button", { class: "btn primary", onclick: () => doRun(c.case_id) }, "▶ Run (replay backend)")
+              ? h("button", { class: "btn primary",
+                  onclick: () => doRun(c.case_id, false) },
+                  "▶ Run (active backend)")
               : null,
-            (["RUNNING", "BLOCKED", "EXHAUSTED"].includes(st.status))
+            (st.status === "CREATED" || st.status === "RUNNING")
+              ? h("button", { class: "btn",
+                  onclick: () => doRun(c.case_id, true) },
+                  "▶ Dry run (replay)")
+              : null,
+            (st.status === "RUNNING")
               ? h("button", { class: "btn", onclick: () => doResume(c.case_id) }, "↻ Resume pending work") : null,
-            !["CLOSED", "APPROVED", "REJECTED"].includes(st.status)
+            ![ "CLOSED", "APPROVED", "REJECTED"].includes(st.status)
               ? h("button", { class: "btn danger", onclick: () => doKill(c.case_id) }, "✖ Kill stage (rehearsal)") : null,
-            !["CLOSED", "APPROVED", "REJECTED"].includes(st.status)
+            ![ "CLOSED", "APPROVED", "REJECTED"].includes(st.status)
               ? h("a", { class: "btn", href: `#/demo?case=${c.case_id}` }, "demo panel →") : null,
             h("a", { class: "btn", href: `#/terminal/${c.case_id}` },
               "tail in Terminal →"),
           ),
+          blockedGuidance(c, st),
           h("p", { class: "hint" },
+            "“Run” dispatches to the backend selected on the ", h("a", { href: "#/backends" }, "Backends page"),
+            "; “Dry run” uses canned replay recordings and refuses mandates with no matching recording. ",
             "every action goes through the orchestrator: the UI only calls /api endpoints; gates and acceptance rules are untouchable from here.")),
       ),
       h("div", null,
@@ -725,10 +735,82 @@ function renderCaseOverview(body, c) {
       )));
 }
 
-async function doRun(caseId) {
+/* what a BLOCKED / EXHAUSTED case can actually do (frozen semantics):
+ * - BLOCKED(invalid_submission): terminal by design — the way forward is
+ *   a fresh case from the same frozen bundle.
+ * - BLOCKED(APPROVAL_EXPIRED): re-approval restarts acceptance from zero
+ *   (the orchestrator supports it; the service endpoint allows exactly
+ *   this case). */
+async function doReapprove(caseId, byInput, whyInput) {
+  const by = byInput.value.trim() || "coverage desk operator";
+  const r = await guard(() => Api.post(
+    `/api/cases/${caseId}/approval`,
+    { decision: "APPROVED", by, reasoning: whyInput.value.trim() }),
+    "re-approval failed");
+  if (r.ok) {
+    toast("acceptance restarted from zero",
+      "case re-approved — clean-review streak resets, deadline restarts");
+    byInput.value = ""; whyInput.value = "";
+    render();
+  }
+}
+
+function blockedGuidance(c, st) {
+  if (!["BLOCKED", "EXHAUSTED", "STOPPED"].includes(st.status)) return null;
+  const code = (st.reason || {}).code || st.status;
+  const freshLink = (note) => h("div", { class: "ok-box" },
+    h("b", null, "The way forward: a fresh case from the same bundle."),
+    h("p", { class: "mb0" }, note),
+    h("a", { class: "btn primary small", href: `#/new/${c.case_id}` },
+      "New case — inherit this mandate →"));
+  if (st.status === "BLOCKED" && code === "APPROVAL_EXPIRED") {
+    const by = h("input", { type: "text", placeholder: "approver name" });
+    const why = h("input", { type: "text",
+      placeholder: "reasoning (recorded in the decision trail)" });
+    return h("div", { class: "panel inset mt2" },
+      h("label", { class: "label mt0" }, "Recovery — re-approval restarts acceptance from zero"),
+      h("p", { class: "hint" },
+        "the approval deadline expired, which is the one blocked state the system can recover: ",
+        "recording a fresh APPROVED decision restarts the clean-review streak and the deadline."),
+      h("div", { class: "row wrap" }, by, why,
+        h("button", { class: "btn primary",
+          onclick: () => doReapprove(c.case_id, by, why) },
+          "Re-approve (APPROVED)")));
+  }
+  if (st.status === "BLOCKED") {
+    return h("div", { class: "err-box mt2" },
+      h("b", null, `Terminal by design — ${code}.`),
+      h("p", { class: "mb0" },
+        "a role returned an invalid submission twice in a row, so the orchestrator refuses any ",
+        "further spending on this case; run/resume are no-ops here. Nothing is lost — the ",
+        "verified stages, findings and trace remain as evidence."),
+      freshLink("create a new case pointing at the same frozen bundle; mandate settings copy over in the wizard."));
+  }
+  if (st.status === "EXHAUSTED") {
+    return h("div", { class: "err-box mt2" },
+      h("b", null, "Budget exhausted — terminal."),
+      h("p", { class: "mb0" },
+        "revision rounds, the case clock or a per-role token cap ran out. ",
+        "The budget is a hard safety control: exhaustion never grants acceptance."),
+      freshLink("start a new case; consider raising the round/clock budget in the mandate if it was too tight."));
+  }
+  return h("div", { class: "err-box mt2" },
+    h("b", null, `Case is ${st.status} — terminal.`),
+    freshLink("start a new case from the same bundle."));
+}
+
+/* dispatch a run. replay=false -> the operator's ACTIVE backend (set on
+ * the Backends page, e.g. vibe); replay=true -> the canned-recordings
+ * dry run, which refuses any mandate whose assembled prompt hash has no
+ * matching recording (ReplayMissError — by design, not a bug). */
+async function doRun(caseId, replay) {
   const r = await guard(() => Api.post(`/api/cases/${caseId}/run`,
-    { backend: "auto", replay: true }), "run failed");
-  if (r.ok) { toast("run dispatched", `backend replay · pending ${r.data.pending_role}`); render(); }
+    { backend: "auto", replay: !!replay }), "run failed");
+  if (r.ok) {
+    toast("run dispatched", `${replay ? "replay dry run (canned responses)"
+      : "active backend — watch the Live terminal"} · pending ${r.data.pending_role}`);
+    render();
+  }
 }
 
 async function doResume(caseId) {
@@ -1291,10 +1373,22 @@ function case_id_title(id) { return id.split("-").slice(0, 2).join(" ").toUpperC
 
 /* --------------------------------------------------- new-case wizard ---- */
 
-Views.newCase = async function newCase(view) {
+Views.newCase = async function newCase(view, fromId) {
   CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
   document.title = "New case — CoverageFlow";
   const bundles = await guard(() => Api.get("/api/bundles"));
+
+  /* guided restart: #/new/<case_id> prefills the whole mandate from an
+   * existing case, so a blocked/terminal case is replaced in a few
+   * clicks instead of retyping the plan by hand. */
+  let src = null;
+  if (fromId) {
+    const r = await guard(() => Api.get(`/api/cases/${fromId}`),
+      "cannot prefill from source case");
+    if (r.ok) src = r.data;
+  }
+  const M = src ? (src.mandate || {}) : {};
+  let DCT = (M.assumptions || {}).dcf_comps_tolerance ?? 0.25;
 
   const W = {
     ticker: h("input", { type: "text", placeholder: "INTC", value: "INTC" }),
@@ -1313,9 +1407,14 @@ Views.newCase = async function newCase(view) {
     tax: h("input", { type: "number", step: "0.01", value: "0.15", class: "num" }),
     mfloor: h("input", { type: "number", step: "0.01", value: "0.30", class: "num" }),
     mceil: h("input", { type: "number", step: "0.01", value: "0.55", class: "num" }),
+    idWarn: h("div", { class: "hint" }),
   };
   const SECTIONS = ["Summary", "Results", "Segment detail", "Outlook", "Valuation", "Risks"];
   const sectionState = new Map(SECTIONS.map(s => [s, true]));
+  if (src) {
+    /* a restart must never collide with its source case id */
+    W.period.value = (fromId.split("-")[1] || "fy2027q1") + "-r2";
+  }
 
   const rawBox = h("textarea", { class: "code", rows: "22", readonly: "readonly" });
   const errorsBox = h("div");
@@ -1359,11 +1458,134 @@ Views.newCase = async function newCase(view) {
     peersRows.append(tr);
   }
 
-  segAdd({ name: "CCG", min: -0.10, max: 0.12 });
-  segAdd({ name: "DCAI", min: -0.05, max: 0.25 });
-  segAdd({ name: "NEX", min: -0.05, max: 0.20 });
-  peerAdd({ ticker: "AMD", pe: "48.2", evebitda: "27.6", ps: "8.1", growth: "0.22" });
-  peerAdd({ ticker: "NVDA", pe: "52.4", evebitda: "33.1", ps: "24.4", growth: "0.55" });
+  if (src) {
+    /* inherit the frozen bundle and every segment/peer bound from the
+     * source mandate — the editor starts as a copy of the real plan */
+    const wantedBundle = (src.manifest || {}).bundle_id
+      || (M.bundle_id ?? "");
+    if (wantedBundle && bundles.ok &&
+        bundles.data.bundles.some(b => b.bundle_id === wantedBundle))
+      W.bundle.value = wantedBundle;
+  }
+
+  /* ---- guided onboarding -------------------------------------------------
+   * A mandate's identity fields (ticker, CIK, bundle, cutoff, trigger)
+   * are all DERIVED from the frozen bundle — the human picks a bundle,
+   * not a CIK. The valuation block inherits from the desk's own history
+   * for the same ticker ("desk profile"), and every assumption stays
+   * editable with an explainer for what it constrains. */
+  const deskBox = h("div");
+  let userTrigger = false, autoTicker = "", autoCutoff = "", cikUser = false;
+  W.trigger.addEventListener("change", () => { userTrigger = true; });
+  W.cik.addEventListener("input", () => { cikUser = true; });
+  W.ticker.addEventListener("input", () => { autoTicker = ""; void deskProfiles(); });
+
+  function applyMandate(data, opts = {}) {
+    const m = data.mandate || {}, A = m.assumptions || {},
+          RP = m.report_policy || {}, FB = A.forecast_bounds || {};
+    if (opts.ident) {
+      const bid = (data.manifest || {}).bundle_id;
+      if (bid && [...W.bundle.options].some(o => o.value === bid))
+        W.bundle.value = bid;
+      if (m.ticker) W.ticker.value = autoTicker = m.ticker;
+      if (m.cik) W.cik.value = m.cik;
+      if (m.cutoff_date) W.cutoff.value = autoCutoff = m.cutoff_date;
+      if ((m.case_id || "").split("-")[1])
+        W.period.value = (m.case_id || "").split("-")[1] + "-r2";
+    }
+    if (RP.note_type) W.noteType.value = RP.note_type;
+    if (RP.length_words) {
+      W.wordsMin.value = String(RP.length_words[0]);
+      W.wordsMax.value = String(RP.length_words[1]);
+    }
+    for (const s of SECTIONS)
+      sectionState.set(s, (RP.sections || SECTIONS).includes(s));
+    if (A.wacc != null) W.wacc.value = String(A.wacc);
+    if (A.terminal_growth != null) W.tg.value = String(A.terminal_growth);
+    if (A.exit_multiple_ebitda != null) W.exit.value = String(A.exit_multiple_ebitda);
+    if (A.tax_rate != null) W.tax.value = String(A.tax_rate);
+    if (FB.margin_floor_gross != null) W.mfloor.value = String(FB.margin_floor_gross);
+    if (FB.margin_ceiling_gross != null) W.mceil.value = String(FB.margin_ceiling_gross);
+    DCT = A.dcf_comps_tolerance ?? DCT;
+    segRows.replaceChildren();
+    peersRows.replaceChildren();
+    for (const [name, [min, max]] of Object.entries(FB.segments || {}))
+      segAdd({ name, min, max });
+    for (const p of ((A.peer_block || {}).peers) || []) peerAdd({
+      ticker: p.ticker, pe: p.p_e_ttm, evebitda: p.ev_ebitda,
+      ps: p.p_s, growth: p.rev_growth_yoy });
+    for (const chip of $$("[data-secchip]"))
+      chip.classList.toggle("accent", sectionState.get(chip.dataset.secchip));
+    sync();
+  }
+
+  async function deriveIdent() {
+    const b = (bundles.ok ? bundles.data.bundles : [])
+      .find(x => x.bundle_id === W.bundle.value);
+    if (!b) return;
+    const tk = (b.bundle_id.split("-")[0] || "").toUpperCase();
+    if (tk && (!W.ticker.value || W.ticker.value === autoTicker
+               || W.ticker.value === "INTC")) {
+      W.ticker.value = autoTicker = tk;   // bundle_id embeds the ticker
+      if (!cikUser) {
+        const r = await guard(() => Api.get(
+          `/api/edgar/search?ticker=${encodeURIComponent(tk)}`), null);
+        if (r.ok) {
+          const cik = r.data.cik
+            || ((r.data.filings || r.data.rows || [])[0] || {}).cik;
+          if (cik) W.cik.value = String(cik);   // CIK from the EDGAR index
+        }
+      }
+      void deskProfiles();
+    }
+    if (b.as_of_cutoff && (!W.cutoff.value || W.cutoff.value === autoCutoff
+                           || W.cutoff.value === "2026-10-30")) {
+      W.cutoff.value = autoCutoff = b.as_of_cutoff;
+      paintDocs();
+    }
+    void deskProfiles();
+    sync();
+  }
+
+  async function deskProfiles() {
+    if (src) return;                      // restart path already prefilled
+    const tk = (W.ticker.value || "").toUpperCase();
+    if (deskBox.dataset.tk === tk) return;
+    deskBox.dataset.tk = tk;
+    deskBox.replaceChildren();
+    if (!tk) return;
+    const r = await guard(() => Api.get("/api/cases"), null);
+    if (!r.ok) return;
+    const mine = (r.data.cases || [])
+      .filter(c => String(c.ticker || "").toUpperCase() === tk)
+      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+    if (!mine.length) return;
+    const last = mine[0];
+    deskBox.append(h("div", { class: "panel inset" },
+      h("label", { class: "label mt0" }, `desk profile — ${tk}`),
+      h("p", { class: "hint" },
+        `your desk already covered ${tk} ${mine.length}×. The latest mandate (${last.case_id}) carries the report policy, valuation assumptions, segment bounds and peer block you used last time — apply it and adjust, instead of re-deriving the plan by hand.`),
+      h("div", { class: "row wrap" },
+        h("button", { class: "btn primary small", onclick: async () => {
+          const rr = await guard(() => Api.get(`/api/cases/${last.case_id}`), null);
+          if (rr.ok) {
+            applyMandate(rr.data);
+            toast("desk defaults applied", `inherited from ${last.case_id}`);
+          }
+        } }, "Apply latest desk mandate →"),
+        h("a", { class: "btn small", href: `#/case/${last.case_id}/overview` },
+          "view it →"))));
+  }
+
+  if (src) {
+    applyMandate(src, { ident: true });
+  } else {
+    segAdd({ name: "CCG", min: -0.10, max: 0.12 });
+    segAdd({ name: "DCAI", min: -0.05, max: 0.25 });
+    segAdd({ name: "NEX", min: -0.05, max: 0.20 });
+    peerAdd({ ticker: "AMD", pe: "48.2", evebitda: "27.6", ps: "8.1", growth: "0.22" });
+    peerAdd({ ticker: "NVDA", pe: "52.4", evebitda: "33.1", ps: "24.4", growth: "0.55" });
+  }
 
   function num(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
 
@@ -1397,13 +1619,21 @@ Views.newCase = async function newCase(view) {
           margin_floor_gross: num(W.mfloor.value),
           margin_ceiling_gross: num(W.mceil.value) },
         peer_block: { as_of: W.cutoff.value, peers },
-        dcf_comps_tolerance: 0.25,
+        dcf_comps_tolerance: DCT,
       },
     };
   }
 
   function sync() {
     rawBox.value = JSON.stringify(payload(), null, 2);
+    if (src) {
+      const id = `${W.ticker.value.trim().toLowerCase()}-${W.period.value.trim()}-${W.cutoff.value.replace(/-/g, "")}`;
+      if (id === fromId)
+        W.idWarn.replaceChildren(h("span", { class: "chip major" },
+          "collides with the source case id"), " — change the period label or cutoff; the source case stays on disk as evidence.");
+      else W.idWarn.replaceChildren(h("span", { class: "chip ok" },
+        "new case id"), ` ${id}`);
+    }
   }
 
   function paintDocs() {
@@ -1423,10 +1653,20 @@ Views.newCase = async function newCase(view) {
     const trig = W.trigger;
     trig.replaceChildren(...b.documents.filter(d => d.filed <= cutoff)
       .map(d => h("option", { value: d.doc_id }, `${d.form} · ${d.doc_id}`)));
+    /* auto-suggest the trigger: latest 10-Q, else latest 10-K, else the
+     * most recent filing visible at the cutoff — the human almost never
+     * needs to pick this by hand */
+    if (!userTrigger && trig.options.length) {
+      const vis = b.documents.filter(d => d.filed <= cutoff)
+        .sort((a, c) => String(c.filed).localeCompare(String(a.filed)));
+      const best = vis.find(d => /10-?Q/i.test(d.form))
+        || vis.find(d => /10-?K/i.test(d.form)) || vis[vis.length - 1];
+      if (best) trig.value = best.doc_id;
+    }
     sync();
   }
 
-  W.bundle.addEventListener("change", paintDocs);
+  W.bundle.addEventListener("change", () => { void deriveIdent(); paintDocs(); });
   W.cutoff.addEventListener("change", paintDocs);
   for (const el of [W.ticker, W.cik, W.period, W.noteType, W.wordsMin, W.wordsMax,
     W.wacc, W.tg, W.exit, W.tax, W.mfloor, W.mceil])
@@ -1451,7 +1691,10 @@ Views.newCase = async function newCase(view) {
 
   const secChips = h("div", { class: "row wrap" },
     ...SECTIONS.map(s => {
-      const chip = h("span", { class: "chip accent", style: "cursor:pointer" }, s);
+      const chip = h("span", { class: "chip accent", style: "cursor:pointer",
+        dataset: { secchip: s } }, s);
+      chip.classList.toggle("accent", sectionState.get(s));
+      chip.style.opacity = sectionState.get(s) ? "" : ".45";
       chip.addEventListener("click", () => {
         sectionState.set(s, !sectionState.get(s));
         chip.classList.toggle("accent", sectionState.get(s));
@@ -1463,11 +1706,25 @@ Views.newCase = async function newCase(view) {
 
   const formPane = h("div", null,
     errorsBox, okBox,
+    src ? h("div", { class: "ok-box" },
+      h("b", null, `Prefilled from case ${fromId}`),
+      h("p", { class: "mb0" },
+        "every mandate field below is inherited from that caseʼs frozen plan — sections, valuation assumptions, segment bounds, peer block, bundle and trigger. ",
+        "Review, adjust what the plan discussed, and create.")) : null,
+    !src ? h("div", { class: "panel inset" },
+      h("label", { class: "label mt0" }, "onboarding — you only pick the frozen bundle"),
+      h("p", { class: "hint mb2" },
+        "ticker, CIK, cutoff date and trigger document are all derived from the frozen bundle you pick below ",
+        "(bundle id embeds the ticker; the CIK comes from the EDGAR index; the trigger is the latest 10-Q/10-K at the cutoff). ",
+        "To cover a company that has no frozen bundle yet, build one first on the ",
+        h("a", { href: "#/bundles" }, "Bundle builder"), " — it searches EDGAR by ticker."),
+      deskBox) : null,
     h("fieldset", null, h("legend", null, "ident · bundle · cutoff"),
       h("div", { class: "form-grid" },
         label("ticker", W.ticker), label("period label", W.period),
         label("cik", W.cik), label("cutoff date", W.cutoff),
         label("frozen bundle", W.bundle), label("trigger document", W.trigger)),
+      src ? W.idWarn : null,
       h("label", { class: "label mt2" }, "documents visible at this cutoff"),
       W.docsBox),
     h("fieldset", null, h("legend", null, "report policy"),
@@ -1476,6 +1733,11 @@ Views.newCase = async function newCase(view) {
         label("min words", W.wordsMin), label("max words", W.wordsMax)),
       h("label", { class: "label mt2" }, "sections (click to toggle)"), secChips),
     h("fieldset", null, h("legend", null, "valuation assumptions — human-owned"),
+      h("p", { class: "hint mb2" },
+        "these are constraints, not forecasts: the model engine must keep every projected figure inside your segment bounds and margin floor/ceiling, ",
+        "the DCF must cross-check against the peer block within the tolerance, and the critic loop verifies every number against the filings. ",
+        "Start from the desk profile above (or neutral defaults) and only move the numbers you have conviction about — ",
+        "acceptance is decided by the gates and two clean critic reviews, not by these inputs being 'right'."),
       h("div", { class: "form-grid" },
         label("WACC", W.wacc), label("terminal growth", W.tg),
         label("exit multiple (EBITDA)", W.exit), label("tax rate", W.tax),
@@ -1509,6 +1771,12 @@ Views.newCase = async function newCase(view) {
     h("div", { class: "wizard" }, formPane, rawPane));
 
   paintDocs();
+  if (!src) void deriveIdent();       /* from scratch: derive ident from the
+                                         already-defaulted first bundle */
+  if (src && M.trigger_document &&
+      [...W.trigger.options].some(o => o.value === M.trigger_document))
+    W.trigger.value = M.trigger_document;
+  sync();
 
   function label(text, el) {
     return h("label", { class: "f" }, h("span", null, text), el);

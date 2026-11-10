@@ -36,6 +36,13 @@ class AgentResult:
     tokens_in: int | None = None
     tokens_out: int | None = None
     raw_response_ref: str | None = None
+    # AGENT_RESULT record produced by dispatch_role, carried so the
+    # orchestrator can merge the prompt sha / card version into its own trace
+    # instead of dropping them.
+    trace: dict | None = None
+    # True when the failure is not repairable by the role (e.g. its inputs are
+    # absent): the orchestrator blocks the case instead of spending retries.
+    blocking: bool = False
 
     def failed(self, error: str) -> "AgentResult":
         """Return a copy of this result marked failed with `error`.
@@ -53,6 +60,7 @@ class AgentResult:
             tokens_in=self.tokens_in,
             tokens_out=self.tokens_out,
             raw_response_ref=self.raw_response_ref,
+            trace=self.trace,
         )
 
 

@@ -25,6 +25,8 @@ from coverageflow import statestore
 from coverageflow.backends.base import AgentResult, HealthReport
 from coverageflow.dispatch import RoleCall
 
+import casekit
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -90,6 +92,8 @@ def _new_case(ws: Path) -> str:
     case_id = orch_mod.new_case_id("INTC", "fy2026q3", "2026-10-30")
     cli.main(["--workspace", str(ws), "case", "new", "--ticker", "INTC",
               "--trigger-doc", "intc-10q-2026q3", "--cutoff", "2026-10-30"])
+    # a case is only runnable once its source filing is in the inputs dir
+    casekit.materialize_inputs(ws, case_id)
     return case_id
 
 
@@ -221,9 +225,9 @@ class TestRealDispatchRunOverRecordings:
                                               replay_dir=case_dir / "replay")
         call = RoleCall(role="ingest", request_id="req-9999", candidate_id=None,
                         role_card={"path": "prompts/ingest.md",
-                                   "version": "1.1", "sha256": None},
+                                   "version": "1.0", "sha256": None},
                         payload={"case_id": case_id, "round": 1},
-                        output_schema="references/schemas/1.0",
+                        output_schema="ingest-report.json",
                         budget={"tokens_max": 60000, "timeout_seconds": 5},
                         write_scope=["rounds/round-001/generator/"
                                      "ingest-report.json"])

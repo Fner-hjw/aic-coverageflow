@@ -141,6 +141,18 @@ class TestRoleCardParsing:
         with pytest.raises(pa.AssemblyError):
             pa.parse_role_card(bad)
 
+    def test_header_after_the_body_is_an_error_not_a_silent_drop(self, tree):
+        """A --references pin below the body used to vanish without a word."""
+        bad = tree / "prompts" / "late.md"
+        pa.write_text(
+            bad,
+            "--version: 1.0\n--role: ingest\n--produces: ingest-report.json\n"
+            "--read: mandate.json\n\n# CONTRACT\n\nbody text\n"
+            "--references: accounting-definitions.md\n",
+        )
+        with pytest.raises(pa.AssemblyError, match="after the card body"):
+            pa.parse_role_card(bad)
+
 
 class TestAssemblyErrors:
     def test_missing_pinned_reference_is_hard_error(self, tree):

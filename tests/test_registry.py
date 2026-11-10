@@ -190,3 +190,85 @@ class TestCasePinning:
         r = reg.VersionRegistry(regpath)
         st_cfg = r.pinned_config_for_case(case_dir)
         assert st_cfg == {"marker": "cfg-vX"}
+
+
+class TestRegistryIntegrity:
+    def test_corrupt_registry_is_not_silently_reset(self, regpath):
+        regpath.parent.mkdir(parents=True)
+        regpath.write_text("{not json", encoding="utf-8")
+        with pytest.raises(ValueError, match="refusing to reset"):
+            reg.VersionRegistry(regpath)
+        # the file is left exactly as it was for a human to inspect
+        assert regpath.read_text(encoding="utf-8") == "{not json"
+
+    def test_registry_without_versions_is_not_silently_reset(self, regpath):
+        regpath.parent.mkdir(parents=True)
+        regpath.write_text(json.dumps({"active": "sys-1.0", "versions": []}),
+                           encoding="utf-8")
+        with pytest.raises(ValueError, match="no version entries"):
+            reg.VersionRegistry(regpath)
+
+    def test_registry_without_active_pointer_is_rejected(self, regpath):
+        regpath.parent.mkdir(parents=True)
+        regpath.write_text(json.dumps({"versions": [{"version": "sys-1.0"}]}),
+                           encoding="utf-8")
+        with pytest.raises(ValueError, match="no active pointer"):
+            reg.VersionRegistry(regpath)
+
+    def test_register_rejects_null_version(self, regpath):
+        r = reg.VersionRegistry(regpath)
+        with pytest.raises(ValueError, match="non-empty string"):
+            r.register(sample_proposal(version=None))
+
+    def test_cannot_reject_the_active_version(self, regpath):
+        r = reg.VersionRegistry(regpath)
+        with pytest.raises(RuntimeError, match="active"):
+            r.approve("sys-1.0", by="x", decision="REJECTED")
+        assert r.active() == "sys-1.0"
+
+    def test_rollback_records_who_and_why_on_the_entry(self, regpath):
+        r = reg.VersionRegistry(regpath)
+        r.register(sample_proposal())
+        r.record_review("sys-1.1", fresh_critic_findings=[],
+                        regressions_all_pass=True, identical_outputs_proof={})
+        r.approve("sys-1.1", by="Gaetano", decision="APPROVED")
+        r.rollback("sys-1.0", by="Gaetano", reason="dev-3 regression")
+        audit = r.get("sys-1.1")["rollback"]
+        assert audit["to"] == "sys-1.0"
+        assert audit["by"] == "Gaetano"
+        assert audit["reason"] == "dev-3 regression"
+        assert audit["ts"]
+        # and it survives a reload from disk
+        assert reg.VersionRegistry(regpath).get("sys-1.1")["rollback"]["by"] == "Gaetano"
+
+    def test_config_versions_is_a_deep_copy(self, regpath):
+        r = reg.VersionRegistry(regpath)
+        cfg = r.config_versions()
+        cfg["prompt_cards"]["critics"].append("9.9")
+        cfg["prompt_cards"]["ingest"] = "9.9"
+        fresh = r.config_versions()
+        assert fresh["prompt_cards"]["critics"] == ["1.0"]
+        assert fresh["prompt_cards"]["ingest"] == "1.0"
+
+    def test_config_versions_inherits_from_the_parent_chain(self, regpath):
+        """A version that changes one card inherits the rest from its parent."""
+        r = reg.VersionRegistry(regpath)
+        r.register(sample_proposal())          # sys-1.1, extractor 1.1
+        r.record_review("sys-1.1", fresh_critic_findings=[],
+                        regressions_all_pass=True, identical_outputs_proof={})
+        r.approve("sys-1.1", by="Gaetano", decision="APPROVED")
+        # a child that only pins the writer card
+        child = sample_proposal(version="sys-1.2", parent="sys-1.1")
+        child["tested"] = {"prompt_cards": {"writer": "1.2"}}
+        r.register(child)
+        cfg = r.config_versions("sys-1.2")
+        assert cfg["prompt_cards"]["writer"] == "1.2"
+        # inherited from sys-1.1, not reset to the baseline
+        assert cfg["prompt_cards"]["extractor"] == "1.1"
+        assert cfg["prompt_cards"]["ingest"] == "1.0"
+        assert cfg["engines"] == "1.0"   # inherited from sys-1.1
+
+    def test_config_versions_rejects_an_unknown_version(self, regpath):
+        r = reg.VersionRegistry(regpath)
+        with pytest.raises(LookupError):
+            r.config_versions("sys-9.9")

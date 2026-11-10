@@ -26,6 +26,8 @@ from coverageflow import cli, statestore
 from ui import service
 from ui.api import create_app
 
+import casekit
+
 WIZARD = {
     "ticker": "AMDX", "cik": "0001234567",
     "trigger_document": "x-10q-2026q3", "cutoff_date": "2026-10-30",
@@ -52,6 +54,8 @@ def real_ws(tmp_path, monkeypatch):
                    "--trigger-doc", "intc-10q-2026q3",
                    "--cutoff", "2026-10-30"])
     assert rc == 0
+    # a case is only runnable once its source filing is in the inputs dir
+    casekit.materialize_inputs(ws, "intc-fy2026q3-20261030")
     monkeypatch.setenv("COVERAGEFLOW_WORKSPACE", str(ws))
     yield ws
 
@@ -249,6 +253,7 @@ class TestControllerModeRunOverReplay:
                        "--trigger-doc", "intc-10q-2026q3",
                        "--cutoff", "2026-10-30"])
         assert rc == 0
+        casekit.materialize_inputs(real_ws, case_id)
         record_dir.mkdir(parents=True)
         for n, blob in copies.items():
             (record_dir / n).write_bytes(blob)
