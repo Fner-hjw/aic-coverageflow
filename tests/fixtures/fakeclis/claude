@@ -19,6 +19,12 @@ if argv_log:
     with open(argv_log, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(sys.argv) + "\n")
 
+stdin_text = "" if sys.stdin.isatty() else sys.stdin.read()
+stdin_log = os.environ.get("FAKE_STDIN_LOG")
+if stdin_log:
+    with open(stdin_log, "a", encoding="utf-8") as fh:
+        fh.write(stdin_text)
+
 behavior = os.environ.get("FAKE_BEHAVIOR", "ok")
 
 stdout_file = os.environ.get("FAKE_STDOUT_FILE")
@@ -27,9 +33,7 @@ if stdout_file:
         sys.stdout.write(fh.read())
     sys.exit(0)
 
-prompt = ""
-if "-p" in sys.argv:
-    prompt = sys.argv[sys.argv.index("-p") + 1]
+prompt = stdin_text
 
 if behavior == "sleep":
     time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
@@ -63,7 +67,10 @@ print(
             "usage": {
                 "input_tokens": max(1, len(prompt) // 4),
                 "output_tokens": 9,
+                "cache_creation_input_tokens": 3,
+                "cache_read_input_tokens": 5,
             },
+            "total_cost_usd": 0.0123,
         }
     )
 )

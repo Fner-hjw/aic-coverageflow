@@ -43,6 +43,14 @@ class AgentResult:
     # True when the failure is not repairable by the role (e.g. its inputs are
     # absent): the orchestrator blocks the case instead of spending retries.
     blocking: bool = False
+    # Reported spend in USD (claude envelope total_cost_usd); None when the
+    # backend does not report cost.
+    cost_usd: float | None = None
+    # Portion of tokens_in served from the prompt cache (already included in
+    # tokens_in for codex; summed into tokens_in for claude). None if unknown.
+    tokens_cached: int | None = None
+    # Model name the backend was configured with, for trace metadata.
+    model: str | None = None
 
     def failed(self, error: str) -> "AgentResult":
         """Return a copy of this result marked failed with `error`.
@@ -61,6 +69,9 @@ class AgentResult:
             tokens_out=self.tokens_out,
             raw_response_ref=self.raw_response_ref,
             trace=self.trace,
+            cost_usd=self.cost_usd,
+            tokens_cached=self.tokens_cached,
+            model=self.model,
         )
 
 

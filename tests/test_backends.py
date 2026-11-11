@@ -109,6 +109,8 @@ class TestCliHappyPaths:
         monkeypatch.setenv("FAKE_ARGV_LOG", str(log))
         copy = tmp_path / "prompt.txt"
         monkeypatch.setenv("FAKE_PROMPT_COPY", str(copy))
+        stdin_log = tmp_path / "stdin.txt"
+        monkeypatch.setenv("FAKE_STDIN_LOG", str(stdin_log))
         backend = make_backend(name)
         res = backend.invoke(make_call(role="extractor"), "PROMPT-MARKER-12345")
         assert res.ok, res.error
@@ -120,6 +122,10 @@ class TestCliHappyPaths:
             # whole statement slices and must not hit ARG_MAX
             assert copy.read_text() == "PROMPT-MARKER-12345"
             assert any("--prompt-file" in a for a in argvs)
+        elif name in ("claude", "codex"):
+            # prompt goes to stdin, never argv
+            assert stdin_log.read_text() == "PROMPT-MARKER-12345"
+            assert not any("PROMPT-MARKER-12345" in a for a in argvs)
         else:
             assert any("PROMPT-MARKER-12345" in a for a in argvs)
 
@@ -198,11 +204,13 @@ class TestCliHappyPaths:
     def test_claude_real_usage_surfaced(self, monkeypatch):
         monkeypatch.setenv("FAKE_RESULT_TEXT", "x" * 40)
         res = cli.ClaudeBackend().invoke(make_call(), "y" * 400)
-        assert res.tokens_in == 100  # the fake reports len(prompt)//4
+        # fake: len(prompt)//4 fresh + 3 cache-creation + 5 cache-read
+        assert res.tokens_in == 108
 
     def test_codex_real_usage_surfaced(self):
         res = cli.CodexBackend().invoke(make_call(), "hello")
         assert res.tokens_in == 11 and res.tokens_out == 7
+        assert res.tokens_cached == 4
 
     def test_tokens_estimated_chars_per_four_when_unreported(self):
         # kimi (plain-text protocol) reports no usage on stdout.
