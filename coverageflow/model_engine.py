@@ -147,6 +147,11 @@ DERIVATIONS = {
                                  "income_statement.revenue"),
     "derived.ebitda_margin": "income_statement.ebitda / income_statement.revenue",
     "derived.net_margin": "income_statement.net_income / income_statement.revenue",
+    "segments.sum_revenue": "sum of canonical segment revenues",
+    "segments.reconciling_difference": ("income_statement.revenue - "
+                                        "segments.sum_revenue"),
+    "segments.<slug>.revenue_share_of_total": ("segments.<slug>.revenue / "
+                                               "segments.sum_revenue"),
 }
 
 
@@ -155,6 +160,11 @@ class Model:
     series: dict[str, dict[str, float]] = field(default_factory=dict)
     yoy: dict[str, dict[str, float]] = field(default_factory=dict)
     qoq: dict[str, dict[str, float]] = field(default_factory=dict)
+    # growth cells that exist but are not meaningful (zero or negative base):
+    # {field: {"yoy": {period: "n/m"}, "qoq": {period: "n/m"}}}. The value is
+    # absent from yoy/qoq (the engine's representation of "no value"); this
+    # map says WHY, so a reader can tell n/m from "no base period".
+    growth_status: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     checks: dict[str, dict[str, str]] = field(default_factory=dict)
     facts_sha: str = ""
     candidate_id: str | None = None
@@ -178,6 +188,7 @@ class Model:
             entry = dict(self.series[fld])
             entry["yoy"] = dict(self.yoy.get(fld, {}))
             entry["qoq"] = dict(self.qoq.get(fld, {}))
+            entry["growth_status"] = {k: dict(v) for k, v in self.growth_status.get(fld, {}).items()}
             entry["yoy_computed"] = bool(self.yoy.get(fld) or self.qoq.get(fld))
             series_view[fld] = entry
         return {
@@ -252,24 +263,42 @@ def _canonical_segment_field(name: str, measure: str, period: str,
 
 # ------------------------------------------------------------------- engine
 
-_EPS_TOL = 0.02
+_EPS_ABS_TOL = 0.01   # per share
+_EPS_REL_TOL = 0.005  # 0.5% of reported EPS
 _ABS_TOL = 0.5
+
+# Net income attributable to the company's shareholders is the numerator of
+# EPS. Consolidated net income includes non-controlling interests and does
+# not tie. Accepted keys, in priority order; else attributable = NI - NCI.
+NI_ATTRIBUTABLE_KEYS = (
+    "income_statement.net_income_attributable",
+    "income_statement.net_income_attributable_to_parent",
+    "income_statement.net_income_attributable_to_company",
+)
+NCI_KEYS = (
+    "income_statement.net_income_noncontrolling",
+    "income_statement.net_income_attributable_to_nci",
+    "income_statement.noncontrolling_interest",
+)
 
 
 def _eps_tolerance(reported: float) -> float:
-    """Rounding allowance for a reported EPS.
+    """Tight EPS tie tolerance: the larger of 0.01/share and 0.5% of EPS."""
+    return max(_EPS_ABS_TOL, _EPS_REL_TOL * abs(reported))
 
-    Filers print diluted EPS to one or two decimals ("0.6", "0.61"), so the
-    implied net-income/shares quotient can legitimately differ from the
-    printed figure by half of the last digit. Comparing against a fixed
-    absolute tolerance rejected correct filings: 3320/5307 = 0.6256 against a
-    reported 0.6 is a rounding artefact, not a linkage violation.
-    """
-    text = repr(float(reported))
-    if "e" in text or "E" in text:
-        return _EPS_TOL
-    decimals = len(text.split(".")[1]) if "." in text else 0
-    return max(_EPS_TOL, 0.5 * 10 ** -decimals)
+
+def _attributable_net_income(model: "Model", p: str) -> float | None:
+    for k in NI_ATTRIBUTABLE_KEYS:
+        v = model.series.get(k, {}).get(p)
+        if v is not None:
+            return v
+    ni = model.series.get("income_statement.net_income", {}).get(p)
+    if ni is not None:
+        for k in NCI_KEYS:
+            nci = model.series.get(k, {}).get(p)
+            if nci is not None:
+                return ni - nci
+    return None
 
 
 def build_model(
@@ -350,18 +379,22 @@ def _reconciliation_checks(model: Model, tol: float) -> None:
     seg_check: dict[str, str] = {}
     revenue = model.series.get("income_statement.revenue", {})
     for p in model.periods:
-        ni = model.series.get("income_statement.net_income", {}).get(p)
+        ni = _attributable_net_income(model, p)
         sh = model.series.get("income_statement.diluted_shares_outstanding", {}).get(p)
         eps = model.series.get("income_statement.diluted_eps", {}).get(p)
-        if None not in (ni, sh, eps):
-            implied = ni / sh
-            if abs(implied - eps) <= _eps_tolerance(eps):
-                eps_check[p] = "ok"
+        if eps is not None and sh is not None:
+            if ni is None:
+                # cannot tie EPS without attributable NI; never report "ok"
+                eps_check[p] = "not_computable"
             else:
-                raise BoundsViolation(
-                    f"EPS linkage violation in {p}: net income {ni} / shares {sh} "
-                    f"= {implied:.4f} but reported diluted EPS is {eps}"
-                )
+                implied = ni / sh
+                if abs(implied - eps) <= _eps_tolerance(eps):
+                    eps_check[p] = "ok"
+                else:
+                    raise BoundsViolation(
+                        f"EPS linkage violation in {p}: net income attributable {ni} / "
+                        f"shares {sh} = {implied:.4f} but reported diluted EPS is {eps}"
+                    )
         rev = revenue.get(p)
         cogs = model.series.get("income_statement.cost_of_revenue", {}).get(p)
         gp = model.series.get("income_statement.gross_profit", {}).get(p)
@@ -443,13 +476,27 @@ def _derive_margins(model: Model) -> None:
             v = model.series.get(src, {}).get(p)
             if v is not None:
                 model.series.setdefault(derived, {})[p] = v / rv
+        seg_sum = 0.0
+        have_seg = False
+        for s in SEGMENT_SLUGS:
+            sr = model.series.get(f"segments.{s}.revenue", {}).get(p)
+            if sr is not None:
+                seg_sum += sr
+                have_seg = True
         for s in SEGMENT_SLUGS:
             seg_rev = model.series.get(f"segments.{s}.revenue", {}).get(p)
             seg_oi = model.series.get(f"segments.{s}.operating_income", {}).get(p)
             if seg_rev:
                 if seg_oi is not None:
                     model.series.setdefault(f"segments.{s}.operating_margin", {})[p] = seg_oi / seg_rev
-                model.series.setdefault(f"segments.{s}.revenue_share_of_total", {})[p] = seg_rev / rv
+                if seg_sum:
+                    # share of the segment total, so shares sum to 100%
+                    model.series.setdefault(f"segments.{s}.revenue_share_of_total", {})[p] = seg_rev / seg_sum
+        if have_seg:
+            model.series.setdefault("segments.sum_revenue", {})[p] = seg_sum
+            # consolidated minus segment sum (intersegment eliminations /
+            # "all other"), shown rather than absorbed into the shares
+            model.series.setdefault("segments.reconciling_difference", {})[p] = rv - seg_sum
 
 
 def _growth_base(period: str, kind: str) -> str | None:
@@ -458,7 +505,7 @@ def _growth_base(period: str, kind: str) -> str | None:
         y, q = int(mq.group(1)), int(mq.group(2))
         if kind == "yoy":
             return f"{y - 1}-Q{q}"
-        return f"{y - 1}-Q{q - 1}" if q == 1 else f"{y}-Q{q - 1}"
+        return f"{y - 1}-Q4" if q == 1 else f"{y}-Q{q - 1}"
     mf = _FY_RE.match(period)
     if mf:
         return f"FY{int(mf.group(1)) - 1}" if kind == "yoy" else None
@@ -473,9 +520,12 @@ def _derive_growth(model: Model) -> None:
                 if base_p is None:
                     continue
                 base = model.series.get(fld, {}).get(base_p)
-                if base is None or base == 0:
+                if base is None:
+                    continue  # no base period: absent, not flagged
+                if base <= 0:
+                    # growth on a zero/negative base is not meaningful; leave
+                    # the value absent (None) and record n/m
+                    model.growth_status.setdefault(fld, {}).setdefault(kind, {})[p] = "n/m"
                     continue
-                if kind == "yoy":
-                    model.yoy.setdefault(fld, {})[p] = cur / base - 1.0
-                else:
-                    model.qoq.setdefault(fld, {})[p] = cur / base - 1.0
+                target = model.yoy if kind == "yoy" else model.qoq
+                target.setdefault(fld, {})[p] = cur / base - 1.0

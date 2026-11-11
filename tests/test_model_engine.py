@@ -54,6 +54,7 @@ def mini_facts_payload() -> dict:
         "operating_income": (825.0, 175.0),
         "depreciation_and_amortization": (500.0, 450.0),
         "net_income": (700.0, 150.0),
+        "net_income_attributable": (700.0, 150.0),
         "diluted_eps": (0.16, 0.03),
         "diluted_shares_outstanding": (4375.0, 5000.0),
     }
@@ -204,7 +205,7 @@ def test_segment_derived_metrics_hand_math(model):
     d = model.to_dict()
     # CCG margin 700/6,000 = 0.1166666...; share 6,000/13,500 = 0.4444444...
     assert d["series"]["segments.ccg.operating_margin"]["2026-Q3"] == pytest.approx(700 / 6000)
-    assert d["series"]["segments.ccg.revenue_share_of_total"]["2026-Q3"] == pytest.approx(6000 / 13500)
+    assert d["series"]["segments.ccg.revenue_share_of_total"]["2026-Q3"] == pytest.approx(6000 / 14800)
     # DCAI margin 300/4,500 = 0.0666666...
     assert d["series"]["segments.dcai.operating_margin"]["2026-Q3"] == pytest.approx(300 / 4500)
 
@@ -290,18 +291,96 @@ def test_accepts_plain_dict_payload(payload):
     assert m1.to_dict() == m2.to_dict()
 
 
-def test_eps_tolerance_follows_the_reported_precision():
-    """A one-decimal EPS is a rounded figure, not a linkage violation.
-
-    Intel's Q3 2026 10-Q prints diluted EPS as 0.6 while net income 3320 /
-    shares 5307 = 0.6256. A fixed 0.02 tolerance rejected a correct filing.
-    """
+def test_eps_tolerance_is_tight():
     from coverageflow.model_engine import _eps_tolerance
 
-    assert _eps_tolerance(0.6) == 0.05      # one decimal -> half a digit
-    assert _eps_tolerance(0.61) == 0.02     # two decimals -> floor applies
-    assert _eps_tolerance(0.6256) == 0.02   # full precision -> floor applies
-    assert abs(3320.0 / 5307.0 - 0.6) <= _eps_tolerance(0.6)
+    assert _eps_tolerance(0.16) == 0.01          # absolute floor
+    assert _eps_tolerance(4.0) == pytest.approx(0.02)  # 0.5% of EPS
+    # the old rounding-based widening (0.05 for "0.6") is gone
+    assert _eps_tolerance(0.6) == 0.01
+    assert abs(3320.0 / 5307.0 - 0.6) > _eps_tolerance(0.6)
+
+
+def _drop(payload, field_name):
+    payload["facts"] = [f for f in payload["facts"] if f["field"] != field_name]
+
+
+def test_eps_ties_on_attributable_not_consolidated_net_income():
+    payload = mini_facts_payload()
+    for f in payload["facts"]:
+        if f["field"] == "income_statement.net_income" and f["period"] == "2026-Q3":
+            f["value"] = 760.0                    # consolidated, incl. NCI
+        if f["field"] == "income_statement.net_income_attributable" and f["period"] == "2026-Q3":
+            f["value"] = 700.0                    # 700/4,375 = 0.16
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    assert d["checks"]["eps_linkage"]["2026-Q3"] == "ok"
+
+
+def test_eps_attributable_derived_from_ni_minus_nci():
+    payload = mini_facts_payload()
+    _drop(payload, "income_statement.net_income_attributable")
+    for f in payload["facts"]:
+        if f["field"] == "income_statement.net_income" and f["period"] == "2026-Q3":
+            f["value"] = 760.0
+    payload["facts"].append({"field": "income_statement.net_income_noncontrolling",
+                             "period": "2026-Q3", "value": 60.0, "unit": "USDmm"})
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    assert d["checks"]["eps_linkage"]["2026-Q3"] == "ok"
+
+
+def test_eps_not_computable_without_attributable_ni():
+    payload = mini_facts_payload()
+    _drop(payload, "income_statement.net_income_attributable")
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    assert d["checks"]["eps_linkage"]["2026-Q3"] == "not_computable"
+
+
+def test_eps_off_by_rounding_widening_now_fails():
+    payload = mini_facts_payload()
+    for f in payload["facts"]:
+        if f["field"] == "income_statement.diluted_eps" and f["period"] == "2026-Q3":
+            f["value"] = 0.18                     # implied 0.16, diff 0.02
+    with pytest.raises(BoundsViolation, match="EPS"):
+        build_model(Facts.from_payload(payload), "1.0")
+
+
+def test_segment_shares_sum_to_one_and_reconciling_line_exposed(model):
+    d = model.to_dict()["series"]
+    slugs = ["ccg", "dcai", "nex", "foundry", "altera", "mobileye"]
+    total = sum(d[f"segments.{s}.revenue_share_of_total"]["2026-Q3"] for s in slugs)
+    assert total == pytest.approx(1.0)
+    assert d["segments.sum_revenue"]["2026-Q3"] == 14800.0
+    # consolidated 13,500 - segment sum 14,800
+    assert d["segments.reconciling_difference"]["2026-Q3"] == -1300.0
+
+
+def _mini_model(rev_by_period, field_name="income_statement.revenue"):
+    facts = [{"field": field_name, "period": p, "value": v, "unit": "USDmm"}
+             for p, v in rev_by_period.items()]
+    return build_model({"facts": facts}, "1.0")
+
+
+def test_yoy_on_negative_or_zero_base_is_none_and_marked_nm():
+    m = _mini_model({"2025-Q3": -100.0, "2026-Q3": 50.0,
+                     "2025-Q2": 0.0, "2026-Q2": 10.0}, "income_statement.net_income")
+    d = m.to_dict()["series"]["income_statement.net_income"]
+    assert "2026-Q3" not in d["yoy"] and "2026-Q2" not in d["yoy"]
+    assert m.value("income_statement.net_income", "2026-Q3") == 50.0
+    assert d["growth_status"]["yoy"] == {"2026-Q3": "n/m", "2026-Q2": "n/m"}
+    # positive base still computes; missing base is absent and unflagged
+    m2 = _mini_model({"2025-Q3": 100.0, "2026-Q3": 150.0, "2026-Q4": 1.0})
+    d2 = m2.to_dict()["series"]["income_statement.revenue"]
+    assert d2["yoy"]["2026-Q3"] == pytest.approx(0.5)
+    assert d2["growth_status"] == {}
+
+
+def test_qoq_series_for_consecutive_quarters_and_year_boundary():
+    m = _mini_model({"2025-Q4": 200.0, "2026-Q1": 210.0, "2026-Q2": 189.0, "2026-Q4": 5.0})
+    q = m.to_dict()["series"]["income_statement.revenue"]["qoq"]
+    assert q["2026-Q1"] == pytest.approx(0.05)    # Q4 -> next-year Q1
+    assert q["2026-Q2"] == pytest.approx(-0.10)
+    assert "2026-Q4" not in q                     # 2026-Q3 missing: no gap-fill
+    assert "2025-Q4" not in q
 
 
 def test_ebitda_derives_from_cash_flow_da_when_is_alias_absent():
