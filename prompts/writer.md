@@ -29,7 +29,7 @@ Strict JSON only — the **wire envelope for report.md** (dispatch validates
 this envelope; the harness writes `report_md` to the versioned note file):
 `role("writer"), request_id, candidate_id, report_md (the full note in
 Markdown), citations[] (evidence keys used in the note), conformance("schema
-1.0"), prompt_version("1.0")`.
+1.0"), prompt_version("1.3")`.
 
 In the note every number must carry an inline citation marker
 `[EV:<evidence-key>]` (uppercase `EV`) to an evidence key present in the
@@ -90,4 +90,4 @@ the verified artifacts are.
 [EV:income_statement.revenue], ahead of the prior year.\n\n## Valuation\nOur
 DCF cross-check stands within tolerance [EV:dcf.within_tolerance].",
  "citations":["income_statement.revenue","dcf.within_tolerance"],
- "conformance":"schema 1.0","prompt_version":"1.1"}
+ "conformance":"schema 1.0","prompt_version":"1.3"}

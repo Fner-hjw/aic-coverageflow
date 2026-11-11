@@ -152,6 +152,27 @@ on submission; stale request_id rejected. No in-LLM tool calling in v1.
 - **Ratios:** YoY/QoQ conventions follow the supplied "Complete Quantitative Analysis"
   workbook layout.
 
+### Critic rubric v1.1 (supersedes v1.0, which is kept unchanged)
+
+- **Why.** Under v1.0 the critics had an open-ended job: no definition of major
+  versus minor, so findings were reworded every round and two consecutive clean
+  reviews were unreachable. Two of four critics (C3, C4) were checking exact
+  properties (headers, version pins, token budgets) that code checks better, and
+  the controller deleted the budget findings with a regular expression under a
+  made-up hash, quietly overriding a rubric declared locked.
+- **What changed.** Severity is defined (major: wrong number, unsupported claim,
+  cutoff, bounds or write-scope breach; everything else minor and never blocking).
+  Each area is a numbered checklist (C1.1 ... C4.2); a critic returns
+  `checks[]` for every ID plus `findings[]` only for failed checks. A missing ID, a
+  finding for a passed check, a wrong verdict or silence on a carried finding is an
+  invalid submission, repaired by the existing same-role retry. The dedup key is
+  computed by the ledger from (critic, check_id, sorted artifacts). Critic payloads
+  are role-scoped; `dispatch_records` and the budget regex filter are gone.
+- **What moved to gates.** Header completeness, version pins and drift, per-role
+  token budgets and write scope by path are the deterministic gate
+  `controls_conformance` (run last in the gate order, before review). Its findings
+  carry `owner: "system"` because the writer cannot repair them.
+
 ## 5. Evolution (Round D)
 
 - **Evolvable:** role prompt cards, segment mapping tables, engine code (strict:

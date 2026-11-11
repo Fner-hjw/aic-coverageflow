@@ -947,21 +947,23 @@ class TestManifestHeader:
         assert "ingest classification and slices carried from round 001" in statement
         assert "re-emitted" in statement
 
-    def test_every_critic_receives_every_candidate_artifact(self, tmp_path):
-        """A digest is not evidence.
-
-        Critics handed only sha256 digests reported "header uncheckable" every
-        round, so the candidate could never converge.
-        """
+    def test_every_critic_receives_only_the_artifacts_of_its_checklist(self, tmp_path):
+        """Rubric v1.1: role-scoped payloads, content inline (not digests)."""
         orch, dispatch, clk, case_dir = build_env(tmp_path)
         orch.run()
-        for role in ("critic_c1", "critic_c2", "critic_c3", "critic_c4"):
+        want = {"critic_c1": {"facts.json", "report.md", "model.json",
+                              "valuation.json"},
+                "critic_c2": {"forecast_assumptions.json", "model.json",
+                              "valuation.json", "report.md"},
+                "critic_c3": {"report.md"},
+                "critic_c4": {"report.md"}}
+        for role, names in want.items():
             payload = dispatch.calls_of(role)[0].payload
-            supplied = payload["artifacts"]
-            for name in ("ingest-report.json", "facts.json",
-                         "forecast_assumptions.json", "report.md",
-                         "model.json", "valuation.json"):
-                assert any(k.endswith("/" + name) for k in supplied), (role, name)
+            got = {k.rsplit("/", 1)[-1] for k in payload["artifacts"]}
+            assert got == names, role
+            assert "dispatch_records" not in payload
+            assert payload["rubric_version"] == "1.1"
+            assert payload["candidate_artifacts"]   # hash list for resolutions
 
     def test_writer_is_given_the_bundle_provenance(self, tmp_path):
         """The note's header block cites a bundle id the writer must be given."""
@@ -1079,7 +1081,9 @@ class TestBudgetExhaustion:
         assert st["reason"]["code"] == "role_tokens"
         # the R2 rebuild breaches at the first re-dispatched role. Ingest is
         # reused across rounds (frozen inputs), so that role is the extractor.
-        assert st["reason"]["detail"]["role"] == "extractor"
+        # (the controls_conformance gate also flags the overshoot in R1, so
+        # the first role the tracker stops is the one after the reused ones)
+        assert st["reason"]["detail"]["role"] in ("extractor", "model")
         assert st["reason"]["detail"]["tokens"] == 1300
         result = statestore.read_json(case_dir / "result.json")
         assert result["terminal"] == "EXHAUSTED"
@@ -1229,7 +1233,11 @@ class TestBudgetExhaustion:
 
 class TestStallRule:
     def _shrinking(self, counts):
-        """critic_c1 raises counts[i] distinct major findings in review i."""
+        """critic_c1 raises counts[i] distinct major findings in review i.
+
+        Each sits on its own rubric check: under rubric v1.1 the dedup key is
+        (critic, check_id, artifacts), so distinct objections need distinct checks.
+        """
         seen = {"n": 0}
 
         def c1(payload):
@@ -1238,8 +1246,20 @@ class TestStallRule:
             rep = _critic_findings()
             rep["findings"] = [dict(rep["findings"][0],
                                     summary=f"distinct objection number {k} {i}",
+                                    check_id=f"C1.{k + 1}",
                                     dedup_key=f"obj-{k}")
                                for k in range(counts[i])]
+            # rubric v1.1: silence on a carried finding is invalid, so the
+            # objections dropped this round are verified as resolved
+            raised = {f"c1.{k + 1}" for k in range(counts[i])}
+            arts = payload.get("candidate_artifacts") or {}
+            rep["verified_resolutions"] = [
+                {"finding_id": f["finding_id"],
+                 "verified_evidence": _stub._resolve_evidence(f, arts),
+                 "check_performed": "re-checked the repaired artifact"}
+                for f in payload.get("carried_findings", [])
+                if not any(c in str(f.get("dedup_key", "")).lower().split("|")
+                           for c in raised)]
             return rep
         return {"critic_c1": c1}
 
@@ -1970,17 +1990,24 @@ class TestCriticPayload:
         c1 = by_role["critic_c1"]
         assert "facts.json" in " ".join(c1["artifacts"])
         assert any("report.md" in rel for rel in c1["artifacts"])
+        assert c1["check_ids"] == ["C1.1", "C1.2", "C1.3", "C1.4", "C1.5"]
         facts = next(v for k, v in c1["artifacts"].items() if k.endswith("facts.json"))
         assert facts.get("facts"), "facts.json content must be inline, not a digest"
 
         c2 = by_role["critic_c2"]
         assert any("valuation.json" in rel for rel in c2["artifacts"])
-        assert c2["mandate"]["assumptions"]["forecast_bounds"], \
+        assert c2["mandate_bounds"]["forecast_bounds"], \
             "C2 needs the mandate bounds"
 
+        c3 = by_role["critic_c3"]
+        assert c3["mandate_dates"]["cutoff_date"]
+        assert any(k.endswith("candidate-manifest.json")
+                   for k in c3["artifact_headers"])
+
         c4 = by_role["critic_c4"]
-        assert "tokens_by_role" in c4["dispatch_records"]
-        assert c4["dispatch_records"]["role_tokens_max"] > 0
+        assert "dispatch_records" not in c4
+        assert {r["role"] for r in c4["artifact_manifest"]} >= {"writer"}
+        assert all(r["size_bytes"] for r in c4["artifact_manifest"])
 
 
 class TestExtractionScope:
@@ -2038,27 +2065,8 @@ class TestExtractionScope:
         assert ids == ["intc-10k-fy2025"], ids
 
 
-class TestBudgetFindingsAreNotRepairWork:
-    """A critic reporting the run's token usage cannot be answered by a rewrite.
-
-    The tokens are already spent, so the finding reopened every round and the
-    repair loop could never converge. The budget tracker already records the
-    breach and the run exhausts on its own.
-    """
-
-    def test_a_token_cap_finding_is_recognised(self):
-        from coverageflow.orchestrator import _is_self_referential_finding
-        assert _is_self_referential_finding({
-            "dedup_key": "c4|candidate-manifest.json|per-role-token-cap-breach-generator-lead",
-            "summary": "Per-role token cap breached: generator_lead exceeds the cap.",
-        })
-
-    def test_a_content_finding_is_not(self):
-        from coverageflow.orchestrator import _is_self_referential_finding
-        assert not _is_self_referential_finding({
-            "dedup_key": "unknown-ev:derived.revenue_yoy",
-            "summary": "evidence marker names a key not in the index",
-        })
+class TestGrowthAliases:
+    """(The regex filter for budget findings is gone: budgets are a gate.)"""
 
     def test_growth_series_get_the_name_the_report_uses(self):
         from coverageflow.orchestrator import _growth_aliases

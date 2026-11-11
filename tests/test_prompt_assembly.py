@@ -211,7 +211,7 @@ class TestRepoCards:
         root = pa.default_root()
         for role in ("critic_lead", "critic_c1", "critic_c2", "critic_c3", "critic_c4"):
             meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
-            assert "critic-rubric.md" in meta["references"], role
+            assert meta["references"] == ["critic-rubric-v1.1.md"], role
 
     def test_every_card_assembles_with_repo_references(self):
         root = pa.default_root()

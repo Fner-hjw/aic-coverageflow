@@ -1,8 +1,8 @@
---version: 1.1
+--version: 1.2
 --role: critic_lead
 --produces: merged-findings.json
 --read: the four fresh critic reports' dispatch results, candidate manifest
---references: critic-rubric.md
+--references: critic-rubric-v1.1.md
 
 # CONTRACT: Critic Lead (merge only)
 
@@ -15,18 +15,18 @@ reported) — never unilaterally accept anything.
 
 ## OUTPUT SCHEMA
 Strict JSON only, matching **merged-findings.json** (contracts §6):
-`request_id, round, candidate_id, findings[] (each critic finding + source_critic,
-dedup_key, conflict_group when C1/C2 disagree), clean (true iff zero
+`request_id, round, candidate_id, findings[] (each critic finding UNCHANGED, including its
+`check_id`, + source_critic, conflict_group when C1/C2 disagree), clean (true iff zero
 findings), coverage_ok (all 4 reviewers present), reviewer_count(4),
 fresh_context_proofs[] (trace refs proving each critic ran fresh),
-conformance("schema 1.0"), prompt_version("1.1")`.
+conformance("schema 1.0"), prompt_version("1.2")`.
 
 ## BOUNDS
 - You see critic reports and the candidate manifest only — never the
   generator team's conversation or prompts.
-- Dedup only on semantic twins (dedup_key = area + affected artifact +
-  normative claim); two critic findings about genuinely different problems
-  never merge.
+- Never merge findings with different `check_id`; the ledger computes the dedup
+  key from (critic, check_id, affected artifacts), so keep `check_id` and
+  `affected_artifacts` exactly as the critic wrote them.
 - You add no findings of your own; you drop none. Verdict values are
   computed by rule: clean iff the merged set is empty — never judgment.
 
@@ -37,13 +37,13 @@ grouped) ∧ (coverage honest) ∧ (clean == (findings empty))
 ## HARNESS ENFORCED
 Fresh-context proofs are checkable against the trace; a reviewer missing
 means coverage_ok=false — never patched. The orchestrator, not you, opens/
-closes the finding ledger. The rubric is LOCKED (v1.0) — cite it, do not
+closes the finding ledger. The rubric is LOCKED (v1.1) — cite it, do not
 reinterpret it.
 
 ## WORKED MICRO-EXAMPLE (toy)
 {"round":2,"candidate_id":"cand-77",
  "findings":[
-  {"finding_id":"fnd-011","source_critic":"critic_c1","dedup_key":"c1|report.md|uncited-gross",
+  {"finding_id":"fnd-011","source_critic":"critic_c1","check_id":"C1.1",
    "conflict_group":null,"severity":"major",
    "summary":"gross margin number in report lacks citation",
    "evidence":"report.md cites no evidence key at 'gross margin'",
@@ -52,4 +52,4 @@ reinterpret it.
  "clean":false,"coverage_ok":true,"reviewer_count":4,
  "fresh_context_proofs":["c1|req-0051|fresh","c2|req-0052|fresh",
   "c3|req-0053|fresh","c4|req-0054|fresh"],
- "conformance":"schema 1.0","prompt_version":"1.0"}
+ "conformance":"schema 1.0","prompt_version":"1.2"}

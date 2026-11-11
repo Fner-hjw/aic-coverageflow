@@ -227,6 +227,7 @@ def _default_forecast(payload: dict) -> dict:
 
 
 DEFAULT_REPORT_MD = (
+    "> **Candidate:** pending · **Request:** req-stub\n\n"
     "## Summary\n"
     "Revenue rose to 13,500 [EV:income_statement.revenue] with gross profit "
     "of 5,175 [EV:income_statement.gross_profit].\n"
@@ -235,6 +236,7 @@ DEFAULT_REPORT_MD = (
 )
 
 ALT_REPORT_MD = (
+    "> **Candidate:** pending · **Request:** req-stub\n\n"
     "## Summary\n"
     "Revenue improved to 13,500 [EV:income_statement.revenue] with gross profit "
     "of 5,175 [EV:income_statement.gross_profit] and operating discipline.\n"
@@ -290,17 +292,50 @@ def _default_critic(critic_role: str) -> Callable[[dict], dict]:
             "role": critic_role,
             "round": payload.get("round"),
             "verdict": "clean",
+            "checks": [{"check_id": cid, "result": "pass",
+                        "evidence": "stub: checked, nothing to report"}
+                       for cid in payload.get("check_ids", [])],
             "findings": [],
             "verified_resolutions": resolutions,
             "coverage": {
-                "rubric_version": "1.0",
+                "rubric_version": "1.1",
                 "areas_checked": ["citation_integrity", "recomputation",
                                   "cutoff_discipline", "risk_controls"],
             },
             "conformance": "schema 1.0",
-            "prompt_version": "1.0",
+            "prompt_version": "1.1",
         }
     return build
+
+
+def _upgrade_critic_shape(report: dict, payload: dict) -> dict:
+    """Give a scripted critic output the rubric v1.1 shape when it lacks one.
+
+    Scripts written for the older shape carry findings only. A finding with
+    no ``check_id`` is attributed to the first check of the area, ``checks[]``
+    is derived (fail for cited IDs, pass otherwise) and the verdict is set by
+    rule (clean iff no major finding). A report that already carries
+    ``checks`` is left alone, so a script can still be deliberately invalid.
+    """
+    if "checks" in report or not isinstance(payload, dict):
+        return report
+    ids = list(payload.get("check_ids") or [])
+    if not ids:
+        return report
+    out = dict(report)
+    findings = []
+    for f in out.get("findings") or []:
+        f = dict(f)
+        f.setdefault("check_id", ids[0])
+        findings.append(f)
+    failed = {f["check_id"] for f in findings}
+    out["findings"] = findings
+    out["checks"] = [{"check_id": i, "result": "fail" if i in failed else "pass",
+                      "evidence": "stub"} for i in ids]
+    if out.get("verdict") in ("clean", "findings"):
+        out["verdict"] = ("findings" if any(f.get("severity") == "major"
+                                            for f in findings) else "clean")
+    return out
 
 
 def _resolve_evidence(finding: dict, artifacts: dict) -> dict:
@@ -496,6 +531,8 @@ class StubDispatch:
         if not isinstance(parsed, dict):
             return parsed
         out = dict(parsed)
+        if call.role.startswith("critic_c"):
+            out = _upgrade_critic_shape(out, call.payload)
         if out.get("request_id") is None:
             out["request_id"] = call.request_id
         if out.get("candidate_id") is None:
