@@ -102,3 +102,62 @@ class Recorded:
         if isinstance(v, Exception):
             raise v
         return v
+
+
+# ------------------------------------------------------------ a tiny "world"
+
+import json as _json  # noqa: E402
+from datetime import timedelta as _td  # noqa: E402
+
+CIKS = {"INTC": 50863, "AMD": 2488, "NVDA": 1045810, "ZZZ": 999999}
+
+
+def tickers_json():
+    return _json.dumps({str(i): {"cik_str": c, "ticker": t, "title": t}
+                        for i, (t, c) in enumerate(CIKS.items())}).encode()
+
+
+def bench_weekly(n=105):
+    px, out = 100.0, []
+    for i, (d, _) in enumerate(weekly_rows("2024-11-01", n, lambda i: 0)):
+        px *= 1 + (0.02 if i % 3 else -0.015) + 0.001 * (i % 5)
+        out.append((d, px))
+    return out
+
+
+def levered(bench, k, start=50.0):
+    px, out = start, [bench[0]]
+    out = [(bench[0][0], start)]
+    for (d0, p0), (d1, p1) in zip(bench, bench[1:]):
+        px *= 1 + k * (p1 / p0 - 1)
+        out.append((d1, px))
+    return out
+
+
+def world(price=23.0, beta=1.7, rf="4.20", spy_ok=True, peers=("AMD", "NVDA"),
+          shares=2.0, debt=20.0, cash=30.0, extra=None):
+    """Recorded responses for INTC + peers + SPY + FRED + SEC (cutoff 2026-10-30)."""
+    from datetime import date
+    end = date.fromisoformat(CUTOFF)
+    m = {"https://www.sec.gov/files/company_tickers.json": tickers_json()}
+    bench = bench_weekly()
+
+    def px_urls(tk, daily_price, weekly):
+        d = md._stooq_url(tk, end - _td(days=14), end, "d")
+        w = md._stooq_url(tk, end - _td(days=365 * 2 + 7), end, "w")
+        m[d] = stooq_csv([("2026-10-29", daily_price - 1), ("2026-10-30", daily_price),
+                          ("2026-11-02", 999.0)])
+        m[w] = stooq_csv(weekly)
+
+    px_urls("INTC", price, levered(bench, beta))
+    if spy_ok:
+        px_urls("SPY", 500.0, bench)
+    for i, tk in enumerate(peers):
+        px_urls(tk, 40.0 + 10 * i, levered(bench, 1.0 + i))
+    for tk in ("INTC", *peers):
+        m[md.companyfacts_url(str(CIKS[tk]))] = cf_bytes(
+            scale=1.0 + (tk != "INTC") * (1 + (tk == "NVDA")), shares=shares, debt=debt, cash=cash)
+    m["https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=2026-09-30&coed=2026-10-30"] = fred_csv(
+        [("2026-10-29", rf), ("2026-10-30", "."), ("2026-11-02", "9")])
+    m.update(extra or {})
+    return Recorded(m)
