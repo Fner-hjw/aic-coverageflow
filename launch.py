@@ -52,6 +52,8 @@ def check_answers(cfg: dict) -> dict:
     try:
         out = dict(cfg)
         out["mode"] = san.choice("mode", cfg.get("mode"), ("offline", "api", "cli"))
+        if any(ord(c) < 32 for c in str(cfg.get("workspace", ""))):
+            raise san.InputError("workspace", "contains control characters")
         out["workspace"] = san.text("workspace", cfg.get("workspace", "workspace"),
                                     max_len=300, required=True, injection=False)
         if "backend" in cfg:
