@@ -238,6 +238,21 @@ def create_app() -> FastAPI:
             list(docs) if isinstance(docs, list) else [],
             str(payload.get("name") or ""))
 
+    @app.post("/api/bundles/{bundle_id}/extend")
+    def bundle_extend(bundle_id: str, payload: dict) -> dict:
+        docs = payload.get("docs")
+        return service.extend_bundle(
+            bundle_id, list(docs) if isinstance(docs, list) else [],
+            str(payload.get("name") or ""))
+
+    @app.delete("/api/bundles/{bundle_id}")
+    def bundle_delete(bundle_id: str) -> dict:
+        return service.delete_bundle(bundle_id)
+
+    @app.patch("/api/bundles/{bundle_id}")
+    def bundle_rename(bundle_id: str, payload: dict) -> dict:
+        return service.rename_bundle(bundle_id, str(payload.get("name") or ""))
+
     # ---- WebSocket push ----------------------------------------------------
     app.include_router(ws_router)
     app.mount("/static", _RevalidatedStatic(directory=str(_STATIC_DIR)), name="static")

@@ -75,6 +75,8 @@ const Api = {
   },
   get: p => Api.call("GET", p),
   post: (p, body) => Api.call("POST", p, body ?? {}),
+  patch: (p, body) => Api.call("PATCH", p, body ?? {}),
+  del: p => Api.call("DELETE", p),
 };
 
 function toast(msg, sub, isErr) {
@@ -2618,7 +2620,16 @@ Views.bundles = async function bundles(view) {
   const formsIn = h("input", { type: "text", placeholder: "10-K, 10-Q, 8-K (blank = all)" });
   const filedFrom = filingDatePicker("Filed from");
   const filedTo = filingDatePicker("Filed to");
-  const nameIn = h("input", { type: "text", placeholder: "INTC-2026-10 frozen snapshot" });
+  const nameIn = h("input", { type: "text", placeholder: "TICKER-YYYY-MM" });
+  let nameTouched = false;
+  nameIn.addEventListener("input", () => { nameTouched = !!nameIn.value.trim(); });
+  function suggestName() {
+    if (nameTouched) return;
+    const t = tickerIn.value.trim().toUpperCase();
+    if (!t) return;
+    const d = new Date();
+    nameIn.value = `${t}-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
   const results = h("div", { class: "mt2" });
   const note = h("div");
   const chosen = new Map();   // doc_id -> row
@@ -2727,6 +2738,7 @@ Views.bundles = async function bundles(view) {
     if (!r.ok) { results.replaceChildren(errorNotice(r.err)); return; }
     cikVal = r.data.cik;
     if (r.data.cik) W_cik().value = r.data.cik;
+    suggestName();
     const sourceNote = /^live (?:edgar|sec) submissions/i.test(r.data.note || "")
       ? "Showing recent filings from the SEC." : r.data.note;
     note.replaceChildren(sourceNote ? h("p", { class: "hint" }, sourceNote) : null);
@@ -2738,11 +2750,67 @@ Views.bundles = async function bundles(view) {
   function W_cik() { return view.querySelector("#cik-in"); }
   const cikIn = h("input", { type: "text", id: "cik-in", placeholder: "0000050863", value: "0000050863" });
 
+  /* ---- manage frozen bundles: rename + delete (workspace bundles only) --- */
+  function bundleActions(b) {
+    if (!b.editable) return h("span", { class: "muted", title: "Built-in bundles are read-only" }, "Built-in");
+    const cell = h("div", { class: "bundle-actions" });
+    const idle = () => cell.replaceChildren(
+      h("button", { class: "btn small", "aria-label": `Rename ${b.bundle_id}`, onclick: askRename }, "Rename"),
+      h("button", { class: "btn small danger", "aria-label": `Delete ${b.bundle_id}`, onclick: askDelete }, "Delete"));
+    function askDelete() {
+      const yes = h("button", { class: "btn small danger", onclick: async () => {
+        yes.disabled = true; yes.textContent = "Deleting…";
+        const r = await guard(() => Api.del(`/api/bundles/${encodeURIComponent(b.bundle_id)}`), "Could not delete bundle");
+        if (!r.ok) { idle(); return; }
+        toast("Bundle deleted", b.bundle_id);
+        Views.bundles(view);
+      } }, "Confirm delete");
+      cell.replaceChildren(yes, h("button", { class: "btn small", onclick: idle }, "Cancel"));
+      yes.focus();
+    }
+    function askRename() {
+      const input = h("input", { type: "text", value: b.bundle_id, "aria-label": "New bundle name" });
+      const save = async () => {
+        const name = input.value.trim();
+        if (!name || name === b.bundle_id) { idle(); return; }
+        const r = await guard(() => Api.patch(`/api/bundles/${encodeURIComponent(b.bundle_id)}`, { name }), "Could not rename bundle");
+        if (!r.ok) { input.focus(); return; }
+        toast("Bundle renamed", `${b.bundle_id} → ${name}`);
+        Views.bundles(view);
+      };
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); save(); }
+        if (e.key === "Escape") idle();
+      });
+      cell.replaceChildren(input,
+        h("button", { class: "btn small primary", onclick: save }, "Save"),
+        h("button", { class: "btn small", onclick: idle }, "Cancel"));
+      input.focus(); input.select();
+    }
+    idle();
+    return cell;
+  }
+
+  const freezeBtn = h("button", { class: "btn primary", onclick: snapshot }, "Freeze bundle →");
   async function snapshot() {
+    if (freezeBtn.disabled) return;
+    freezeBtn.disabled = true;
+    freezeBtn.setAttribute("aria-busy", "true");
+    freezeBtn.replaceChildren(h("span", { class: "spinner btn-spinner" }), " Freezing…");
+    const progress = h("div", { class: "freeze-progress", role: "status" },
+      h("div", { class: "freeze-bar" }, h("div", { class: "freeze-bar-fill" })),
+      h("span", { class: "hint" }, `Hashing ${chosen.size} document${chosen.size === 1 ? "" : "s"} and writing the snapshot. This can take a minute.`));
+    freezeBtn.parentElement.after(progress);
+    const restore = () => {
+      progress.remove();
+      freezeBtn.disabled = false;
+      freezeBtn.removeAttribute("aria-busy");
+      freezeBtn.replaceChildren("Freeze bundle →");
+    };
     const r = await guard(() => Api.post("/api/bundles", {
       cik: cikIn.value, docs: [...chosen.values()].map(d => d.accession ? d : d.doc_id), name: nameIn.value || undefined,
     }), "snapshot failed");
-    if (!r.ok) return;
+    if (!r.ok) { restore(); return; }
     toast("Bundle frozen", `${r.data.bundle_id}, ${r.data.documents.length} documents, ${r.data.bundle_sha256.slice(0, 18)}…`);
     chosen.clear(); paintChosen();
     Views.bundles(view);
@@ -2768,16 +2836,17 @@ Views.bundles = async function bundles(view) {
             h("label", { class: "f" }, h("span", null, "CIK"), cikIn),
             h("label", { class: "f" }, h("span", null, "Bundle name"), nameIn)),
           h("div", { class: "actions" },
-            h("button", { class: "btn primary", onclick: snapshot }, "Freeze bundle →")))),
+            freezeBtn))),
       labeledPanel("3. Frozen bundles on disk",
         list.ok ? h("table", { class: "grid bundle-table" },
           h("thead", null, h("tr", null, h("th", null, "Bundle"), h("th", null, "SHA-256"),
-            h("th", { class: "num" }, "Documents"), h("th", null, "Cutoff"))),
+            h("th", { class: "num" }, "Documents"), h("th", null, "Cutoff"), h("th", null, ""))),
           h("tbody", null, ...list.data.bundles.map(b => h("tr", null,
             h("td", { class: "id", "data-label": "Bundle" }, b.bundle_id),
             h("td", { class: "id muted", "data-label": "SHA-256" }, (b.bundle_sha256 || "").slice(0, 18) + "…"),
             h("td", { class: "num", "data-label": "Documents" }, String(b.documents.length)),
-            h("td", { class: "num filing-date-text", "data-label": "Cutoff" }, b.as_of_cutoff)))))
+            h("td", { class: "num filing-date-text", "data-label": "Cutoff" }, b.as_of_cutoff),
+            h("td", { class: "bundle-table-action", "data-label": "Manage" }, bundleActions(b))))))
           : emptyState("No bundles", "Create one from the search results."))));
   paintChosen();
 };

@@ -40,6 +40,7 @@ import io
 import json
 import os
 import re
+import shutil
 import tempfile
 import threading
 import time
@@ -3176,6 +3177,8 @@ def list_bundles() -> dict:
                 except Exception:
                     continue
                 if isinstance(man, dict) and man.get("bundle_id"):
+                    # only bundles frozen into the workspace may be edited
+                    man = {**man, "editable": base == ws / "bundles"}
                     manifests.append(man)
         seen = set()
         uniq = []
@@ -3184,7 +3187,170 @@ def list_bundles() -> dict:
                 seen.add(m["bundle_id"])
                 uniq.append(m)
         return {"bundles": uniq, "count": len(uniq)}
-    return {"bundles": list(_BUNDLES.values()), "count": len(_BUNDLES)}
+    return {"bundles": [{**m, "editable": m["bundle_id"] not in _BUILTIN_BUNDLES}
+                        for m in _BUNDLES.values()], "count": len(_BUNDLES)}
+
+
+_BUNDLE_NAME_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]*")
+_BUILTIN_BUNDLES = {_INTC_MANIFEST["bundle_id"], _AMD_MANIFEST["bundle_id"]}
+
+
+def _bundle_cases_using(bundle_id: str) -> list[str]:
+    """Case ids whose mandate/request/state files reference this bundle."""
+    cases = _rws() / "cases"
+    if not cases.is_dir():
+        return []
+    used = []
+    for cdir in sorted(p for p in cases.iterdir() if p.is_dir()):
+        for fname in ("mandate.json", "request.json", "state.json"):
+            f = cdir / fname
+            try:
+                if f.is_file() and f'"{bundle_id}"' in f.read_text("utf-8"):
+                    used.append(cdir.name)
+                    break
+            except OSError:
+                continue
+    return used
+
+
+def _editable_bundle_dir(bundle_id: str) -> Path | None:
+    """Workspace bundle dir for edits; None in demo mode. Built-ins refuse."""
+    if not _BUNDLE_NAME_RE.fullmatch(bundle_id or ""):
+        raise ValidationError("Invalid bundle name.")
+    if _using_real():
+        d = _rws() / "bundles" / bundle_id
+        if (d / "manifest.json").is_file():
+            used = _bundle_cases_using(bundle_id)
+            if used:
+                raise ConflictError(
+                    f"Bundle {bundle_id} is used by case {used[0]}"
+                    + (f" and {len(used) - 1} more" if len(used) > 1 else "")
+                    + ". Remove or finish those cases first.")
+            return d
+        if _rfind_bundle_dir(bundle_id) is not None:
+            raise ValidationError("Built-in bundles are read-only.")
+        raise NotFound(f"unknown bundle: {bundle_id}")
+    if bundle_id in _BUILTIN_BUNDLES:
+        raise ValidationError("Built-in bundles are read-only.")
+    if bundle_id not in _BUNDLES:
+        raise NotFound(f"unknown bundle: {bundle_id}")
+    return None
+
+
+def delete_bundle(bundle_id: str) -> dict:
+    """DELETE /api/bundles/{id} — remove a workspace bundle snapshot."""
+    d = _editable_bundle_dir(bundle_id)
+    if d is not None:
+        shutil.rmtree(d)
+    _BUNDLES.pop(bundle_id, None)
+    _emit("*", "BUNDLE_DELETED", {"bundle_id": bundle_id})
+    return {"deleted": bundle_id}
+
+
+def rename_bundle(bundle_id: str, new_name: str) -> dict:
+    """PATCH /api/bundles/{id} — rename a bundle.
+
+    Frozen contents are never edited: the SHA-256 covers the documents only,
+    so a rename keeps the hash intact. Changing documents means freezing a
+    new bundle.
+    """
+    new_name = (new_name or "").strip()
+    if not _BUNDLE_NAME_RE.fullmatch(new_name):
+        raise ValidationError("Bundle name must contain only letters, numbers, "
+                              "dots, underscores or hyphens.")
+    d = _editable_bundle_dir(bundle_id)
+    if new_name == bundle_id:
+        return list_bundle_one(bundle_id)
+    if new_name in {m["bundle_id"] for m in list_bundles()["bundles"]}:
+        raise ConflictError(f"bundle name already exists: {new_name}")
+    if d is not None:
+        man = _real_statestore.read_json(d / "manifest.json")
+        man["bundle_id"] = new_name
+        _real_statestore.atomic_write_json(d / "manifest.json", man)
+        d.rename(d.with_name(new_name))
+    if bundle_id in _BUNDLES:
+        _BUNDLES[new_name] = {**_BUNDLES.pop(bundle_id), "bundle_id": new_name}
+    _emit("*", "BUNDLE_RENAMED", {"bundle_id": new_name, "was": bundle_id})
+    return list_bundle_one(new_name)
+
+
+def extend_bundle(base_id: str, docs: list, name: str) -> dict:
+    """POST /api/bundles/{id}/extend — new bundle = existing one + new filings.
+
+    The base bundle is left untouched. Its documents are copied (and
+    re-verified against their recorded SHA-256), so only the new filings are
+    downloaded from the SEC.
+    """
+    if not _using_real():
+        raise ValidationError("Updating a bundle requires a controller workspace. Start CoverageFlow with launch.py.")
+    if not _BUNDLE_NAME_RE.fullmatch(base_id or ""):
+        raise ValidationError("Invalid bundle name.")
+    base_dir = _rfind_bundle_dir(base_id)
+    if base_dir is None:
+        raise NotFound(f"unknown bundle: {base_id}")
+    if not docs or not all(isinstance(d, dict) and d.get("accession") for d in docs):
+        raise ValidationError("Select at least one new filing to add.")
+    base = _real_bundle.load_manifest(base_dir)
+    have = {d.doc_id for d in base.documents}
+    m = re.search(r"/data/(\d+)/", base.documents[0].source_url) if base.documents else None
+    if not m:
+        raise ValidationError("This bundle has no SEC source to update from.")
+    base_cik = int(m.group(1))
+    new = [d for d in docs if d["doc_id"] not in have]
+    if not new:
+        raise ValidationError("Those filings are already in the bundle.")
+    if any(str(d.get("cik") or "").lstrip("0") != str(base_cik) for d in new):
+        raise ValidationError("New filings must be from the same company as the bundle.")
+    name = (name or "").strip()
+    if not name:
+        t = (new[0].get("ticker") or base_id.split("-")[0]).upper()
+        stem = f"{t}-{datetime.now().strftime('%Y-%m')}"
+        name, n = stem, 2
+        while (_rws() / "bundles" / name).exists():   # never collide with the base
+            name, n = f"{stem}-v{n}", n + 1
+    if not _BUNDLE_NAME_RE.fullmatch(name):
+        raise ValidationError("Bundle name must contain only letters, numbers, dots, underscores or hyphens.")
+    dest = _rws() / "bundles" / name
+    if dest.exists():
+        raise ConflictError(f"bundle name already exists: {name}")
+    stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=_rws()))
+    try:
+        specs = [_real_bundle.DocSpec(
+            doc_id=str(d["doc_id"]), accession=str(d["accession"]),
+            form=d.get("form"), filed=d.get("filed"), period=d.get("period"),
+            primary_doc=d.get("primary_doc"), ticker=d.get("ticker")) for d in new]
+        added = _real_bundle.build_bundle(str(new[0]["cik"]), specs, stage)
+        carried = []
+        for old in base.documents:
+            src = base_dir / old.path
+            if not src.is_file() or hashlib.sha256(src.read_bytes()).hexdigest() != old.sha256:
+                raise ValidationError(f"Existing document {old.doc_id} failed its hash check; bundle not updated.")
+            (stage / old.path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, stage / old.path)
+            carried.append(old)
+        merged = sorted(carried + list(added.documents), key=lambda x: x.doc_id)
+        result = {
+            "as_of_cutoff": max(x.filed for x in merged),
+            "documents": [x.to_dict() for x in merged],
+            "bundle_id": name,
+            "bundle_sha256": _real_bundle._bundle_sha(merged),
+            "parent_bundle": base_id,
+            "parent_sha256": base.bundle_sha256,
+        }
+        _real_statestore.atomic_write_json(stage / "manifest.json", result)
+        stage.rename(dest)
+    except (ValueError, KeyError, OSError, _real_bundle.EdgarError) as exc:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise ValidationError(f"Could not update bundle: {exc}") from exc
+    except Exception:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    _emit("*", "BUNDLE_CREATED", {"bundle_id": name, "real": True, "parent": base_id})
+    return result
+
+
+def list_bundle_one(bundle_id: str) -> dict:
+    return next(m for m in list_bundles()["bundles"] if m["bundle_id"] == bundle_id)
 
 
 def build_bundle(cik: str, docs: list[str], name: str) -> dict:
