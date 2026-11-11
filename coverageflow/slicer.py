@@ -67,6 +67,19 @@ _MDA_STOP = re.compile(
     r"^\s*report\s+of\s+independent)", re.I
 )
 _MDA_MAX_CHARS = 120_000
+# The MD&A slice feeds the writer's commentary/outlook: the overview, significant
+# events and the start of results of operations. A full 10-Q MD&A is ~50k chars,
+# far more than a bounded evidence slice should carry; 12k chars (~3k tokens)
+# covers the overview and segment trends. Cut on a block boundary (never
+# mid-line) so the result is deterministic.
+_MDA_SLICE_CHARS = 12_000
+_MDA_NOISE = re.compile(r"^(?:table\s+of\s+contents|md&a\s*\|\s*\d+)\s*$", re.I)
+# segment note: from its heading to the next note heading
+_SEG_NOTE_HEAD = re.compile(
+    r"^note\s*\d+\s*[:|.\-\u2013\u2014]?\s*(?:\|\s*)?.*segment", re.I)
+_NOTE_HEAD = re.compile(r"^note\s*\d+\s*[:|.\-\u2013\u2014]", re.I)
+_PAGE_HEADER = re.compile(r"^(?:financial\s+statements|md&a)\s*\|", re.I)
+_SEG_NOTE_MAX_CHARS = 30_000
 
 _BLOCK_END = {"p", "div", "br", "li", "tr", "table", "h1", "h2", "h3", "h4", "h5", "h6"}
 _HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
@@ -339,6 +352,38 @@ def _select_statement(blocks: list[_Block], kind: str) -> tuple[int, _Block, str
     return fallback
 
 
+def _select_segment_note(blocks: list[_Block]) -> tuple[int, str, str] | None:
+    """Every table between the segment note heading and the next note heading.
+
+    A 10-Q segment note prints quarter and year-to-date tables for the current
+    and the prior year (plus reconciliations); picking one "best" table drops
+    the current period. Returns (heading_idx, text, anchor) or None when no
+    segment note heading exists (callers fall back to ``_select_statement``).
+    """
+    start = None
+    for i, b in enumerate(blocks):
+        t = b.text.strip()
+        if len(t) <= 100 and _SEG_NOTE_HEAD.search(t):
+            start = i  # last match: the note itself follows the table of contents
+    if start is None:
+        return None
+    anchor = " ".join(blocks[start].text.split())
+    parts: list[str] = []
+    for j in range(start + 1, len(blocks)):
+        b = blocks[j]
+        t = b.text.strip()
+        if len(t) <= 100 and _NOTE_HEAD.search(t):
+            break
+        if b.is_table and not _PAGE_HEADER.match(t) and _kw_pass(b, "SEG"):
+            parts.append(b.text)
+        elif b.is_table and not _PAGE_HEADER.match(t) and b.lines and len(t) > 150:
+            parts.append(b.text)  # reconciliation tables lacking segment names
+    if not parts:
+        return None
+    text = anchor + "\n\n" + "\n\n".join(parts)
+    return start, text[:_SEG_NOTE_MAX_CHARS].rstrip(), anchor
+
+
 _ITEM_MARK = re.compile(r"item\s*\d", re.I)
 
 
@@ -347,6 +392,15 @@ def _anchor_line(block: _Block, pattern: re.Pattern) -> str:
         if ln.strip() and pattern.search(ln):
             return ln.strip()
     return block.text.strip()
+
+
+def _mda_body_len(blocks: list[_Block], start: int) -> int:
+    total = 0
+    for j in range(start + 1, len(blocks)):
+        if _MDA_STOP.search(blocks[j].text):
+            break
+        total += len(blocks[j].text)
+    return total
 
 
 def _select_mda(blocks: list[_Block]) -> tuple[int, str, str] | None:
@@ -359,15 +413,30 @@ def _select_mda(blocks: list[_Block]) -> tuple[int, str, str] | None:
     hits = [i for i, b in enumerate(blocks) if anchor_re.search(b.text)]
     if not hits:
         return None
-    item_marked = [i for i in hits if _ITEM_MARK.search(blocks[i].text)]
-    start = (item_marked or hits)[-1]
+    # The section's own heading is a short block. Long hits are the table of
+    # contents or prose cross-references, and the trailing "Item Number | Item"
+    # index table also carries the phrase plus an "Item N" marker (it used to be
+    # picked as the start, leaving a 550-byte slice). Prefer short headings; if
+    # several, take the one with the longest body, which skips TOC entries.
+    headings = [i for i in hits if len(blocks[i].text.strip()) <= 120]
+    if headings:
+        start = max(headings, key=lambda i: (_mda_body_len(blocks, i), -i))
+    else:
+        item_marked = [i for i in hits if _ITEM_MARK.search(blocks[i].text)]
+        start = (item_marked or hits)[-1]
     anchor = _anchor_line(blocks[start], anchor_re)
     parts: list[str] = [anchor]
+    size = len(anchor)
     for j in range(start + 1, len(blocks)):
         nxt = blocks[j]
         if _MDA_STOP.search(nxt.text):
             break
+        if _MDA_NOISE.match(nxt.text.strip()):
+            continue
+        if size + len(nxt.text) + 1 > _MDA_SLICE_CHARS and len(parts) > 1:
+            break
         parts.append(nxt.text)
+        size += len(nxt.text) + 1
     text = "\n".join(parts)[:_MDA_MAX_CHARS].rstrip()
     if len(text) <= len(anchor) + 10:  # nothing meaningful following
         return None
@@ -401,10 +470,15 @@ def candidate_slices(doc_path: Path, form: str) -> list[Slice]:
                 continue
             _, block, anchor = sel
             results.append((tag, anchor, block.text, f"slices/{stem}/{tag}.txt"))
-        sel = _select_statement(blocks, "SEG")
-        if sel:
-            _, block, anchor = sel
-            results.append(("SEG", anchor, block.text, f"slices/{stem}/SEG.txt"))
+        seg_note = _select_segment_note(blocks)
+        if seg_note:
+            _, seg_text, anchor = seg_note
+            results.append(("SEG", anchor, seg_text, f"slices/{stem}/SEG.txt"))
+        else:
+            sel = _select_statement(blocks, "SEG")
+            if sel:
+                _, block, anchor = sel
+                results.append(("SEG", anchor, block.text, f"slices/{stem}/SEG.txt"))
         mda = _select_mda(blocks)
         if mda:
             _, mda_text, anchor = mda
