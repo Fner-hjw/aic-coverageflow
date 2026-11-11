@@ -57,7 +57,9 @@ One canonical name per line. Extraction, model, and forecast artifacts use these
 ## cash_flow.* (Cash Flow Statement)
 
 - `cash_flow.net_income` — Net Income (USDmm)
-- `cash_flow.depreciation_amortization` — Depreciation And Amortization (USDmm)
+- `cash_flow.depreciation_amortization` — Depreciation And Amortization (USDmm). The combined line when the filing prints one. When it prints depreciation and amortization separately, extract the two component fields below and leave this one absent: the model engine adds them.
+- `cash_flow.depreciation` — Depreciation (USDmm). Only when the filing prints depreciation on its own line.
+- `cash_flow.amortization_of_intangibles` — Amortization Of Intangibles (USDmm). Only when the filing prints amortization on its own line.
 - `cash_flow.stock_based_compensation` — Stock-Based Compensation (USDmm)
 - `cash_flow.deferred_taxes` — Deferred Taxes (USDmm)
 - `cash_flow.working_capital_changes` — Change In Working Capital (USDmm)

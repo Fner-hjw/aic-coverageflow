@@ -497,3 +497,17 @@ def test_diluted_eps_above_basic_or_far_below_still_raises():
     _set(payload, "income_statement.diluted_eps", "2026-Q3", 0.10)   # 37% below implied
     with pytest.raises(BoundsViolation, match="EPS"):
         build_model(Facts.from_payload(payload), "1.0")
+
+
+def test_da_components_are_summed_into_the_combined_field():
+    payload = mini_facts_payload()
+    payload["facts"] = [f for f in payload["facts"]
+                        if f["field"] not in ("cash_flow.depreciation_amortization",
+                                              "income_statement.depreciation_and_amortization")]
+    payload["facts"] += [
+        {"field": "cash_flow.depreciation", "period": "2026-Q3", "value": 900.0, "unit": "USDmm"},
+        {"field": "cash_flow.amortization_of_intangibles", "period": "2026-Q3", "value": 70.0, "unit": "USDmm"}]
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    da = d["series"]["cash_flow.depreciation_amortization"]
+    da = da.get("values", da) if isinstance(da, dict) else da
+    assert da["2026-Q3"] == 970.0

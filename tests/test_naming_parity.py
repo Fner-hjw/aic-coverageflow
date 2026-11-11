@@ -103,12 +103,12 @@ def test_definitions_doc_is_a_fresh_render_of_the_schema():
 
 
 def test_statement_field_counts_match_schema_note():
-    """80 primary fields: IS 21 + BS 23 + CF 16 + segments 6x4 (+2 residuals)."""
+    """Primary fields: IS 21 + BS 23 + CF 18 + segments 6x4 (+2 residuals)."""
     schema = json.loads(SCHEMA_PATH.read_text("utf-8"))
     counts = {k: len(g["fields"]) for k, g in schema["statements"].items()
               if k != "segments"}
     assert counts == {"income_statement": 21, "balance_sheet": 23,
-                      "cash_flow": 16}
+                      "cash_flow": 18}
     ids = schema_ids(schema)
     for seg in ("ccg", "dcai", "nex", "foundry", "altera", "mobileye"):
         for suffix in ("revenue", "operating_income", "operating_margin",

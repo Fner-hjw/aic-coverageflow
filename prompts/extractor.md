@@ -1,4 +1,4 @@
---version: 1.4
+--version: 1.5
 --role: extractor
 --produces: facts.json
 --read: statement slices (with citation anchors) from the scoped filings
@@ -22,7 +22,7 @@ Strict JSON only, matching **facts.json** (contracts §5):
 `role("extractor"), request_id, candidate_id,
 facts[] {field, period, value, unit("USDmm" | "USD" | "shares_mm" | "ratio"),
   confidence (0–1), citation {doc_id, slice_id, anchor, locator}},
-missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.4")`.
+missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.5")`.
 `period` format: `YYYY-QN`, `YYYY-QN-YTD`, or `YYYY`.
 
 **Columns.** Extract every column a statement prints, each under the label
@@ -52,6 +52,10 @@ not a duplicate.
   `income_statement.interest_expense`: that field is only for a line that is
   interest expense. If the filing prints no separate interest expense line,
   leave `interest_expense` in `missing`.
+- Depreciation and amortization: if the cash-flow statement prints one combined
+  line, use `cash_flow.depreciation_amortization`. If it prints separate lines,
+  file them under `cash_flow.depreciation` and
+  `cash_flow.amortization_of_intangibles` and do not add them up.
 
 ## BOUNDS
 - You see slices only. Never consult other parts of the filing, prior
@@ -80,4 +84,4 @@ schema check at dispatch and return as repairable errors. Budgets enforced.
  "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
  "notes":["figures are one period only; comparatives in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.4"}
+ "conformance":"schema 1.0","prompt_version":"1.5"}

@@ -535,6 +535,16 @@ def _derive_levels(model: Model) -> None:
         if da is None:
             da = model.series.get("cash_flow.depreciation_amortization",
                                   {}).get(p)
+        if da is None:
+            # Filings such as Intel's print "Depreciation" and "Amortization
+            # of intangibles" on separate lines with no subtotal. The
+            # extractor copies the components; the sum is arithmetic, so it
+            # is done here and stored under the combined name.
+            dep = model.series.get("cash_flow.depreciation", {}).get(p)
+            amo = model.series.get("cash_flow.amortization_of_intangibles", {}).get(p)
+            if dep is not None:
+                da = dep + (amo or 0.0)
+                model.series.setdefault("cash_flow.depreciation_amortization", {})[p] = da
         if None not in (oi, da):
             model.series.setdefault("income_statement.ebitda", {})[p] = oi + da
         ocf = model.series.get("cash_flow.operating_cash_flow", {}).get(p)

@@ -69,7 +69,9 @@
       "display": "Cash Flow Statement",
       "fields": [
         {"id": "cash_flow.net_income", "label": "Net Income", "kind": "absolute"},
-        {"id": "cash_flow.depreciation_amortization", "label": "Depreciation And Amortization", "kind": "absolute"},
+        {"id": "cash_flow.depreciation_amortization", "label": "Depreciation And Amortization", "kind": "absolute", "note": "The combined line when the filing prints one. When it prints depreciation and amortization separately, extract the two component fields below and leave this one absent: the model engine adds them."},
+        {"id": "cash_flow.depreciation", "label": "Depreciation", "kind": "absolute", "note": "Only when the filing prints depreciation on its own line."},
+        {"id": "cash_flow.amortization_of_intangibles", "label": "Amortization Of Intangibles", "kind": "absolute", "note": "Only when the filing prints amortization on its own line."},
         {"id": "cash_flow.stock_based_compensation", "label": "Stock-Based Compensation", "kind": "absolute"},
         {"id": "cash_flow.deferred_taxes", "label": "Deferred Taxes", "kind": "absolute"},
         {"id": "cash_flow.working_capital_changes", "label": "Change In Working Capital", "kind": "absolute"},
@@ -114,5 +116,5 @@
     {"id": "derived.diluted_eps_yoy", "label": "Diluted EPS Growth YoY", "expr": "yoy(income_statement.diluted_eps)"},
     {"id": "derived.net_income_yoy", "label": "Net Income Growth YoY", "expr": "yoy(income_statement.net_income)"}
   ],
-  "field_count_note": "income_statement 21 + balance_sheet 23 + cash_flow 16 + segments 6x4 = 24, total 84 primary fields, plus optional segment residuals and derived metrics."
+  "field_count_note": "income_statement 21 + balance_sheet 23 + cash_flow 18 + segments 6x4 = 24, total 86 primary fields, plus optional segment residuals and derived metrics."
 }
