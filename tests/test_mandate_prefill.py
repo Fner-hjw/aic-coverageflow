@@ -109,7 +109,7 @@ def test_defaults_kept_and_segments_fall_back_with_a_basis(proposal):
     a = proposal["assumptions"]
     assert a["terminal_growth"] == 0.025 and a["dcf_comps_tolerance"] == 0.25
     assert a["forecast_bounds"]["segments"]["CCG"] == [-0.10, 0.12]
-    assert "not in SEC companyfacts" in proposal["provenance"][
+    assert "not in SEC filings data" in proposal["provenance"][
         "assumptions.forecast_bounds.segments.CCG"]["basis"]
     # gross margin FY24 0.5, FY25 0.55 widened by 0.05
     assert a["forecast_bounds"]["margin_floor_gross"] == 0.45
@@ -132,7 +132,7 @@ def test_missing_data_path_leaves_nulls_and_lists_them():
     assert "assumptions.market.price" in m["missing"]
     assert m["assumptions"]["wacc"] is None and "assumptions.wacc" in m["missing"]
     e = m["provenance"]["assumptions.wacc"]
-    assert e["value"] is None and e["basis"].startswith("not available — enter manually")
+    assert e["value"] is None and e["basis"].startswith("Not available. Enter manually")
     assert mandate_check.schema_errors(m) == []   # a proposal may carry nulls
 
 

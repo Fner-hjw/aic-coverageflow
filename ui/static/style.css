@@ -2306,3 +2306,10 @@ button.btn.selected-filing-remove { display: inline-flex; justify-content: cente
 .pf-caption { display: block; margin-top: 2px; }
 .pf-summary { margin: 6px 0 0; }
 .pf-status:empty { display: none; }
+
+/* market-data prefill: slim progress bar and step label */
+.pf-progress { margin: 0 0 var(--s2); }
+.pf-progress-track { height: 5px; overflow: hidden; background: var(--paper-3); border-radius: 99px; }
+.pf-progress-track > i { display: block; height: 100%; background: var(--accent);
+                         border-radius: inherit; transition: width .5s ease; }
+.pf-progress-line { display: flex; justify-content: space-between; gap: var(--s2); margin-top: 6px; }

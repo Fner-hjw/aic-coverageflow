@@ -50,6 +50,7 @@ import hashlib
 import io
 import json
 import statistics
+import threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
@@ -71,8 +72,63 @@ class MarketDataError(Exception):
 
 # ------------------------------------------------------------------ plumbing
 
-def default_fetch(min_interval: float | None = None) -> Fetch:
-    """Production fetch: throttled EDGAR client for SEC hosts, urllib otherwise."""
+FETCH_CACHE_TTL = 6 * 3600.0          # seconds; a past cutoff's data does not change
+FETCH_CACHE_MAX_BYTES = 256 * 1024 * 1024
+_FETCH_CACHE: dict[str, tuple[float, bytes]] = {}
+_FETCH_CACHE_LOCK = threading.Lock()
+
+
+def clear_fetch_cache() -> None:
+    with _FETCH_CACHE_LOCK:
+        _FETCH_CACHE.clear()
+
+
+def _cache_get(url: str, ttl: float) -> bytes | None:
+    import time
+    with _FETCH_CACHE_LOCK:
+        hit = _FETCH_CACHE.get(url)
+        if hit and time.monotonic() - hit[0] <= ttl:
+            return hit[1]
+        _FETCH_CACHE.pop(url, None)
+    return None
+
+
+def _cache_put(url: str, raw: bytes) -> None:
+    import time
+    with _FETCH_CACHE_LOCK:
+        _FETCH_CACHE[url] = (time.monotonic(), raw)
+        total = sum(len(v[1]) for v in _FETCH_CACHE.values())
+        for k in list(_FETCH_CACHE):          # oldest first (insertion order)
+            if total <= FETCH_CACHE_MAX_BYTES or len(_FETCH_CACHE) <= 1:
+                break
+            total -= len(_FETCH_CACHE.pop(k)[1])
+
+
+def default_fetch(min_interval: float | None = None, *, cache: bool = True,
+                  cache_ttl: float | None = None) -> Fetch:
+    """Production fetch: throttled EDGAR client for SEC hosts, urllib otherwise.
+
+    Responses are kept in a process-wide cache keyed by URL (default 6 hours),
+    so a retry or another ticker reuses the ticker index, companyfacts and
+    price downloads; the bytes (hence url and sha256 in provenance) are
+    identical on a hit. ``cache=False`` bypasses it (tests, forced refresh).
+    """
+    ttl = FETCH_CACHE_TTL if cache_ttl is None else cache_ttl
+    inner = _network_fetch(min_interval)
+    if not cache:
+        return inner
+
+    def cached(url: str) -> bytes:
+        raw = _cache_get(url, ttl)
+        if raw is None:
+            raw = inner(url)
+            _cache_put(url, raw)
+        return raw
+
+    return cached
+
+
+def _network_fetch(min_interval: float | None = None) -> Fetch:
     import urllib.request
     edgar = bundle_mod.EdgarFetcher(
         **({"min_interval": min_interval} if min_interval is not None else {}))

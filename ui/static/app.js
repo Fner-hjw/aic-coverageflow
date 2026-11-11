@@ -28,6 +28,12 @@ function h(tag, attrs, ...children) {
   return el;
 }
 
+/* replaceChildren, but dropping null, undefined and false like h() does
+ * (the native method would print them as the text "null"). */
+function setKids(el, ...kids) {
+  el.replaceChildren(...kids.flat(9).filter(c => c !== null && c !== undefined && c !== false));
+}
+
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 
@@ -1876,6 +1882,26 @@ Views.newCase = async function newCase(view, fromId) {
   const pfStatus = h("div", { class: "pf-status", role: "status" });
   const pfSummary = h("div", { class: "hint pf-summary" });
 
+  /* "<Source label>, <date>. <Basis sentence>" with no raw identifiers. */
+  const PF_SOURCES = {
+    "yahoo": "Yahoo Finance close", "stooq": "Stooq close",
+    "treasury:par_yield_10y": "US Treasury", "fred:DGS10": "FRED",
+    "derived": "Computed", "default": "Default", "sec:company_tickers": "SEC ticker index",
+    "sec:companyfacts": "SEC filings", "references/peer-sets.json": "Curated peer list",
+    "mandate": "Mandate", "user": "Entered by you", "none": "Not available",
+  };
+  const PF_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function pfDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+    return m ? `${Number(m[3])} ${PF_MONTHS[Number(m[2]) - 1]} ${m[1]}` : "";
+  }
+  function pfCaption(e) {
+    const src = String(e.source || "");
+    const label = src.startsWith("sec:sic-") ? "SEC same-industry list" : (PF_SOURCES[src] || src);
+    const date = pfDate(e.as_of);
+    return `${label}${date ? ", " + date : ""}. ${e.basis || ""}`;
+  }
+
   function pfGet(path) {
     let node = PREFILL;
     for (const part of path.split(".")) {
@@ -1890,7 +1916,7 @@ Views.newCase = async function newCase(view, fromId) {
     for (const [k, [path]] of Object.entries(PF_FIELDS)) {
       const e = (PREFILL.provenance || {})[path];
       const cap = pfCaps[k];
-      cap.replaceChildren();
+      setKids(cap);
       if (!e) continue;
       const proposed = e.value;
       const cur = num(W[k].value);
@@ -1898,28 +1924,79 @@ Views.newCase = async function newCase(view, fromId) {
       if (proposed == null)
         cap.append("Not available. Enter manually. ");
       else
-        cap.append(`${e.source}${e.as_of ? ", as of " + e.as_of : ""}. ${e.basis}. `);
+        cap.append(pfCaption(e) + " ");
       if (edited) cap.append(h("span", { class: "chip minor" }, "edited"));
     }
   }
 
+  const pfBtn = h("button", { class: "btn", type: "button",
+    onclick: () => { void runPrefill(); } }, "Prefill from market data");
+  const pfSleep = ms => new Promise(res => setTimeout(res, ms));
+
+  function pfShowError(message) {
+    setKids(pfStatus, h("div", { class: "err-box" },
+      message || "Prefill failed. Enter the values by hand."));
+  }
+
+  function pfShowProgress(step, total, label) {
+    const pct = total ? Math.min(100, Math.max(0, ((step - 1) / total) * 100)) : 0;
+    setKids(pfStatus, h("div", { class: "pf-progress" },
+      h("div", { class: "pf-progress-track", role: "progressbar", "aria-valuemin": "0",
+                 "aria-valuemax": String(total || 0), "aria-valuenow": String(Math.max(0, step - 1)) },
+        h("i", { style: `width: ${pct}%` })),
+      h("div", { class: "pf-progress-line hint" },
+        h("span", null, label || "Starting"),
+        total ? h("span", { class: "mono" }, `${step} of ${total}`) : null)));
+  }
+
   async function runPrefill() {
-    pfStatus.replaceChildren(h("span", { class: "hint" }, "Fetching market data..."));
     const body = { ticker: W.ticker.value, cutoff_date: W.cutoff.value,
                    peers: W.pfPeers.value };
     if (!body.ticker) {
-      pfStatus.replaceChildren(h("div", { class: "err-box" },
-        "Choose a bundle with a ticker first."));
+      pfShowError("Choose a bundle with a ticker first.");
       return;
     }
-    const r = await guard(() => Api.post("/api/mandate/prefill", body), "prefill failed");
-    if (!r.ok) {
-      const d = r.err && r.err.detail;
-      pfStatus.replaceChildren(h("div", { class: "err-box" },
-        (d && (d.error || d.message)) || "Prefill failed. Enter the values by hand."));
-      return;
+    pfBtn.disabled = true;
+    try {
+      pfShowProgress(1, 0, "Starting");
+      const r = await pfRun(body);
+      if (r) await pfApply(r);
+    } finally {
+      pfBtn.disabled = false;
     }
-    PREFILL = r.data;
+  }
+
+  /* Start the job, poll it about every 700 ms; the result, or null after an error is shown. */
+  async function pfRun(body) {
+    const start = await quiet(() => Api.post("/api/mandate/prefill", body));
+    if (!start.ok) {
+      const d = start.err && start.err.detail;
+      pfShowError((d && (d.error || d.message)) || start.err.message);
+      return null;
+    }
+    const url = `/api/mandate/prefill/${start.data.job_id}`;
+    let failures = 0;
+    for (;;) {
+      await pfSleep(700);
+      const st = await quiet(() => Api.get(url));
+      if (!st.ok) {
+        const d = st.err && st.err.detail;
+        if (st.err.status === 404 || ++failures >= 5) {
+          pfShowError((d && d.error) || "Lost contact with the server while fetching. Try again.");
+          return null;
+        }
+        continue;
+      }
+      failures = 0;
+      const j = st.data;
+      if (j.state === "done") return j.result;
+      if (j.state === "error") { pfShowError(j.error); return null; }
+      pfShowProgress(j.step, j.total, j.label);
+    }
+  }
+
+  async function pfApply(result) {
+    PREFILL = result;
     applyMandate({ mandate: PREFILL });
     if (PREFILL.assumptions.market && PREFILL.assumptions.market.price != null)
       W.price.value = String(PREFILL.assumptions.market.price);
@@ -1929,7 +2006,7 @@ Views.newCase = async function newCase(view, fromId) {
       if (v == null) W[k].value = "";
     }
     const miss = PREFILL.missing || [];
-    pfStatus.replaceChildren(
+    setKids(pfStatus,
       h("div", { class: "ok-box" },
         h("b", null, "Proposal loaded. Nothing is saved yet."),
         h("p", { class: "mb0" }, "Review every value and its source, edit what you disagree with, then create the case. Creating the case accepts the form as you leave it and records your edits.")),
@@ -1938,8 +2015,8 @@ Views.newCase = async function newCase(view, fromId) {
       (PREFILL.warnings || []).length ? h("details", null, h("summary", null, "Warnings"),
         h("ul", null, ...PREFILL.warnings.map(w => h("li", null, w)))) : null);
     const peerSrc = (PREFILL.provenance || {})["assumptions.peer_block.peers"];
-    pfSummary.replaceChildren(
-      peerSrc ? `Peers: ${peerSrc.source}. ${peerSrc.basis}. ` : "Peers: none found. ",
+    setKids(pfSummary,
+      peerSrc ? `Peers: ${pfCaption(peerSrc)} ` : "Peers: none found. ",
       "Peer multiples, own band, and the sensitivity grid come from the proposal; hover a field in the JSON preview for the stored values.");
     pfMark();
     sync();
@@ -2299,8 +2376,7 @@ Views.newCase = async function newCase(view, fromId) {
       h("label", { class: "label mt2" }, "Sections. Click to toggle."), secChips),
     h("fieldset", null, h("legend", null, "Valuation assumptions"),
       h("div", { class: "row wrap pf-bar" },
-        h("button", { class: "btn", type: "button", onclick: () => { void runPrefill(); } },
-          "Prefill from market data"),
+        pfBtn,
         W.pfPeers,
         h("span", { class: "hint" }, "Fetches price, peers, beta, and the risk-free rate with sources. You still review and accept.")),
       pfStatus,

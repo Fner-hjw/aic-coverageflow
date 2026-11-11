@@ -41,6 +41,9 @@ import json
 import os
 import re
 import tempfile
+import threading
+import time
+import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1618,24 +1621,85 @@ def validate_mandate(payload: dict) -> list[str]:
 _PREFILL_FETCH: Callable[[str], bytes] | None = None
 
 
-def prefill_mandate(ticker: str, cutoff: str, peers: list[str] | None = None,
-                    erp: float | None = None) -> dict:
-    """POST /api/mandate/prefill: market-data proposal + provenance (status proposed).
-
-    Nothing is saved: the human reviews the form and submits it (= accept).
-    """
+def _prefill_inputs(ticker, cutoff) -> tuple[str, str]:
     ticker = str(ticker or "").strip().upper()
     if not re.fullmatch(r"[A-Z]{1,6}", ticker):
         raise ValidationError("ticker is required (1-6 letters, e.g. INTC)")
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(cutoff or "")):
         raise ValidationError("cutoff_date must be a date YYYY-MM-DD")
+    return ticker, cutoff
+
+
+def prefill_mandate(ticker: str, cutoff: str, peers: list[str] | None = None,
+                    erp: float | None = None,
+                    progress: Callable[[int, int, str], None] | None = None) -> dict:
+    """Market-data proposal + provenance (status proposed), synchronously.
+
+    Nothing is saved: the human reviews the form and submits it (= accept).
+    The HTTP endpoint runs this as a background job (start_prefill_job).
+    """
+    ticker, cutoff = _prefill_inputs(ticker, cutoff)
     try:
         return _mp.propose_mandate(
             ticker, cutoff, fetch=_PREFILL_FETCH or _md.default_fetch(),
-            peers=peers or None,
+            peers=peers or None, progress=progress,
             **({"erp": float(erp)} if erp is not None else {}))
     except _mp.PrefillError as exc:
         raise ValidationError(str(exc))
+
+
+# ---- prefill jobs: in memory, short TTL --------------------------------------
+PREFILL_JOB_TTL = 30 * 60.0
+_PREFILL_JOBS: dict[str, dict] = {}
+_PREFILL_LOCK = threading.Lock()
+
+
+def _prune_prefill_jobs(now: float) -> None:
+    for jid in [j for j, v in _PREFILL_JOBS.items()
+                if v["state"] != "running" and now - v["finished"] > PREFILL_JOB_TTL]:
+        del _PREFILL_JOBS[jid]
+
+
+def start_prefill_job(ticker: str, cutoff: str, peers: list[str] | None = None,
+                      erp: float | None = None) -> dict:
+    """POST /api/mandate/prefill: validate, then fetch in a background thread."""
+    ticker, cutoff = _prefill_inputs(ticker, cutoff)
+    job_id = uuid.uuid4().hex[:12]
+    job = {"state": "running", "step": 0, "total": 0, "label": "Starting", "finished": 0.0}
+    with _PREFILL_LOCK:
+        _prune_prefill_jobs(time.monotonic())
+        _PREFILL_JOBS[job_id] = job
+
+    def progress(step: int, total: int, label: str) -> None:
+        job.update(step=step, total=total, label=label)
+
+    def run() -> None:
+        try:
+            result = prefill_mandate(ticker, cutoff, peers, erp, progress=progress)
+            job.update(result=result, state="done", step=job["total"])
+        except ServiceError as exc:
+            job.update(error=str(exc), state="error")
+        except Exception as exc:  # never leave a job running forever
+            job.update(error=f"Prefill failed: {exc}", state="error")
+        finally:
+            job["finished"] = time.monotonic()
+
+    threading.Thread(target=run, name=f"prefill-{job_id}", daemon=True).start()
+    return {"job_id": job_id}
+
+
+def prefill_job_status(job_id: str) -> dict:
+    """GET /api/mandate/prefill/{job_id}."""
+    with _PREFILL_LOCK:
+        _prune_prefill_jobs(time.monotonic())
+        job = _PREFILL_JOBS.get(job_id)
+    if job is None:
+        raise NotFound("prefill job not found (it may have expired)")
+    out = {k: job[k] for k in ("state", "step", "total", "label")}
+    for k in ("result", "error"):
+        if k in job:
+            out[k] = job[k]
+    return out
 
 
 def _prefill_block(payload: dict) -> dict | None:

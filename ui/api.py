@@ -88,9 +88,13 @@ def create_app() -> FastAPI:
         peers = payload.get("peers")
         if isinstance(peers, str):
             peers = [p for p in peers.replace(" ", "").split(",") if p]
-        return service.prefill_mandate(
+        return service.start_prefill_job(
             str(payload.get("ticker") or ""), str(payload.get("cutoff_date") or ""),
             list(peers) if isinstance(peers, list) else None, payload.get("erp"))
+
+    @app.get("/api/mandate/prefill/{job_id}")
+    def mandate_prefill_status(job_id: str) -> dict:
+        return service.prefill_job_status(job_id)
 
     # ---- cases ------------------------------------------------------------
     @app.get("/api/cases")
