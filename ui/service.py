@@ -550,7 +550,7 @@ def _mandate(ticker: str, cik: str, cutoff: str, doc: str,
             "peer_block": {"as_of": cutoff, "peers": peers},
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff)},
-        "limits": {"role_tokens_max": 250000, "case_minutes": 45, "rounds_max": 4,
+        "limits": {"role_tokens_max": 250000, "case_minutes": 120, "rounds_max": 4,
                    "retries_max": 3, "approval_hours": 48},
         "schema_version": "1.0", "trigger_document": doc,
     }
@@ -584,7 +584,7 @@ _AMD_PEERS = [
 
 def _budget(rounds: int, minutes: float, tokens: dict[str, int]) -> dict:
     """budget block of state.json (used vs max — feeds the UI meters)."""
-    return {"rounds_max": 4, "retries_max": 3, "case_minutes": 45,
+    return {"rounds_max": 4, "retries_max": 3, "case_minutes": 120,
             "role_tokens_max": 60000,
             "used": {"rounds": rounds, "elapsed_minutes": minutes,
                      "tokens_by_role": tokens}}

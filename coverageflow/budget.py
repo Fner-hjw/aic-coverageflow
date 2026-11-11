@@ -22,7 +22,11 @@ from typing import Any, Callable
 DEFAULT_LIMITS = {
     "rounds_max": 4,
     "retries_max": 3,
-    "case_minutes": 45,
+    # Measured on the live Intel case (Codex, 2026-11-12): one full round is
+    # ~25 minutes (ingest ~1, extraction ~13, model ~1, writer, four critics)
+    # and approval needs at least two reviewed rounds. 45 minutes could not
+    # hold two rounds, so every live case would have needed a budget grant.
+    "case_minutes": 120,
     # A revision round re-dispatches every role, so a 4-round case dispatches
     # each role up to 4 times (plus repairs). Measured cost per dispatch is
     # ~20k tokens for the heavy roles, so a 60k cap guaranteed EXHAUSTED on
@@ -45,7 +49,9 @@ DEFAULT_ROLE_TIMEOUTS = {
     # and cuts the statement slices, so it needs materially more wall clock
     # than a single-shot role. At 240s it hit the CLI's own deadline mid-cut.
     "ingest": 420.0,
-    "extractor": 600.0,
+    # One filing's statements took 379 s on Codex; the extraction scope is
+    # the trigger plus the annual anchor, so two filings need ~760 s.
+    "extractor": 1200.0,
     "model": 300.0,
     "writer": 600.0,
     # The four critics are dispatched together, so each one contends with the
@@ -65,7 +71,7 @@ class Limits:
     """Immutable per-case budget limits (from mandate.limits, with defaults)."""
     rounds_max: int = 4
     retries_max: int = 3
-    case_minutes: float = 45.0
+    case_minutes: float = 120.0
     role_tokens_max: int = 60000
     approval_hours: float = 48.0
     stall_rounds: int = 2
