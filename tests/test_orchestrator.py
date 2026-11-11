@@ -111,14 +111,14 @@ class TestFindingsLedger:
 
     def test_open_appends_with_sequential_ids(self, tmp_path):
         led, f1, f2 = self._open_two(tmp_path)
-        assert f1 == "fnd-001" and f2 == "fnd-002"
+        assert f1 == "fnd-0001" and f2 == "fnd-0002"
         assert len(led.open_findings()) == 2
 
     def test_persistence_across_instances(self, tmp_path):
         self._open_two(tmp_path)
         led2 = ledger.FindingsLedger(tmp_path)
         assert len(led2.all_findings()) == 2
-        assert led2.by_id("fnd-001")["status"] == "open"
+        assert led2.by_id("fnd-0001")["status"] == "open"
 
     def test_dedup_key_updates_last_seen_round(self, tmp_path):
         led = ledger.FindingsLedger(tmp_path)
@@ -175,10 +175,61 @@ class TestFindingsLedger:
             led.close_finding("fnd-999", critic="c2", round=2,
                               verified_evidence={"artifact": "x", "sha256": "y"})
 
+    def test_two_rounds_reusing_a_critic_id_are_independently_closable(self, tmp_path):
+        led = ledger.FindingsLedger(tmp_path)
+        ev = {"artifact": "facts.json", "sha256": "ff" * 32}
+        a = led.open_finding({"finding_id": "fnd-001", "source_critic": "c1",
+                              "summary": "r1", "severity": "major",
+                              "affected_artifacts": ["facts.json"],
+                              "dedup_key": "one"}, round=1)
+        b = led.open_finding({"finding_id": "fnd-001", "source_critic": "c1",
+                              "summary": "r2", "severity": "major",
+                              "affected_artifacts": ["report.md"],
+                              "dedup_key": "two"}, round=2)
+        assert a != b
+        assert led.by_id(a)["critic_ref"] == led.by_id(b)["critic_ref"] == "fnd-001"
+        assert led.close_finding(b, critic="c1", round=3, verified_evidence=ev) is True
+        assert led.by_id(a)["status"] == "open"
+        assert led.close_finding(a, critic="c1", round=3, verified_evidence=ev) is True
+        assert led.open_findings() == []
+
+    def test_dedup_key_is_computed_from_critic_check_and_artifacts(self, tmp_path):
+        base = {"source_critic": "c1", "check_id": "R7",
+                "affected_artifacts": ["b.json", "a.json"]}
+        k1 = ledger.compute_dedup_key({**base, "dedup_key": "reworded-1"})
+        k2 = ledger.compute_dedup_key({**base, "dedup_key": "reworded-2",
+                                       "affected_artifacts": ["a.json", "b.json"]})
+        assert k1 == k2
+        assert k1 != ledger.compute_dedup_key({**base, "source_critic": "c2"})
+
+    def test_double_close_raises(self, tmp_path):
+        led = ledger.FindingsLedger(tmp_path)
+        a = led.open_finding({"summary": "x", "dedup_key": "k"}, round=1)
+        ev = {"artifact": "facts.json", "sha256": "ff" * 32}
+        assert led.close_finding(a, critic="c", round=2, verified_evidence=ev)
+        with pytest.raises(ValueError):
+            led.close_finding(a, critic="c", round=3, verified_evidence=ev)
+
+    def test_old_format_ledger_with_colliding_ids_loads(self, tmp_path):
+        import json as _json
+        rows = [{"finding_id": "fnd-001", "dedup_key": "a", "status": "closed",
+                 "severity": "major", "summary": "old1"},
+                {"finding_id": "fnd-001", "dedup_key": "b", "status": "open",
+                 "severity": "major", "summary": "old2"}]
+        (tmp_path / "findings.json").write_text(_json.dumps({"findings": rows}))
+        led = ledger.FindingsLedger(tmp_path)
+        ids = [r["finding_id"] for r in led.all_findings()]
+        assert ids == ["fnd-0001", "fnd-0002"]
+        assert [r["critic_ref"] for r in led.all_findings()] == ["fnd-001"] * 2
+        assert led.close_finding("fnd-0002", critic="c", round=1, verified_evidence={
+            "artifact": "x", "sha256": "y"})
+        new = led.open_finding({"summary": "n", "dedup_key": "c"}, round=2)
+        assert new == "fnd-0003"
+
     def test_carried_payload_for_repair_packets(self, tmp_path):
         led, f1, f2 = self._open_two(tmp_path)
         carried = led.carried()
-        assert {c["finding_id"] for c in carried} == {"fnd-001", "fnd-002"}
+        assert {c["finding_id"] for c in carried} == {"fnd-0001", "fnd-0002"}
         assert all(c["required_evidence"] for c in carried)
         assert {c["status"] for c in carried} == {"open"}
 
@@ -493,7 +544,8 @@ class TestCriticsRunConcurrently:
 
 
 class TestUnreproducedCriticFindingsClose:
-    """A critic that stops raising a finding has verified it fixed.
+    """A critic that stops raising a finding has NOT verified it fixed
+    (close-on-silence was removed; the class name is historical).
 
     Real critics reword a complaint every round, so the dedup_key drifts
     (``valuation-section-empty-vs-manifest-artifacts`` becomes
@@ -513,7 +565,9 @@ class TestUnreproducedCriticFindingsClose:
             "conformance": "schema 1.0", "prompt_version": "1.0",
         }
 
-    def test_finding_closes_when_its_critic_does_not_raise_it_again(self, tmp_path):
+    def test_silence_does_not_close_a_finding(self, tmp_path):
+        # slide 19: "Round 2 omits it: the finding stays open." Only a
+        # verified_resolution closes; no close-on-silence.
         clean = self._clean_without_resolutions
 
         def c1(payload):
@@ -526,15 +580,14 @@ class TestUnreproducedCriticFindingsClose:
             scripts[role] = (lambda r: lambda payload: clean(r))(role)
         orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts)
         orch.run()
-        st = load_state(case_dir)
-        assert st["status"] == "PENDING_APPROVAL"
         rows = ledger.FindingsLedger(case_dir).all_findings()
         raised = [r for r in rows if r["source_critic"] == "critic_c1"]
         assert len(raised) == 1
-        assert raised[0]["status"] == "closed"
-        assert raised[0]["closed_by"]["critic"] == "critic_c1"
-        assert raised[0]["closed_by"]["verified_evidence"]["artifact"].endswith(
-            "critic_c1.json")
+        assert raised[0]["status"] == "open"
+        assert raised[0]["closed_by"] is None
+        closed_events = [e for e in statestore.read_trace(case_dir)
+                         if e["event"] == "FINDING_VERIFIED_CLOSED"]
+        assert not closed_events
 
     def test_a_critic_that_reports_no_coverage_closes_nothing(self, tmp_path):
         # silence from a critic that did not review is not evidence of a fix
@@ -1244,6 +1297,14 @@ class TestRepairPacketsFromCritics:
         # the tampering critic kept raising findings -> acceptance never granted
         assert led.open_findings(), "finding reopened by critic must stay open"
         assert st["candidate"]["clean_review_rounds"] < 2
+        # no phantom trace events: one FINDING_VERIFIED_CLOSED per closed row,
+        # and the wrong-sha claims are traced as rejected, never as closed
+        trace = statestore.read_trace(case_dir)
+        n_closed_events = sum(1 for e in trace
+                              if e["event"] == "FINDING_VERIFIED_CLOSED")
+        assert n_closed_events == sum(1 for r in led.all_findings()
+                                      if r["status"] == "closed")
+        assert any(e["event"] == "FINDING_CLOSURE_REJECTED" for e in trace)
 
 
 # ===========================================================================

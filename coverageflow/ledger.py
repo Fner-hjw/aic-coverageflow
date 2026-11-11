@@ -41,6 +41,34 @@ def normalize_dedup_key(key: str) -> str:
     return re.sub(r"\s+", " ", out).strip().lower()
 
 
+_CHECK_ID_FIELDS = ("check_id", "rubric_check_id", "rubric_check", "check")
+
+
+def compute_dedup_key(finding: dict) -> str:
+    """Identity of a finding, computed in code.
+
+    Formula: ``normalize(source_critic | check_id | sorted(affected_artifacts))``
+    where ``check_id`` is the rubric check id the finding cites. Only when no
+    check id is present does the model-supplied ``dedup_key`` (or, last, the
+    critic's own finding_id) serve as a *hint* in the check slot: it is
+    normalised (round stripped) but otherwise trusted no further, because
+    models reword it every round. The hint is never used when a check id
+    exists.
+    """
+    check = ""
+    for k in _CHECK_ID_FIELDS:
+        v = finding.get(k)
+        if isinstance(v, str) and v.strip():
+            check = v.strip()
+            break
+    if not check:
+        check = str(finding.get("dedup_key") or finding.get("finding_id") or "")
+    arts = sorted(str(a) for a in (finding.get("affected_artifacts") or []))
+    raw = "|".join([str(finding.get("source_critic") or ""), check,
+                    ",".join(arts)])
+    return normalize_dedup_key(raw)
+
+
 # Severities that stop acceptance. A critic that marks a finding ``minor`` is
 # saying the note can ship with it outstanding; the residual is carried into
 # the deliverable as an advisory note instead of blocking the case forever.
@@ -59,7 +87,25 @@ class FindingsLedger:
     # ------------------------------------------------------------------ io
     def _load(self) -> None:
         data = statestore.read_json_or_none(self.path)
-        self._rows = list(data["findings"]) if data and "findings" in data else []
+        rows = [dict(r) for r in data["findings"]] \
+            if data and "findings" in data else []
+        # Backward-compatible read: rows written before ledger-assigned IDs
+        # carry the critic's own (possibly colliding) finding_id and no
+        # critic_ref. Migrate in memory: keep the old label as critic_ref and
+        # give every row a unique ledger ID (persisted on the next save).
+        if any("critic_ref" not in r for r in rows):
+            for i, r in enumerate(rows, 1):
+                r.setdefault("critic_ref", r.get("finding_id"))
+                r["finding_id"] = self._fmt_id(i)
+        self._rows = rows
+
+    @staticmethod
+    def _fmt_id(n: int) -> str:
+        return f"fnd-{n:04d}"
+
+    def _next_id(self) -> str:
+        # monotonic over ALL rows (open and closed); rows are never removed
+        return self._fmt_id(len(self._rows) + 1)
 
     def save(self) -> str:
         return statestore.atomic_write_json(self.path, {
@@ -81,37 +127,32 @@ class FindingsLedger:
         return [r for r in self._rows if r["status"] == "open"]
 
     def blocking_findings(self) -> list[dict]:
-        """Open findings a critic marked as blocking.
-
-        Severity is the critic's own judgement: a ``minor`` finding is one it
-        says does not stop publication. Treating every remark as blocking made
-        acceptance unreachable -- four critics each raise ~9 findings a round,
-        most of them advisory, so the open count plateaued instead of falling.
-        """
+        """Open findings a critic marked as blocking (critic's own severity;
+        ``minor`` means the note can ship with it outstanding)."""
         return [r for r in self.open_findings()
                 if r.get("severity") in BLOCKING_SEVERITIES]
 
     def carried(self) -> list[dict]:
-        """Open findings as carried payload (used in requests/repair packets)."""
+        """Open findings as carried payload (used in requests/repair packets).
+        ``finding_id`` is the LEDGER id critics must cite in resolutions."""
         return [dict(r) for r in self._rows if r["status"] == "open"]
 
     # -------------------------------------------------------------- writes
     def open_finding(self, finding: dict, round: int) -> str:
-        """Append a finding (or bump last_seen_round on an identical open row).
-
-        Returns the finding_id. Append-only: a dedup_key matching a CLOSED row
-        starts a new row.
-        """
-        key = normalize_dedup_key(finding.get("dedup_key")
-                                  or finding.get("finding_id"))
+        """Append a finding, or bump last_seen_round on an open row with the
+        same computed dedup_key. Returns the LEDGER id. Append-only: a key
+        matching only a CLOSED row starts a new row. The critic-supplied
+        finding_id is stored as ``critic_ref``."""
+        key = compute_dedup_key(finding)
         for r in self._rows:
             if r["status"] == "open" and r.get("dedup_key") == key:
                 r["last_seen_round"] = round
                 self.save()
                 return r["finding_id"]
-        finding_id = finding.get("finding_id") or f"fnd-{len(self._rows) + 1:03d}"
+        finding_id = self._next_id()
         row = {
             "finding_id": finding_id,
+            "critic_ref": finding.get("finding_id"),
             "dedup_key": key,
             "source_critic": finding.get("source_critic"),
             "first_seen_round": round,
@@ -128,14 +169,20 @@ class FindingsLedger:
         return finding_id
 
     def close_finding(self, finding_id: str, *, critic: str, round: int,
-                      verified_evidence: dict) -> None:
-        """Close a finding ONLY with critic-verified evidence (artifact+sha256)."""
+                      verified_evidence: dict) -> bool:
+        """Close a finding ONLY with critic-verified evidence (artifact+sha256).
+
+        Raises ValueError on missing evidence, LookupError on an unknown
+        ledger id, and ValueError if the row is already closed. Returns True
+        after a real state change (it never returns False; the boolean lets
+        callers assert that an event may be recorded).
+        """
         if not verified_evidence or not all(verified_evidence.get(k) for k in _OK):
             raise ValueError("closing requires verified_evidence {artifact, sha256}")
         for r in self._rows:
             if r["finding_id"] == finding_id:
                 if r["status"] == "closed":
-                    return
+                    raise ValueError(f"finding already closed: {finding_id}")
                 r["status"] = "closed"
                 r["closed_by"] = {
                     "round": round,
@@ -146,5 +193,5 @@ class FindingsLedger:
                     },
                 }
                 self.save()
-                return
+                return True
         raise LookupError(f"unknown finding: {finding_id}")

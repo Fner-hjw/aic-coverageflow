@@ -455,8 +455,10 @@ def cmd_demo(args, ws: Path) -> int:
     state = statestore.load_state(case_dir)
     if args.demo_cmd == "seed-finding":
         led = _ledger(case_dir)
+        # major: only blocking findings are carried to the critics, and the
+        # demo exists to show a critic closing a carried finding on evidence
         fid = led.open_finding({
-            "severity": "minor",
+            "severity": "major",
             "summary": ("[demo] seeded rehearsal finding: gross margin driver "
                         "narrative cites stale segment table"),
             "affected_artifacts": ["report.md"],

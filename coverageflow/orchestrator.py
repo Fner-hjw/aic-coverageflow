@@ -1395,7 +1395,7 @@ class Orchestrator:
                 f = dict(f)
                 f["source_critic"] = f"gate:{outcome.gate}"
                 reproduced.setdefault(outcome.gate, set()).add(
-                    f.get("dedup_key") or f.get("finding_id"))
+                    ledger_mod.compute_dedup_key(f))
                 fid = led.open_finding(f, round=arts.round)
                 self._trace(event="FINDING_OPENED",
                             candidate_id=state["candidate"]["candidate_id"],
@@ -1898,8 +1898,9 @@ class Orchestrator:
                         candidate_id=candidate_id, round=round_no,
                         role=f.get("source_critic"),
                         detail={"finding_id": fid, "summary": f.get("summary")})
-        self._close_unreproduced_critic_findings(state, arts, reports, led,
-                                                 round_no)
+        # No close-on-silence: a critic that fails to re-raise a finding has
+        # NOT verified it fixed. It stays open until a critic returns a
+        # verified_resolution for its ledger id.
         # orchestrator-verified cleanliness: never trust the lead alone
         # reviewer_count is model-supplied: a string or null must not raise
         raw_count = merged.get("reviewer_count")
@@ -1946,56 +1947,6 @@ class Orchestrator:
         self._issue_repair_packet(state, arts, led,
                                   note="critic findings after full review")
 
-    def _close_unreproduced_critic_findings(self, state: dict, arts: Arts,
-                                            reports: list[dict],
-                                            led: ledger_mod.FindingsLedger,
-                                            round_no: int) -> None:
-        """Close a critic finding that its critic did not raise again.
-
-        Critics reword a complaint every round, so the dedup_key drifts
-        (``valuation-section-empty-vs-manifest-artifacts`` becomes
-        ``valuation-section-declares-artifacts-absent``) and the row it
-        replaces never closes. Without this rule the ledger can only grow and
-        acceptance -- which requires every carried finding closed -- is
-        unreachable. A critic that reviewed the rebuilt candidate and did not
-        raise the defect again has verified it fixed, which is the same rule
-        the gates already apply to their own findings.
-        """
-        reviewed: dict[str, tuple[str, str, set[str]]] = {}
-        for rep in reports:
-            role = rep.get("role")
-            if role not in CRITIC_ROLES:
-                continue
-            rel = arts.rel("critic", f"{role}.json")
-            sha = self._verified.get(rel)
-            # A critic that reported no coverage did not review; silence from
-            # it is not evidence that anything was fixed.
-            if not sha or not (rep.get("coverage") or {}).get("areas_checked"):
-                continue
-            keys = {ledger_mod.normalize_dedup_key(
-                        f.get("dedup_key") or f.get("finding_id") or "")
-                    for f in (rep.get("findings") or [])}
-            reviewed[role] = (rel, sha, keys)
-        if not reviewed:
-            return
-        for row in led.open_findings():
-            src = row.get("source_critic") or ""
-            if src.startswith("gate:") or src not in reviewed:
-                continue
-            if row.get("last_seen_round") == round_no:
-                continue          # raised this round: still live
-            rel, sha, keys = reviewed[src]
-            if row.get("dedup_key") in keys:
-                continue
-            led.close_finding(row["finding_id"], critic=src, round=round_no,
-                              verified_evidence={"artifact": rel, "sha256": sha})
-            self._trace(event="FINDING_VERIFIED_CLOSED", round=round_no,
-                        role=src,
-                        candidate_id=state["candidate"]["candidate_id"],
-                        artifact=rel, artifact_sha256=sha,
-                        detail={"finding_id": row["finding_id"],
-                                "reason": "critic did not reproduce it"})
-
     def _apply_critic_closures(self, state: dict, arts: Arts,
                                reports: list[dict],
                                led: ledger_mod.FindingsLedger) -> None:
@@ -2018,16 +1969,21 @@ class Orchestrator:
                     continue
                 if expected_sha.get(ev.get("artifact")) != ev.get("sha256") or \
                         not ev.get("sha256"):
-                    self._trace(event="FINDING_VERIFIED_CLOSED",
+                    # a rejected claim is NOT a closure: never emit
+                    # FINDING_VERIFIED_CLOSED for it
+                    self._trace(event="FINDING_CLOSURE_REJECTED",
                                 round=round_no, role=role,
                                 candidate_id=state["candidate"]["candidate_id"],
                                 detail={"finding_id": fid, "rejected": True,
                                         "reason": "artifact+sha256 mismatch"})
                     continue
                 try:
-                    led.close_finding(fid, critic=role, round=round_no,
-                                      verified_evidence=ev)
-                except LookupError:
+                    changed = led.close_finding(fid, critic=role,
+                                                round=round_no,
+                                                verified_evidence=ev)
+                except (LookupError, ValueError):
+                    continue    # unknown ledger id or already closed
+                if not changed:
                     continue
                 self._trace(event="FINDING_VERIFIED_CLOSED",
                             round=round_no, role=role,
