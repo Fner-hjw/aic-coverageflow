@@ -200,6 +200,18 @@ def _rstate(cd: Path) -> dict:
     return st
 
 
+def _rinterrupted(cd: Path, status: str) -> bool:
+    """RUNNING with no live lock holder: the run died, nothing is executing.
+
+    The orchestrator runs inside the request that started it and holds
+    ``run.lock`` for the duration, so a RUNNING case with no live owner was
+    interrupted (crash, restart, or a state file edited outside the
+    orchestrator). Reporting it as "in progress" leaves a case that looks
+    busy forever and never finishes.
+    """
+    return status == "RUNNING" and _real_statestore.run_owner(cd) is None
+
+
 def _vrkey(name: str):
     m = re.match(r"v(\d+)", name)
     return (0, int(m.group(1))) if m else (1, 0)
@@ -269,6 +281,7 @@ def _rcase_summary(cd: Path) -> dict:
                           else ("draft" if _rdraft_report(cd) else None)),
         "deadline": pending.get("deadline"),
         "updated_at": st.get("updated_at"),
+        "interrupted": _rinterrupted(cd, status),
     }
 
 
@@ -1364,13 +1377,16 @@ def health() -> dict:
                  if d.is_dir() and (d / "state.json").is_file()
                  ] if (ws / "cases").is_dir() else []
         states = [_rstate(d) for d in cases]
+        running = [(d, s) for d, s in zip(cases, states)
+                   if s["status"] == "RUNNING"]
+        live = [d for d, _s in running if _real_statestore.run_owner(d)]
         return {
             "status": "ok", "mode": "controller",
             "workspace": str(ws),
             "active_backend": _REAL_SELECTED_BACKEND,
             "cases": len(cases),
-            "active_runs": sum(1 for s in states
-                               if s["status"] == "RUNNING"),
+            "active_runs": len(live),
+            "interrupted_runs": len(running) - len(live),
             "pending_approvals": sum(1 for s in states
                                      if s["status"] == "PENDING_APPROVAL"),
             "ts": _now_iso(),
@@ -1385,6 +1401,7 @@ def health() -> dict:
                                "replay"),
         "cases": len(_CASES),
         "active_runs": len(active),
+        "interrupted_runs": 0,
         "pending_approvals": sum(
             1 for c in _CASES.values()
             if c.state["status"] == "PENDING_APPROVAL"),
@@ -1552,6 +1569,7 @@ def _case_summary(c: Case) -> dict:
         "latest_report": (c.reports[-1]["version"] if c.reports else None),
         "deadline": st["pending"].get("deadline"),
         "updated_at": st["updated_at"],
+        "interrupted": False,   # the demo store has no out-of-process runs
     }
 
 
@@ -1849,6 +1867,7 @@ def get_case(case_id: str) -> dict:
             "replays": len(_rreplays(cd)),
             "trace_count": len(_real_statestore.read_trace(cd)),
             "approval_deadline": (state.get("pending") or {}).get("deadline"),
+            "interrupted": _rinterrupted(cd, state.get("status")),
             "documents_visible_at_cutoff": [
                 d for d in manifest.get("documents", [])
                 if d.get("filed", "9999") <= mandate.get(
@@ -1866,6 +1885,7 @@ def get_case(case_id: str) -> dict:
         "artifacts": sorted(c.artifacts), "replays": len(c.replays),
         "trace_count": len(c.trace),
         "approval_deadline": c.state["pending"].get("deadline"),
+        "interrupted": False,
         "documents_visible_at_cutoff": [
             d for d in c.manifest["documents"]
             if d["filed"] <= c.mandate["cutoff_date"]],

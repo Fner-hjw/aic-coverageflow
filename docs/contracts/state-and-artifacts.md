@@ -55,6 +55,21 @@ versions/registry.json    prompts/ (cards)       references/ (pinned knowledge)
 }
 ```
 
+Two rules the file cannot express on its own:
+
+- **`checkpoints[].state`** is the hash defined by
+  `statestore.checkpoint_state_hash`: the state as written, with that
+  checkpoint's own `state` field blanked. A checkpoint cannot contain the hash
+  of the bytes that contain it, so this is not the sha256 of `state.json`.
+  Only the last checkpoint can be checked against the current file, because
+  every later transition rewrites the content the earlier hashes were taken
+  over.
+- **`status: "RUNNING"` is a claim about the file, not about a process.** The
+  orchestrator holds `run.lock` for the duration of a run, so a RUNNING case
+  with no live lock holder was interrupted (crash, restart, or a state file
+  edited outside the orchestrator). Readers must report it as interrupted, not
+  as in progress.
+
 ## 2. trace.jsonl (one event per line)
 
 Every event: `{"ts","event","case_id","request_id","candidate_id","role","round",

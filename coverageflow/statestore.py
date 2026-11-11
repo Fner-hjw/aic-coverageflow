@@ -10,6 +10,7 @@ All other streams that need state-file writes must go through these helpers
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -168,6 +169,34 @@ def load_state(case_dir: Path | str) -> dict | None:
     return read_json_or_none(Path(case_dir) / STATE_FILE)
 
 
+def checkpoint_state_hash(state: dict) -> str:
+    """sha256 of the state as written, with the last checkpoint's hash blanked.
+
+    A checkpoint cannot record the hash of the bytes that contain it, so the
+    hash is defined over the state with that one field set to ``""``. Only the
+    most recent checkpoint can be checked against the current file: every later
+    transition rewrites the content the earlier hashes were taken over.
+    """
+    checkpoints = state.get("checkpoints") or []
+    if not checkpoints:
+        raise ValueError("state has no checkpoints to hash")
+    body = copy.deepcopy(state)
+    body["checkpoints"][-1]["state"] = ""
+    return sha256_bytes(json.dumps(body, indent=2, ensure_ascii=False).encode("utf-8"))
+
+
+def verify_checkpoint_state(state: dict) -> bool:
+    """True when the last checkpoint's hash matches the state content.
+
+    A mismatch means state.json was changed outside the orchestrator after the
+    transition was recorded.
+    """
+    checkpoints = state.get("checkpoints") or []
+    if not checkpoints:
+        return False
+    return checkpoints[-1].get("state") == "sha256:" + checkpoint_state_hash(state)
+
+
 def write_state(
     case_dir: Path | str,
     state: dict,
@@ -186,14 +215,16 @@ def write_state(
     ``verified_artifacts`` path→sha256 map used by resume — is written to
     ``history/checkpoint-<n>.json``. Does NOT append trace events itself.
 
+    Each checkpoint's ``state`` field is the hash defined by
+    :func:`checkpoint_state_hash`, not the hash of the file bytes: a
+    checkpoint cannot contain the hash of the bytes that contain it.
+
     Returns the sha256 of the written state bytes.
     """
     case_dir = Path(case_dir)
     now = now or utc_now_iso
     state = dict(state)
     state["updated_at"] = now()
-    state_bytes = json.dumps(state, indent=2, ensure_ascii=False).encode("utf-8")
-    # hash the written bytes; if a checkpoint is added we rewrite with it included
     if transition is not None:
         frm, to = transition
         ck = {
@@ -201,11 +232,10 @@ def write_state(
             "from": frm,
             "to": to,
             "verified": verified or "",
-            "state": "pending",  # replaced below with the final state hash
+            "state": "",  # filled in below; see checkpoint_state_hash
         }
         state.setdefault("checkpoints", []).append(ck)
-        state_bytes = json.dumps(state, indent=2, ensure_ascii=False).encode("utf-8")
-        ck["state"] = "sha256:" + sha256_bytes(state_bytes)
+        ck["state"] = "sha256:" + checkpoint_state_hash(state)
         state_bytes = json.dumps(state, indent=2, ensure_ascii=False).encode("utf-8")
         # update the checkpoint history sidecar (schema-exact state is already stored;
         # history adds the artifact map used by resume.py)
@@ -219,6 +249,8 @@ def write_state(
             "verified_artifacts": dict(verified_artifacts or {}),
         }
         atomic_write_json(case_dir / HISTORY_DIR / f"checkpoint-{len(state['checkpoints']):04d}.json", hist)
+    else:
+        state_bytes = json.dumps(state, indent=2, ensure_ascii=False).encode("utf-8")
     sha = atomic_write_bytes(case_dir / STATE_FILE, state_bytes)
     return sha
 
@@ -341,3 +373,22 @@ def acquire_case_lock(case_dir: Path | str) -> Path:
 
 def release_case_lock(path: Path | str) -> None:
     Path(path).unlink(missing_ok=True)
+
+
+def run_owner(case_dir: Path | str) -> dict | None:
+    """The live process holding this case's run lock, or None.
+
+    ``status == "RUNNING"`` is a claim about the state file, not about a
+    process. A run that died (crash, restart, or a state file edited outside
+    the orchestrator) leaves RUNNING behind with nothing executing, and the
+    case then reads as "in progress" forever. The lock is the liveness signal:
+    only a live holder means the case is actually running.
+    """
+    holder = read_json_or_none(Path(case_dir) / LOCK_FILE) or {}
+    try:
+        pid = int(holder.get("pid") or 0)
+    except (TypeError, ValueError):
+        return None
+    if pid and _pid_alive(pid):
+        return {"pid": pid, "ts": holder.get("ts")}
+    return None

@@ -147,8 +147,9 @@ function icon(name, label) {
   return svg;
 }
 
-function statusChip(status) {
-  return h("span", { class: `chip status-chip st-${status}` }, readableStatus(status));
+function statusChip(status, interrupted) {
+  const key = interrupted ? "INTERRUPTED" : status;
+  return h("span", { class: `chip status-chip st-${key}` }, readableStatus(key));
 }
 
 function severityChip(sev) {
@@ -160,10 +161,16 @@ const STATUS_LABELS = {
   CREATED: "Created", RUNNING: "In progress", PENDING_APPROVAL: "Awaiting approval",
   APPROVED: "Approved", CLOSED: "Closed", REJECTED: "Rejected",
   BLOCKED: "Blocked", EXHAUSTED: "Limits reached", STOPPED: "Stopped",
+  INTERRUPTED: "Interrupted",
 };
 
 function readableStatus(status) {
   return STATUS_LABELS[status] || String(status || "Unknown").replace(/_/g, " ").toLowerCase();
+}
+
+/** RUNNING only reads as progress while a process owns the run. */
+function displayStatus(c) {
+  return c && c.interrupted ? "INTERRUPTED" : (c ? c.status : undefined);
 }
 
 function readableRole(role) {
@@ -172,11 +179,11 @@ function readableRole(role) {
 }
 
 /** Show only progress supported by the current state and recorded decision. */
-function stateStrip(status, pendingRole, terminal) {
+function stateStrip(status, pendingRole, terminal, interrupted) {
   const rejected = status === "REJECTED" || (status === "CLOSED" && terminal === "REJECTED");
   const stages = [
     { key: "CREATED", label: "Created", icon: "create" },
-    { key: "RUNNING", label: "In progress", icon: "pulse" },
+    { key: "RUNNING", label: interrupted ? "Interrupted" : "In progress", icon: interrupted ? "alert" : "pulse" },
     { key: "PENDING_APPROVAL", label: "Awaiting approval", icon: "review" },
     { key: "APPROVED", label: rejected ? "Rejected" : status === "CLOSED" && terminal !== "APPROVED" ? "Decision recorded" : "Approved", icon: rejected ? "alert" : "check" },
     { key: "CLOSED", label: "Closed", icon: "archive" },
@@ -187,7 +194,8 @@ function stateStrip(status, pendingRole, terminal) {
   stages.forEach((stage, i) => {
     const state = exceptional && status !== "REJECTED" ? (i === 0 ? "complete" : "upcoming")
       : i < current ? "complete" : i === current ? "current" : "upcoming";
-    const detail = state === "current" && status === "RUNNING" ? readableRole(pendingRole)
+    const detail = state === "current" && status === "RUNNING"
+      ? (interrupted ? "Stopped without finishing" : readableRole(pendingRole))
       : state === "current" ? "Current step" : state === "complete" ? "Complete" : "Upcoming";
     wrap.append(h("div", { class: `state-node ${state}${rejected && i === 3 ? " rejected" : ""}`, ...(state === "current" ? { "aria-current": "step" } : {}) },
       h("span", { class: "pid" }, icon(stage.icon)),
@@ -529,7 +537,7 @@ const QuickSearch = {
       h("button", { class: "sr", onclick: () => this.go(c) },
         h("span", { class: "tk" }, c.ticker),
         c.case_id,
-        h("span", { class: "st" }, statusChip(c.status)))));
+        h("span", { class: "st" }, statusChip(c.status, c.interrupted)))));
     pop.classList.add("open");
   },
 
@@ -615,12 +623,12 @@ function dashboardOverview(rows, ordered) {
   const groups = [
     { label: "Ready to start", states: ["CREATED"], color: "active" },
     { label: "In progress", states: ["RUNNING"], color: "active" },
-    { label: "Needs attention", states: ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED"], color: "review" },
+    { label: "Needs attention", states: ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED", "INTERRUPTED"], color: "review" },
     { label: "Closed", states: ["CLOSED", "APPROVED", "REJECTED"], color: "done" },
   ];
   const known = new Set(groups.flatMap(group => group.states));
-  const segments = groups.map(group => ({ ...group, count: rows.filter(c => group.states.includes(c.status)).length }));
-  const other = rows.filter(c => !known.has(c.status)).length;
+  const segments = groups.map(group => ({ ...group, count: rows.filter(c => group.states.includes(displayStatus(c))).length }));
+  const other = rows.filter(c => !known.has(displayStatus(c))).length;
   if (other) segments.push({ label: "Other", color: "other", count: other });
   return h("section", { class: "desk-overview" },
     h("div", { class: "overview-copy" },
@@ -638,16 +646,18 @@ function dashboardOverview(rows, ordered) {
 }
 
 function dashboardAttention(rows) {
-  const needsAction = rows.filter(c => ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED"].includes(c.status));
+  const needsAction = rows.filter(c => ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED", "INTERRUPTED"].includes(displayStatus(c)));
   return h("div", { class: "attention-card" },
     h("span", { class: "kicker" }, "Needs attention"),
     h("strong", null, needsAction.length ? `${needsAction.length} ${needsAction.length === 1 ? "case needs" : "cases need"} a next step` : "Nothing waiting"),
     h("p", null, needsAction.length ? "Review a decision or follow-up." : "No decisions or recovery actions are waiting."),
     needsAction.length ? h("div", { class: "desk-attention-list" }, ...needsAction.map(c => {
-      const approval = c.status === "PENDING_APPROVAL";
+      const status = displayStatus(c);
+      const approval = status === "PENDING_APPROVAL";
       const description = approval ? (c.deadline ? `Decision due ${fmt.datetime(c.deadline)}` : "Approval decision needed") :
-        c.status === "BLOCKED" ? "Review the issue before continuing" :
-        c.status === "EXHAUSTED" ? "A run limit has been reached" : "The case was stopped";
+        status === "BLOCKED" ? "Review the issue before continuing" :
+        status === "EXHAUSTED" ? "A run limit has been reached" :
+        status === "INTERRUPTED" ? "The run stopped without finishing" : "The case was stopped";
       return h("a", { class: "desk-attention-row", href: `#/case/${c.case_id}/${approval ? "approval" : "overview"}` },
         h("span", { class: "desk-attention-case" }, h("b", null, c.ticker), h("small", null, c.case_id)),
         h("span", { class: "desk-attention-reason" }, description), icon("arrow"));
@@ -683,7 +693,7 @@ function coverageQueue(rows) {
   rows.forEach(c => {
     const clock = h("span", { class: "queue-case-time" });
     let started = Date.parse(c.case_clock_started || "");
-    const runningClock = ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(c.status);
+    const runningClock = !c.interrupted && ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(c.status);
     let clockPending = runningClock && c.case_clock_started === undefined;
     let clockUnavailable = runningClock && !clockPending && !Number.isFinite(started);
     const updateClock = () => {
@@ -706,7 +716,7 @@ function coverageQueue(rows) {
         updateClock();
       }).catch(() => { clockPending = false; clockUnavailable = true; updateClock(); });
     }
-    const row = h("div", { class: `case-row state-${String(c.status).toLowerCase()}`,
+    const row = h("div", { class: `case-row state-${String(displayStatus(c)).toLowerCase()}`,
       tabindex: "0", role: "link", "aria-label": `Open ${c.ticker} case ${c.case_id}` },
       h("div", { class: "case-identity" },
         h("span", { class: "ticker-tile" }, c.ticker.slice(0, 4)),
@@ -715,7 +725,7 @@ function coverageQueue(rows) {
           h("span", { class: "case-id" }, c.case_id),
           h("span", { class: "case-date" }, `Cutoff ${c.cutoff_date}`))),
       h("div", { class: "case-state" },
-        statusChip(c.status),
+        statusChip(c.status, c.interrupted),
         clock,
         h("span", null, c.pending_role ? `With ${c.pending_role}` : "No role pending")),
       h("div", { class: "budget-stack" },
@@ -794,7 +804,7 @@ Views.case = async function (view, caseId, tab) {
       h("h1", null, `${c.mandate.ticker}: ${c.mandate.report_policy.note_type.replace(/_/g, " ")}`),
       h("span", { class: "sub mono" }, caseId)),
     h("div", { class: "case-head-state" },
-      statusChip(c.state.status),
+      statusChip(c.state.status, c.interrupted),
       h("span", null, `Cutoff ${c.mandate.cutoff_date}`)));
 
   const body = h("div", { id: "case-body" });
@@ -816,6 +826,10 @@ function caseNextAction(c) {
     title = "Start the case";
     message = "Ready to start with the selected provider.";
     action = h("button", { class: "btn primary", onclick: () => doRun(caseId, false) }, "Start case");
+  } else if (st.status === "RUNNING" && c.interrupted) {
+    title = "Resume interrupted work";
+    message = "The run stopped without finishing. Continue from the last verified checkpoint.";
+    action = h("button", { class: "btn primary", onclick: () => doResume(caseId) }, "Resume pending work");
   } else if (st.status === "RUNNING") {
     title = "Follow the run";
     message = "The case is in progress. Follow its activity for the latest updates.";
@@ -857,7 +871,7 @@ function renderCaseOverview(body, c) {
     const panel = labeledPanel(name, ...content); panel.classList.add(className); return panel;
   };
   const started = Date.parse(st.pending.case_clock_started || "");
-  const clockActive = Number.isFinite(started) && ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(st.status);
+  const clockActive = Number.isFinite(started) && !c.interrupted && ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(st.status);
   const clockBox = h("div", { class: "case-progress-clock" });
   const updateClock = () => {
     const elapsed = Number(b.used.elapsed_minutes || 0) + (clockActive ? Math.max(0, Date.now() - started) / 60000 : 0);
@@ -872,7 +886,7 @@ function renderCaseOverview(body, c) {
     h("div", { class: "case-overview-grid" },
       h("div", null,
       overviewPanel("Case progress", "overview-progress",
-          stateStrip(st.status, st.pending.role, c.result && c.result.terminal),
+          stateStrip(st.status, st.pending.role, c.result && c.result.terminal, c.interrupted),
           h("div", { class: "case-progress-meta" },
             h("div", null, h("span", { title: "Consecutive complete reviews of the same candidate with no blocking findings." }, "Reviews cleared"), h("strong", null, `${st.candidate.clean_review_rounds} of 2`)),
             st.status === "PENDING_APPROVAL" && st.pending.deadline ? h("div", null,
@@ -2513,7 +2527,7 @@ Views.demo = async function demo(view) {
   const caseSel = h("select");
   for (const c of cases) {
     if (!["CLOSED", "APPROVED", "REJECTED"].includes(c.status))
-      caseSel.append(h("option", { value: c.case_id }, `${c.case_id}: ${readableStatus(c.status)}`));
+      caseSel.append(h("option", { value: c.case_id }, `${c.case_id}: ${readableStatus(displayStatus(c))}`));
   }
   const stageSel = h("select", { "aria-label": "Stage to kill" },
     ...["generator", "ingest", "extractor", "model", "writer", "critic", "approval"]
@@ -2755,7 +2769,7 @@ Views.terminal = async function (view, caseId) {
       ["RUNNING", "CREATED"].includes(b.status) - ["RUNNING", "CREATED"].includes(a.status) ||
       String(b.updated_at || "").localeCompare(String(a.updated_at || "")))) {
     const opt = h("option", { value: c.case_id },
-      `${c.case_id}, ${c.ticker}, ${readableStatus(c.status)}`);
+      `${c.case_id}, ${c.ticker}, ${readableStatus(displayStatus(c))}`);
     if (c.case_id === target.case_id) opt.selected = true;
     sel.append(opt);
   }
@@ -2768,7 +2782,7 @@ Views.terminal = async function (view, caseId) {
       h("div", { class: "term-bar" },
         sel,
         h("span", { class: "grow" }),
-        statusChip(target.status),
+        statusChip(target.status, target.interrupted),
         h("span", { class: "term-live" }, "● Live"),
         h("button", { class: "btn small", onclick: () =>
           Route.nav(`#/case/${target.case_id}`) }, "Case page →")),

@@ -245,6 +245,49 @@ class TestControllerMode:
         assert body["cases"] >= 3
 
 
+class TestInterruptedRuns:
+    """RUNNING is a claim about the state file; the lock is the liveness signal.
+
+    A run that died (crash, restart, or a state file edited outside the
+    orchestrator) leaves RUNNING behind with nothing executing. Reporting that
+    as "in progress" left a case that looked busy forever: a ticking clock, no
+    next action, and an active_runs count that never dropped.
+    """
+
+    CID = "intc-fy2026q3-20261030"
+
+    def _set_running(self, real_ws):
+        case_dir = real_ws / "cases" / self.CID
+        state = statestore.load_state(case_dir)
+        state["status"] = "RUNNING"
+        statestore.write_state(case_dir, state)
+        return case_dir
+
+    def test_running_without_a_live_owner_is_interrupted(self, controller,
+                                                         real_ws):
+        self._set_running(real_ws)
+        row = controller.get("/api/cases").json()["cases"][0]
+        assert row["status"] == "RUNNING"
+        assert row["interrupted"] is True
+        assert client_case(controller, self.CID)["interrupted"] is True
+        health = controller.get("/api/health").json()
+        assert health["active_runs"] == 0
+        assert health["interrupted_runs"] == 1
+
+    def test_a_live_lock_holder_keeps_the_run_in_progress(self, controller,
+                                                          real_ws):
+        case_dir = self._set_running(real_ws)
+        lock = statestore.acquire_case_lock(case_dir)
+        try:
+            row = controller.get("/api/cases").json()["cases"][0]
+            assert row["interrupted"] is False
+            health = controller.get("/api/health").json()
+            assert health["active_runs"] == 1
+            assert health["interrupted_runs"] == 0
+        finally:
+            statestore.release_case_lock(lock)
+
+
 class TestControllerModeRunOverReplay:
     """The full loop through the UI, controller mode, offline replay.
 

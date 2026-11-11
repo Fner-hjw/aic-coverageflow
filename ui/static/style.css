@@ -305,7 +305,8 @@ td.id { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .status-chip, .verified, .chip.major, .chip.minor { white-space: nowrap; }
 .chip.st-RUNNING, .chip.st-CLOSED, .chip.st-APPROVED, .verified { color: #28663e; }
 .chip.st-PENDING_APPROVAL { color: #805a12; }
-.chip.st-REJECTED, .chip.st-BLOCKED, .chip.st-EXHAUSTED, .chip.st-STOPPED { color: #a1382f; }
+.chip.st-REJECTED, .chip.st-BLOCKED, .chip.st-EXHAUSTED, .chip.st-STOPPED,
+.chip.st-INTERRUPTED { color: #a1382f; }
 .chip.section-chip { display: inline-block; padding: 4px 9px; border: 1px solid var(--hairline-2);
   border-radius: 4px; }
 .chip.section-chip.accent { border-color: var(--accent); background: var(--accent-wash); }
