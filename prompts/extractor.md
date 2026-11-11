@@ -1,4 +1,4 @@
---version: 1.3
+--version: 1.4
 --role: extractor
 --produces: facts.json
 --read: statement slices (with citation anchors) from the scoped filings
@@ -22,7 +22,7 @@ Strict JSON only, matching **facts.json** (contracts §5):
 `role("extractor"), request_id, candidate_id,
 facts[] {field, period, value, unit("USDmm" | "USD" | "shares_mm" | "ratio"),
   confidence (0–1), citation {doc_id, slice_id, anchor, locator}},
-missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.2")`.
+missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.4")`.
 `period` format: `YYYY-QN`, `YYYY-QN-YTD`, or `YYYY`.
 
 **Columns.** Extract every column a statement prints, each under the label
@@ -40,6 +40,18 @@ filing: extract the annual columns from the 10-K slices and the quarterly and
 year-to-date columns from the 10-Q slices, all into the same `facts[]`. A
 field may therefore carry both `2025` and `2026-Q3` facts; that is expected,
 not a duplicate.
+
+**Attribution and non-operating lines.**
+- File "Net income attributable to <issuer>" under
+  `income_statement.net_income_attributable` (and also `income_statement.net_income`),
+  and the non-controlling interests' share of net income under
+  `income_statement.net_income_noncontrolling`. On the balance sheet file the
+  non-controlling interests line under `balance_sheet.noncontrolling_interests`.
+- A line captioned "Interest and other, net" goes under
+  `income_statement.interest_and_other_net`. It must NOT be filed under
+  `income_statement.interest_expense`: that field is only for a line that is
+  interest expense. If the filing prints no separate interest expense line,
+  leave `interest_expense` in `missing`.
 
 ## BOUNDS
 - You see slices only. Never consult other parts of the filing, prior
@@ -68,4 +80,4 @@ schema check at dispatch and return as repairable errors. Budgets enforced.
  "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
  "notes":["figures are one period only; comparatives in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.2"}
+ "conformance":"schema 1.0","prompt_version":"1.4"}

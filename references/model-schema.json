@@ -25,10 +25,13 @@
         {"id": "income_statement.operating_income", "label": "Operating Income", "kind": "absolute"},
         {"id": "income_statement.depreciation_and_amortization", "label": "Depreciation And Amortization", "kind": "absolute", "note": "Alias of `cash_flow.depreciation_amortization`: the figure is reported once, in the cash flow statement. Extract it under the cash-flow name and leave this one absent rather than duplicating the value."},
         {"id": "income_statement.interest_expense", "label": "Interest Expense", "kind": "absolute"},
+        {"id": "income_statement.interest_and_other_net", "label": "Interest And Other, Net", "kind": "absolute", "note": "File the filing line captioned \"Interest and other, net\" here. It is a net non-operating line, NOT interest expense: never file it under `income_statement.interest_expense`."},
         {"id": "income_statement.other_non_operating_income", "label": "Other Non-Operating Income (Expense), Net", "kind": "absolute"},
         {"id": "income_statement.income_before_tax", "label": "Pretax Income", "kind": "absolute"},
         {"id": "income_statement.income_tax_expense", "label": "Income Tax Expense", "kind": "absolute"},
         {"id": "income_statement.net_income", "label": "Net Income attributable to the parent", "kind": "absolute", "note": "Use the \"net income attributable to <issuer>\" line, NOT the pre-attribution \"net income (loss)\" total: it must tie to diluted EPS x diluted shares, and the non-controlling-interest line is excluded."},
+        {"id": "income_statement.net_income_attributable", "label": "Net Income Attributable To The Company", "kind": "absolute", "note": "Net income attributable to the company's shareholders (the EPS numerator). Same figure as `income_statement.net_income`; emit it under this name when the filing prints the attribution line."},
+        {"id": "income_statement.net_income_noncontrolling", "label": "Net Income Attributable To Non-Controlling Interests", "kind": "absolute", "note": "Income statement line for the non-controlling interests' share of net income."},
         {"id": "income_statement.basic_eps", "label": "Basic EPS", "kind": "per_share"},
         {"id": "income_statement.diluted_eps", "label": "Diluted EPS", "kind": "per_share"},
         {"id": "income_statement.diluted_shares_outstanding", "label": "Weighted Average Diluted Shares", "kind": "shares_mm"}
@@ -58,7 +61,8 @@
         {"id": "balance_sheet.treasury_stock", "label": "Treasury Stock", "kind": "absolute"},
         {"id": "balance_sheet.retained_earnings", "label": "Retained Earnings", "kind": "absolute"},
         {"id": "balance_sheet.accumulated_other_comprehensive_income", "label": "Accumulated Other Comprehensive Income", "kind": "absolute"},
-        {"id": "balance_sheet.total_stockholders_equity", "label": "Total Stockholders' Equity", "kind": "absolute"}
+        {"id": "balance_sheet.total_stockholders_equity", "label": "Total Stockholders' Equity", "kind": "absolute"},
+        {"id": "balance_sheet.noncontrolling_interests", "label": "Non-Controlling Interests", "kind": "absolute", "note": "Balance-sheet non-controlling (minority) interests; valuation adds it to net claims."}
       ]
     },
     "cash_flow": {
@@ -110,5 +114,5 @@
     {"id": "derived.diluted_eps_yoy", "label": "Diluted EPS Growth YoY", "expr": "yoy(income_statement.diluted_eps)"},
     {"id": "derived.net_income_yoy", "label": "Net Income Growth YoY", "expr": "yoy(income_statement.net_income)"}
   ],
-  "field_count_note": "income_statement 18 + balance_sheet 22 + cash_flow 16 + segments 6x4 = 24, total 80 primary fields, plus optional segment residuals and derived metrics."
+  "field_count_note": "income_statement 21 + balance_sheet 23 + cash_flow 16 + segments 6x4 = 24, total 84 primary fields, plus optional segment residuals and derived metrics."
 }

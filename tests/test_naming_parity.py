@@ -103,11 +103,11 @@ def test_definitions_doc_is_a_fresh_render_of_the_schema():
 
 
 def test_statement_field_counts_match_schema_note():
-    """80 primary fields: IS 18 + BS 22 + CF 16 + segments 6x4 (+2 residuals)."""
+    """80 primary fields: IS 21 + BS 23 + CF 16 + segments 6x4 (+2 residuals)."""
     schema = json.loads(SCHEMA_PATH.read_text("utf-8"))
     counts = {k: len(g["fields"]) for k, g in schema["statements"].items()
               if k != "segments"}
-    assert counts == {"income_statement": 18, "balance_sheet": 22,
+    assert counts == {"income_statement": 21, "balance_sheet": 23,
                       "cash_flow": 16}
     ids = schema_ids(schema)
     for seg in ("ccg", "dcai", "nex", "foundry", "altera", "mobileye"):
@@ -157,3 +157,27 @@ def test_mapping_table_canonical_rules_target_schema_segments():
                 assert c in slugs, (
                     f"mapping rule for {period} targets unknown canonical "
                     f"segment {c!r}")
+
+
+def test_note_quality_fields_in_schema_doc_and_extractor_card():
+    """Wave-4 fields exist and the extractor card steers Interest-and-other."""
+    schema = json.loads(SCHEMA_PATH.read_text("utf-8"))
+    ids = schema_ids(schema)
+    for fid in ("income_statement.net_income_attributable",
+                "income_statement.net_income_noncontrolling",
+                "income_statement.interest_and_other_net",
+                "balance_sheet.noncontrolling_interests"):
+        assert fid in ids
+        assert fid in DOC_PATH.read_text("utf-8")
+    # the keys the engines read are the keys the schema pins
+    from coverageflow import model_engine, valuation_engine
+    assert "income_statement.net_income_attributable" in model_engine.NI_ATTRIBUTABLE_KEYS
+    assert "income_statement.net_income_noncontrolling" in model_engine.NCI_KEYS
+    card = (ROOT / "prompts" / "extractor.md").read_text("utf-8")
+    assert "interest_and_other_net" in card
+    assert "must NOT be filed under" in card
+    import re as _re
+    ver = _re.search(r"--version: (\S+)", card).group(1)
+    assert ver != "1.3"
+    assert set(_re.findall(r'prompt_version\("([^"]+)"\)', card)) == {ver}
+    assert set(_re.findall(r'"prompt_version":"([^"]+)"', card)) == {ver}
