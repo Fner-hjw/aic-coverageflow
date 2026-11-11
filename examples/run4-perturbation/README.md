@@ -13,12 +13,6 @@ python examples/run4-perturbation/check_stability.py --workspace examples/run4-p
 ```
 
 What to look at:
-- `out-perturb-clean.txt` — `deterministic_recompute: true` (the gate engine
-  re-runs byte-identically) and `no_post_cutoff_documents: true`.
-- `out-perturb-leak.txt` — with the post-cutoff 8-K (filed 2026-11-05 >
-  cutoff 2026-10-30) injected, the gate flags it by document id and the
-  command exits non-zero: cutoff enforcement is structural (a gate), not a
-  prompt request. With such a manifest a case could never pass creation.
-- `out-stability-check.txt` — after the manifest is restored, all 7 published
-  artifacts are byte-identical to the baseline snapshot (`STABLE_OUTPUTS: true`);
-  the rejected document never reached any output.
+- `out-perturb-clean.txt` — `deterministic_recompute: true` (the gate engine re-runs byte-identically) and `no_post_cutoff_documents: true`.
+- `out-perturb-leak.txt` — with the post-cutoff 8-K (filed 2026-11-05 > cutoff 2026-10-30) injected, the gate flags it by document id and the command exits non-zero: cutoff enforcement is structural (a gate), not a prompt request. With such a manifest a case could never pass creation.
+- `out-stability-check.txt` — after the manifest is restored, all 7 published artifacts are byte-identical to the baseline snapshot (`STABLE_OUTPUTS: true`); the rejected document never reached any output.

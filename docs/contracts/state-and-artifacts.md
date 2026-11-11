@@ -57,18 +57,8 @@ versions/registry.json    prompts/ (cards)       references/ (pinned knowledge)
 
 Two rules the file cannot express on its own:
 
-- **`checkpoints[].state`** is the hash defined by
-  `statestore.checkpoint_state_hash`: the state as written, with that
-  checkpoint's own `state` field blanked. A checkpoint cannot contain the hash
-  of the bytes that contain it, so this is not the sha256 of `state.json`.
-  Only the last checkpoint can be checked against the current file, because
-  every later transition rewrites the content the earlier hashes were taken
-  over.
-- **`status: "RUNNING"` is a claim about the file, not about a process.** The
-  orchestrator holds `run.lock` for the duration of a run, so a RUNNING case
-  with no live lock holder was interrupted (crash, restart, or a state file
-  edited outside the orchestrator). Readers must report it as interrupted, not
-  as in progress.
+- **`checkpoints[].state`** is the hash defined by `statestore.checkpoint_state_hash`: the state as written, with that checkpoint's own `state` field blanked. A checkpoint cannot contain the hash of the bytes that contain it, so this is not the sha256 of `state.json`. Only the last checkpoint can be checked against the current file, because every later transition rewrites the content the earlier hashes were taken over.
+- **`status: "RUNNING"` is a claim about the file, not about a process.** The orchestrator holds `run.lock` for the duration of a run, so a RUNNING case with no live lock holder was interrupted (crash, restart, or a state file edited outside the orchestrator). Readers must report it as interrupted, not as in progress.
 
 ## 2. trace.jsonl (one event per line)
 
@@ -132,15 +122,10 @@ and `trigger_document` identify the case.
 
 Prefill fields (additive, optional; see README "Mandate prefill and review"):
 
-- `status`: absent means a hand-written mandate (treated as accepted). `proposed` is a
-  machine proposal; nothing may run on it (`case new`, `run`, `resume` and the UI refuse).
-  `accepted` requires an `approval` block.
-- `provenance`: map from dotted json-path (list indices as numbers, e.g.
-  `assumptions.peer_block.peers.0.ev_ebitda`) to `{value, source, url, as_of, sha256,
-  basis}`; derived values also carry `inputs`. Edited fields add `edited: true` and `final`.
+- `status`: absent means a hand-written mandate (treated as accepted). `proposed` is a machine proposal; nothing may run on it (`case new`, `run`, `resume` and the UI refuse). `accepted` requires an `approval` block.
+- `provenance`: map from dotted json-path (list indices as numbers, e.g. `assumptions.peer_block.peers.0.ev_ebitda`) to `{value, source, url, as_of, sha256, basis}`; derived values also carry `inputs`. Edited fields add `edited: true` and `final`.
 - `approval`: `{by, at, edits: [{path, proposed, final}]}` written by `case accept`.
-- `missing`: json-paths that could not be fetched. A proposal may hold nulls there;
-  an accepted mandate may not (core assumptions must be numbers).
+- `missing`: json-paths that could not be fetched. A proposal may hold nulls there; an accepted mandate may not (core assumptions must be numbers).
 
 ## 4. inputs/manifest.json
 

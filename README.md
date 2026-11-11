@@ -119,28 +119,11 @@ replay/stub dispatch + the real deterministic engines) and are committed
 with their outputs. **Start at `examples/README.md`**; reproduce any of them
 with its `commands.sh`:
 
-1. **run1 — clean end-to-end update** (`examples/run1-clean`): create →
-   run (7 gates pass, 4 critics clean, 2 clean full reviews of the same
-   candidate) → `PENDING_APPROVAL` → human approval → `CLOSED`, plus the
-   LaTeX dossier export (`export/dossier.pdf`).
-2. **run2 — seeded finding → critic-verified closure**
-   (`examples/run2-seeded-repair`): `demo seed-finding` opens `fnd-001`;
-   the critic contexts carry it; it closes only against artifact+SHA-256
-   evidence (`FINDING_VERIFIED_CLOSED` ×4 in the trace).
-3. **run3 — kill mid-run → resume** (`examples/run3-kill-resume`): the run
-   dies during a role dispatch (dangling request visible in the trace);
-   `demo kill-stage` writes the torn partial a real crash leaves; `resume`
-   discards it to `discarded/` and re-dispatches **only the pending role**
-   (`out-evidence-check.txt`: `ALL_CHECKS_PASS: true`).
-4. **run4 — cutoff / no-leakage perturbation** (`examples/run4-perturbation`):
-   `demo perturb` proves deterministic re-runs and clean cutoff; a
-   post-cutoff 8-K injected into the manifest is **rejected by the gate**
-   (exit 1); outputs are byte-identical before/after.
-5. **run5 — evolution, 3-part demo** (`examples/run5-evolution`): scoped
-   change → regression → human APPROVE (active pointer swap); over-broad
-   proposal touching locked controller scope → approve **refused** + REJECT
-   recorded; second approved version → authorized **rollback** → and a
-   verification case run under the rolled-back version.
+1. **run1 — clean end-to-end update** (`examples/run1-clean`): create → run (7 gates pass, 4 critics clean, 2 clean full reviews of the same candidate) → `PENDING_APPROVAL` → human approval → `CLOSED`, plus the LaTeX dossier export (`export/dossier.pdf`).
+2. **run2 — seeded finding → critic-verified closure** (`examples/run2-seeded-repair`): `demo seed-finding` opens `fnd-001`; the critic contexts carry it; it closes only against artifact+SHA-256 evidence (`FINDING_VERIFIED_CLOSED` ×4 in the trace).
+3. **run3 — kill mid-run → resume** (`examples/run3-kill-resume`): the run dies during a role dispatch (dangling request visible in the trace); `demo kill-stage` writes the torn partial a real crash leaves; `resume` discards it to `discarded/` and re-dispatches **only the pending role** (`out-evidence-check.txt`: `ALL_CHECKS_PASS: true`).
+4. **run4 — cutoff / no-leakage perturbation** (`examples/run4-perturbation`): `demo perturb` proves deterministic re-runs and clean cutoff; a post-cutoff 8-K injected into the manifest is **rejected by the gate** (exit 1); outputs are byte-identical before/after.
+5. **run5 — evolution, 3-part demo** (`examples/run5-evolution`): scoped change → regression → human APPROVE (active pointer swap); over-broad proposal touching locked controller scope → approve **refused** + REJECT recorded; second approved version → authorized **rollback** → and a verification case run under the rolled-back version.
 
 ## Running the web UI
 
@@ -204,21 +187,10 @@ The demo-only server cannot freeze live filings.
 
 Role dispatches (per fresh call) use one backend, selected per case:
 
-- **CLI headless** — `claude -p` / `codex exec` / `kimi` / `vibe -p`
-  (headless Mistral CLI, capped at $1.50 per call): uses the local CLI
-  login, no API keys; auto-detection checks PATH (tests ship fake CLI
-  fixtures).
-- **OpenAI-compatible API** — set `COVERAGEFLOW_BASE_URL`,
-  `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (optionally
-  `COVERAGEFLOW_CONFIG` for a JSON config file); the launcher writes the
-  same fields to `.coverageflow.json`. Backend selection is the
-  `--backend` flag on `run` / UI selection / auto-detection.
-- **Replay** — recorded responses matched by role + prompt hash; the whole
-  test suite and the five evidence runs use the offline stub/replay
-  dispatch ("scripted rehearsal" — real engines, scripted role responses).
-- **Stub** — `--backend stub`: the offline role responder with no
-  recording requirement (the launcher's offline demo mode). The UI's
-  Backends page selection governs runs launched from the case page.
+- **CLI headless** — `claude -p` / `codex exec` / `kimi` / `vibe -p` (headless Mistral CLI, capped at $1.50 per call): uses the local CLI login, no API keys; auto-detection checks PATH (tests ship fake CLI fixtures).
+- **OpenAI-compatible API** — set `COVERAGEFLOW_BASE_URL`, `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (optionally `COVERAGEFLOW_CONFIG` for a JSON config file); the launcher writes the same fields to `.coverageflow.json`. Backend selection is the `--backend` flag on `run` / UI selection / auto-detection.
+- **Replay** — recorded responses matched by role + prompt hash; the whole test suite and the five evidence runs use the offline stub/replay dispatch ("scripted rehearsal" — real engines, scripted role responses).
+- **Stub** — `--backend stub`: the offline role responder with no recording requirement (the launcher's offline demo mode). The UI's Backends page selection governs runs launched from the case page.
 
 ```bash
 .venv/bin/python -m coverageflow backends     # report backend health/detection
@@ -237,44 +209,22 @@ never required: every test and every evidence run is offline.
 
 ## Limitations / known gaps (honest list)
 
-- **Single-writer, single-workspace**: one orchestrator per case directory;
-  no concurrent multi-case scheduling server, no auth on the UI (local tool).
-- **Live-agent runs not included in the repo**: the committed evidence uses
-  the offline replay/stub dispatch; role responses recorded from live CLI/API
-  runs under `--record` are the intended production path but depend on the
-  user's own CLI logins/keys.
-- **Extraction boundaries**: facts come from structured statement/segment
-  slices via the deterministic slicer; MD&A-only disclosures are noted in
-  `facts.json` `notes`, not modeled.
-- **Live mandate requirements**: `case new` on a live backend (not the stub or
-  replay) refuses a mandate without `assumptions.market.price` (as_of <= cutoff)
-  or with no usable `assumptions.peer_block.peers`, and prints an example.
-  Optional `assumptions.rating_bands` = `{"buy": 0.15, "sell": -0.10}`: upside
-  above `buy` is Buy, below `sell` is Sell, otherwise Hold (these are the defaults).
-- **Comps**: the demo mandate ships without a filled peer block, so
-  comps-implied price is `null` and the DCF/comps tolerance cross-check is
-  reported but not differential-priced; the gate and table renderers handle
-  the empty case explicitly.
-- **CLI `ui`/`export` verbs** are placeholders in this branch (ui: use
-  `uvicorn ui.api:app`; export: use `python -m coverageflow.export_dossier` /
-  the A1 xlsx exporter directly); the integration stream wires them.
-- **Schema-light dispatch format checks**: submission validation pins the
-  frozen wire-format keys per contract; full JSON-schema depth checks remain
-  in the orchestrator's validation.
-- **Demo figures are fixture-real**, not guidance: the scripted extractor
-  reports a hand-computed mini 10-Q set so the real model/valuation engines
-  can run offline; live runs extract from the actual document slices.
+- **Single-writer, single-workspace**: one orchestrator per case directory; no concurrent multi-case scheduling server, no auth on the UI (local tool).
+- **Live-agent runs not included in the repo**: the committed evidence uses the offline replay/stub dispatch; role responses recorded from live CLI/API runs under `--record` are the intended production path but depend on the user's own CLI logins/keys.
+- **Extraction boundaries**: facts come from structured statement/segment slices via the deterministic slicer; MD&A-only disclosures are noted in `facts.json` `notes`, not modeled.
+- **Live mandate requirements**: `case new` on a live backend (not the stub or replay) refuses a mandate without `assumptions.market.price` (as_of <= cutoff) or with no usable `assumptions.peer_block.peers`, and prints an example. Optional `assumptions.rating_bands` = `{"buy": 0.15, "sell": -0.10}`: upside above `buy` is Buy, below `sell` is Sell, otherwise Hold (these are the defaults).
+- **Comps**: the demo mandate ships without a filled peer block, so comps-implied price is `null` and the DCF/comps tolerance cross-check is reported but not differential-priced; the gate and table renderers handle the empty case explicitly.
+- **CLI `ui`/`export` verbs** are placeholders in this branch (ui: use `uvicorn ui.api:app`; export: use `python -m coverageflow.export_dossier` / the A1 xlsx exporter directly); the integration stream wires them.
+- **Schema-light dispatch format checks**: submission validation pins the frozen wire-format keys per contract; full JSON-schema depth checks remain in the orchestrator's validation.
+- **Demo figures are fixture-real**, not guidance: the scripted extractor reports a hand-computed mini 10-Q set so the real model/valuation engines can run offline; live runs extract from the actual document slices.
 - Budget unit is tokens/duration/rounds; no monetary cost ledger yet.
 
 ## Documentation map
 
 - `docs/task-spec.md` — Requirement 1 (task domain, triggers, products)
 - `docs/design-decisions.md` — the locked design record (Rounds A–F)
-- `docs/design-note.md` — **the graded design document** (Requirement 2):
-  roles and handoffs, the loop, long-running operation, verification and
-  improvement, each mapped to the lecture concepts with code references
-- `docs/workflow-diagram.png` — annotated architecture figure
-  (`scripts/gen_diagram.py` regenerates it)
+- `docs/design-note.md` — **the graded design document** (Requirement 2): roles and handoffs, the loop, long-running operation, verification and improvement, each mapped to the lecture concepts with code references
+- `docs/workflow-diagram.png` — annotated architecture figure (`scripts/gen_diagram.py` regenerates it)
 - `examples/README.md` — the evidence-run index
 - `docs/contracts/` — frozen state/artifact schemas and interface contracts
 
@@ -283,28 +233,12 @@ never required: every test and every evidence run is offline.
 This repository was built by parallel agent streams with contract-first
 frozen interfaces, integrated by a coordinator stream:
 
-- **A1 — runtime & data**: EDGAR bundle fetcher/hasher, deterministic
-  slicer, model engine, valuation engine, xlsx exporter, model schema,
-  segment mapping (`coverageflow/{bundle,slicer,model_engine,
-  valuation_engine,export_xlsx}.py`, `references/`, bundles).
-- **A2 — controller**: orchestrator state machine, gates, budgets,
-  findings ledger, verified resume, version registry, controller CLI
-  (`coverageflow/{orchestrator,gates,budget,statestore,ledger,resume,
-  registry,cli}.py`).
-- **A3 — agent layer**: RoleCall/dispatch, prompt assembly, backend
-  adapters (CLI/API/replay), role cards and pinned references
-  (`coverageflow/{dispatch,_prompt_assembly,backends/*}.py`, `prompts/`).
-- **A4 — web UI**: FastAPI service, WebSocket push, no-build SPA
-  (`ui/`).
-- **A5 — docs & evidence (this stream)**: `requirements.txt`,
-  `docs/design-note.md`, `docs/workflow-diagram.png` +
-  `scripts/gen_diagram.py`, the five evidence runs under `examples/`,
-  the LaTeX dossier template + renderer
-  (`references/dossier-template.tex`, `coverageflow/export_dossier.py`,
-  `tests/test_export_dossier.py`), and the top-level README.
-- **Coordinator**: contract authoring and freeze, stream integration,
-  cross-stream test upkeep; A6 (integration phase) wires the remaining CLI
-  verbs and controller-mode UI.
+- **A1 — runtime & data**: EDGAR bundle fetcher/hasher, deterministic slicer, model engine, valuation engine, xlsx exporter, model schema, segment mapping (`coverageflow/{bundle,slicer,model_engine, valuation_engine,export_xlsx}.py`, `references/`, bundles).
+- **A2 — controller**: orchestrator state machine, gates, budgets, findings ledger, verified resume, version registry, controller CLI (`coverageflow/{orchestrator,gates,budget,statestore,ledger,resume, registry,cli}.py`).
+- **A3 — agent layer**: RoleCall/dispatch, prompt assembly, backend adapters (CLI/API/replay), role cards and pinned references (`coverageflow/{dispatch,_prompt_assembly,backends/*}.py`, `prompts/`).
+- **A4 — web UI**: FastAPI service, WebSocket push, no-build SPA (`ui/`).
+- **A5 — docs & evidence (this stream)**: `requirements.txt`, `docs/design-note.md`, `docs/workflow-diagram.png` + `scripts/gen_diagram.py`, the five evidence runs under `examples/`, the LaTeX dossier template + renderer (`references/dossier-template.tex`, `coverageflow/export_dossier.py`, `tests/test_export_dossier.py`), and the top-level README.
+- **Coordinator**: contract authoring and freeze, stream integration, cross-stream test upkeep; A6 (integration phase) wires the remaining CLI verbs and controller-mode UI.
 
 All streams executed against the same frozen contracts; streams did not
 modify each other's modules, and integration is the coordinator's job. The
@@ -313,19 +247,6 @@ work product.
 
 ## Credits
 
-- The three supplied course Excel templates — **`Complete Quantitative
-  Analysis_40491.xlsx`**, **`Discounted Cash Flow Template_22221.xlsx`**,
-  and **`Stock Analysis Tool_60250.xlsx`** — provided the layout conventions
-  adopted by this project: line-item naming and absolute-ratio row pairing
-  (`export_xlsx.py` "Statements Model"/"Ratios" tabs), YoY/QoQ ratio
-  conventions, the DCF tab layout (projection + PV + terminal via exit
-  multiple and Gordon growth, EV → equity → per-share bridge,
-  market-vs-intrinsic block), the Company Comparison tab layout (dated peer
-  block, implied per-share values, own historical band), and the clean
-  institutional styling (no gridlines, light header fills, thousands
-  separators, static values).
-- The lecture slides for the long-running-workflow architecture
-  (Orchestrator/Generator/Critic, harness, loops and gates, finding ledgers,
-  repair packets, version registries) that this system implements and the
-  design note maps to.
+- The three supplied course Excel templates — **`Complete Quantitative Analysis_40491.xlsx`**, **`Discounted Cash Flow Template_22221.xlsx`**, and **`Stock Analysis Tool_60250.xlsx`** — provided the layout conventions adopted by this project: line-item naming and absolute-ratio row pairing (`export_xlsx.py` "Statements Model"/"Ratios" tabs), YoY/QoQ ratio conventions, the DCF tab layout (projection + PV + terminal via exit multiple and Gordon growth, EV → equity → per-share bridge, market-vs-intrinsic block), the Company Comparison tab layout (dated peer block, implied per-share values, own historical band), and the clean institutional styling (no gridlines, light header fills, thousands separators, static values).
+- The lecture slides for the long-running-workflow architecture (Orchestrator/Generator/Critic, harness, loops and gates, finding ledgers, repair packets, version registries) that this system implements and the design note maps to.
 - EDGAR (SEC) for the public filings snapshotted in the demo bundles.

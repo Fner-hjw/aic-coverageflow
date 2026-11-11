@@ -81,22 +81,9 @@ post-cutoff document can never reach the outputs.
 
 ### run5-evolution — approve / scope-reject / rollback
 Three registry cycles over `versions/registry.json` (all CLI):
-1. **5a pass+approve**: `evolve propose sys-1.1` (scoped: extractor prompt
-   card) with recorded regression results (identical outputs on the 4
-   development cases) → `evolve regress` → `evolve approve --decision
-   APPROVED` → active pointer = sys-1.1.
-2. **5b scope-reject**: `sys-2.0` proposes relaxing the acceptance rule and
-   gate thresholds — i.e. it touches **locked controller scope** and fails
-   regression; `evolve approve --decision APPROVED` is **refused by the
-   registry gate** (exit 1: "cannot approve a version whose fresh-critic
-   review did not pass all regressions"); the human decision recorded on
-   file is REJECTED and the active version stays sys-1.1. In a live loop the
-   same record carries the actual diff hashes and case evidence.
-3. **5c rollback+verify**: `sys-1.2` (scoped slicer change) is approved
-   (active = sys-1.2), then `evolve rollback --version sys-1.1` restores the
-   prior pointer; a **verification case** created after the rollback pins the
-   rolled-back configuration (`state.json` `config_versions`:
-   extractor 1.1, engines 1.0) and runs clean through acceptance.
+1. **5a pass+approve**: `evolve propose sys-1.1` (scoped: extractor prompt card) with recorded regression results (identical outputs on the 4 development cases) → `evolve regress` → `evolve approve --decision APPROVED` → active pointer = sys-1.1.
+2. **5b scope-reject**: `sys-2.0` proposes relaxing the acceptance rule and gate thresholds — i.e. it touches **locked controller scope** and fails regression; `evolve approve --decision APPROVED` is **refused by the registry gate** (exit 1: "cannot approve a version whose fresh-critic review did not pass all regressions"); the human decision recorded on file is REJECTED and the active version stays sys-1.1. In a live loop the same record carries the actual diff hashes and case evidence.
+3. **5c rollback+verify**: `sys-1.2` (scoped slicer change) is approved (active = sys-1.2), then `evolve rollback --version sys-1.1` restores the prior pointer; a **verification case** created after the rollback pins the rolled-back configuration (`state.json` `config_versions`: extractor 1.1, engines 1.0) and runs clean through acceptance.
 
 ## Size note
 

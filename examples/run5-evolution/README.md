@@ -29,17 +29,8 @@ python -m coverageflow --workspace examples/run5-evolution evolve rollback --ver
 abbreviate paths for readability.)
 
 What to look at:
-- `versions/registry.json` — the four registry entries: sys-1.0 (baseline),
-  sys-1.1 APPROVED (was the active pointer), **sys-2.0 REJECTED** with the
-  scope-violation review record (fresh_critic_findings names the locked
-  controller files; `regressions_all_pass: false`), sys-1.2 APPROVED with
-  `rollback_to: sys-1.1`.
-- `out-5b-approve-refused.txt` — the registry gate refuses the approve
-  attempt with exit code 1 ("cannot approve a version whose fresh-critic
-  review did not pass all regressions") and the human REJECT that follows.
+- `versions/registry.json` — the four registry entries: sys-1.0 (baseline), sys-1.1 APPROVED (was the active pointer), **sys-2.0 REJECTED** with the scope-violation review record (fresh_critic_findings names the locked controller files; `regressions_all_pass: false`), sys-1.2 APPROVED with `rollback_to: sys-1.1`.
+- `out-5b-approve-refused.txt` — the registry gate refuses the approve attempt with exit code 1 ("cannot approve a version whose fresh-critic review did not pass all regressions") and the human REJECT that follows.
 - `out-5c-rollback.txt` — `active: sys-1.1` again after authorized rollback.
-- `cases/intc-fy2026q3-20261030/state.json` — the verification case created
-  after the rollback pins the rolled-back configuration
-  (`config_versions`: extractor 1.1 / engines 1.0) and reached CLOSED via
-  the full acceptance path (see `out-5c-verification-*.txt`).
+- `cases/intc-fy2026q3-20261030/state.json` — the verification case created after the rollback pins the rolled-back configuration (`config_versions`: extractor 1.1 / engines 1.0) and reached CLOSED via the full acceptance path (see `out-5c-verification-*.txt`).
 - `specs/` — the recorded proposals and regression evidence for each version.

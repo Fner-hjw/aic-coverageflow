@@ -101,28 +101,10 @@ manifest) → **numerical gates** (7, rerun every round:
 fresh critic dispatches → critic-lead merge (union + dedup + conflicts kept) →
 controller decision:
 
-- **findings remain → repair packet** (`rounds/round-NNN/repair-packet.json`:
-  open findings + required evidence + unchanged criteria + delta-scope
-  statement) and a **full re-build** in the next round — fresh eyes on the
-  target, and stages may short-circuit by emitting hash-match proofs.
-- **clean + no open findings → streak count.** *Acceptance:* all gates pass,
-  **2 consecutive clean full reviews of the same candidate** (any candidate
-  change resets the streak; re-reviewing the same candidate consumes no build
-  round), and every carried finding closed by a critic-verified repair.
-  Trace events `FINDING_OPENED` / `FINDING_VERIFIED_CLOSED` /
-  `REPAIR_PACKET_ISSUED` capture the lifecycle; a finding closes **only** on
-  artifact + matching SHA-256 evidence tied to the *current* candidate
-  (`_apply_critic_closures`, `orchestrator.py`) — tampered evidence is
-  rejected and the finding stays open.
-- **invalid submission** (schema/stale id): repair at the same role with a
-  new request id, **no round consumed**; the repair budget (`retries_max`,
-  default 3) bounds it, and exhausting it → `EXHAUSTED` with a precise reason.
-- **blocks are instructions, not tombstones.** `BLOCKED` is terminal for the
-  *run*, not for the *case*: a re-run clears the block, resets the repair
-  budget for the role that blocked, and resumes from the last verified stage
-  (`_clear_block`). Only `APPROVAL_EXPIRED` needs a fresh human decision
-  instead. Without this a transient backend failure forced a brand-new case,
-  and the workspace filled with dead cases pointing at the same frozen bundle.
+- **findings remain → repair packet** (`rounds/round-NNN/repair-packet.json`: open findings + required evidence + unchanged criteria + delta-scope statement) and a **full re-build** in the next round — fresh eyes on the target, and stages may short-circuit by emitting hash-match proofs.
+- **clean + no open findings → streak count.** *Acceptance:* all gates pass, **2 consecutive clean full reviews of the same candidate** (any candidate change resets the streak; re-reviewing the same candidate consumes no build round), and every carried finding closed by a critic-verified repair. Trace events `FINDING_OPENED` / `FINDING_VERIFIED_CLOSED` / `REPAIR_PACKET_ISSUED` capture the lifecycle; a finding closes **only** on artifact + matching SHA-256 evidence tied to the *current* candidate (`_apply_critic_closures`, `orchestrator.py`) — tampered evidence is rejected and the finding stays open.
+- **invalid submission** (schema/stale id): repair at the same role with a new request id, **no round consumed**; the repair budget (`retries_max`, default 3) bounds it, and exhausting it → `EXHAUSTED` with a precise reason.
+- **blocks are instructions, not tombstones.** `BLOCKED` is terminal for the *run*, not for the *case*: a re-run clears the block, resets the repair budget for the role that blocked, and resumes from the last verified stage (`_clear_block`). Only `APPROVAL_EXPIRED` needs a fresh human decision instead. Without this a transient backend failure forced a brand-new case, and the workspace filled with dead cases pointing at the same frozen bundle.
 
 Every transition is **state-first**: validate → write `state.json` + checkpoint
 (`history/checkpoint-NNNN.json`) atomically → append to `trace.jsonl`. A
@@ -138,44 +120,12 @@ repair-packet path with a scripted raising critic is unit-tested in
 
 ## 3. Long-running operation
 
-- **Persistence & state.** JSON + JSONL only, atomic writes (temp +
-  `os.replace`), every artifact header carrying request/candidate ids, prompt
-  versions, cutoff and the input manifest reference. Case layout is frozen in
-  the contracts: `mandate.json`, `inputs/+manifest`, `rounds/round-NNN/…`,
-  `findings.json` (append-only ledger), `state.json`, `trace.jsonl`,
-  `approvals/`, `report/`, `history/`.
-- **Triggers.** (1) new dated document arrival → new case, cutoff = filing
-  date — exercised by all five evidence runs; (2) scheduled staleness check
-  (note older than N days vs. newest document — designed trigger, the
-  scheduled scanner itself is not implemented in v1); (3) human action
-  (approve / reject / rollback / evolve) — exercised in run5.
-- **Checkpoints & resume.** One checkpoint per verified transition. On
-  startup the orchestrator inspects identity + hashes, **discards unverified
-  partial output** (moved to `discarded/`), **re-dispatches the pending role
-  only**, and returns saved artifacts for completed verified stages; a
-  completed case returns its saved result untouched (`resume.py`,
-  `resume_check` in `orchestrator.py`). A corrupted *verified* artifact rolls
-  back to its producing stage only. Evidence: `examples/run3-kill-resume`
-  (kill during the writer stage → resume → only the writer re-ran; earlier
-  artifacts byte-identical).
-- **Stop rules / budgets** (`budget.py`, checked at every dispatch, breach →
-  `EXHAUSTED` with a precise record, never acceptance): max **4 revision
-  rounds**; **3 retries** per specialist dispatch; **45-minute** case clock
-  (paused while awaiting the human); **60,000 tokens per role**; per-role
-  dispatch timeout. The human gate has its own deadline: **48 hours**;
-  expiry → `BLOCKED` (`APPROVAL_EXPIRED`), and re-approval restarts acceptance
-  from zero — strict, so a stale approval can never publish.
-- **Tool limits.** No in-model tools, no network: inputs are restricted to the
-  frozen bundle; post-cutoff documents are *structurally absent* from the case
-  directory rather than filtered by request — cutoff enforcement is a gate
-  (`gate_manifest_cutoff`), not a prompt. Perturbation evidence:
-  `examples/run4-perturbation`.
-- **Time/cost metering.** The trace logs backend + tokens in/out per dispatch
-  (`tokens_by_role` in the budget state), so a run's cost profile is itself an
-  auditable artifact. Live backends are switched by config/CLI
-  (`backends/`: `claude`, `codex`, `kimi`, OpenAI-compatible `api` with
-  `COVERAGEFLOW_BASE_URL/MODEL/API_KEY`, and `replay` recordings captured from
-  live runs — the entire test suite and every evidence run are offline).
+- **Persistence & state.** JSON + JSONL only, atomic writes (temp + `os.replace`), every artifact header carrying request/candidate ids, prompt versions, cutoff and the input manifest reference. Case layout is frozen in the contracts: `mandate.json`, `inputs/+manifest`, `rounds/round-NNN/…`, `findings.json` (append-only ledger), `state.json`, `trace.jsonl`, `approvals/`, `report/`, `history/`.
+- **Triggers.** (1) new dated document arrival → new case, cutoff = filing date — exercised by all five evidence runs; (2) scheduled staleness check (note older than N days vs. newest document — designed trigger, the scheduled scanner itself is not implemented in v1); (3) human action (approve / reject / rollback / evolve) — exercised in run5.
+- **Checkpoints & resume.** One checkpoint per verified transition. On startup the orchestrator inspects identity + hashes, **discards unverified partial output** (moved to `discarded/`), **re-dispatches the pending role only**, and returns saved artifacts for completed verified stages; a completed case returns its saved result untouched (`resume.py`, `resume_check` in `orchestrator.py`). A corrupted *verified* artifact rolls back to its producing stage only. Evidence: `examples/run3-kill-resume` (kill during the writer stage → resume → only the writer re-ran; earlier artifacts byte-identical).
+- **Stop rules / budgets** (`budget.py`, checked at every dispatch, breach → `EXHAUSTED` with a precise record, never acceptance): max **4 revision rounds**; **3 retries** per specialist dispatch; **45-minute** case clock (paused while awaiting the human); **60,000 tokens per role**; per-role dispatch timeout. The human gate has its own deadline: **48 hours**; expiry → `BLOCKED` (`APPROVAL_EXPIRED`), and re-approval restarts acceptance from zero — strict, so a stale approval can never publish.
+- **Tool limits.** No in-model tools, no network: inputs are restricted to the frozen bundle; post-cutoff documents are *structurally absent* from the case directory rather than filtered by request — cutoff enforcement is a gate (`gate_manifest_cutoff`), not a prompt. Perturbation evidence: `examples/run4-perturbation`.
+- **Time/cost metering.** The trace logs backend + tokens in/out per dispatch (`tokens_by_role` in the budget state), so a run's cost profile is itself an auditable artifact. Live backends are switched by config/CLI (`backends/`: `claude`, `codex`, `kimi`, OpenAI-compatible `api` with `COVERAGEFLOW_BASE_URL/MODEL/API_KEY`, and `replay` recordings captured from live runs — the entire test suite and every evidence run are offline).
 
 ## 4. Verification and improvement
 
@@ -246,16 +196,11 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 
 ## 6. Where the evidence lives
 
-1. Clean end-to-end coverage update (gates + 2 clean reviews + approval
-   record): `examples/run1-clean`.
-2. Seeded finding → repair loop → critic-verified closure:
-   `examples/run2-seeded-repair`.
-3. Kill mid-run → resume, only the pending role re-runs:
-   `examples/run3-kill-resume`.
-4. Cutoff/no-leakage perturbation (deterministic recompute; post-cutoff
-   document rejected; outputs stable): `examples/run4-perturbation`.
-5. Evolution: approve / scope-reject / rollback with verification:
-   `examples/run5-evolution`.
+1. Clean end-to-end coverage update (gates + 2 clean reviews + approval record): `examples/run1-clean`.
+2. Seeded finding → repair loop → critic-verified closure: `examples/run2-seeded-repair`.
+3. Kill mid-run → resume, only the pending role re-runs: `examples/run3-kill-resume`.
+4. Cutoff/no-leakage perturbation (deterministic recompute; post-cutoff document rejected; outputs stable): `examples/run4-perturbation`.
+5. Evolution: approve / scope-reject / rollback with verification: `examples/run5-evolution`.
 
 All five were produced offline by running the real controller + deterministic
 engines against the frozen Intel bundle (the agent role calls use the offline

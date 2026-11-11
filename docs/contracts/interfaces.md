@@ -53,14 +53,10 @@ class AgentResult:
     raw_response_ref: str | None   # path in replay/ when recording (relative to case dir)
 ```
 
-- **cli_backends.py:** invoke `claude -p <prompt> --output-format json`, `codex exec <prompt> --json`,
-  kimi equivalent; each adapter normalizes to AgentResult; reads CLI from config.
-- **api_backend.py:** OpenAI-compatible `/chat/completions`; `base_url/model/api_key` from
-  `[env: COVERAGEFLOW_*]` → config file → prompt user; enforced timeout.
-- **replay_backends.py:** `ReplayBackend` loads `replay/<case>/` recordings, matches request
-  by role+prompt-hash; `RecordingBackend` wraps any live backend and writes recordings.
-- **Backend select:** `--backend` flag → config → `auto` = detect installed CLIs in PATH,
-  interactive prompt (backend list shown, user picks); stores choice in config.
+- **cli_backends.py:** invoke `claude -p <prompt> --output-format json`, `codex exec <prompt> --json`, kimi equivalent; each adapter normalizes to AgentResult; reads CLI from config.
+- **api_backend.py:** OpenAI-compatible `/chat/completions`; `base_url/model/api_key` from `[env: COVERAGEFLOW_*]` → config file → prompt user; enforced timeout.
+- **replay_backends.py:** `ReplayBackend` loads `replay/<case>/` recordings, matches request by role+prompt-hash; `RecordingBackend` wraps any live backend and writes recordings.
+- **Backend select:** `--backend` flag → config → `auto` = detect installed CLIs in PATH, interactive prompt (backend list shown, user picks); stores choice in config.
 
 ## 3. Controller CLI (A2)
 
@@ -138,5 +134,4 @@ missing match → hard error (no silent replay of wrong context).
 - Every state artifact write goes through `statestore.py` helpers (atomic write + hash).
 - No stream modifies another stream's module; integration is the coordinator's job.
 - Tests must run offline (backend=replay or plain engines) — no network in CI.
-- Commits: small, meaningful messages, one feature per commit; commit to your stream's
-  branch: `a1-runtime`, `a2-controller`, `a3-agent-layer`, `a4-ui`.
+- Commits: small, meaningful messages, one feature per commit; commit to your stream's branch: `a1-runtime`, `a2-controller`, `a3-agent-layer`, `a4-ui`.

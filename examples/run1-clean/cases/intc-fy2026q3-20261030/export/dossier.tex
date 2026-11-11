@@ -1,168 +1,85 @@
-%% references/dossier-template.tex — CoverageFlow research-note dossier template
-%% (owner: stream A5). GS/MS-style institutional equity research note.
-%%
-%% Packages: article, booktabs, geometry ONLY (TeX Live 2026, pdflatex).
-%% The renderer (coverageflow/export_dossier.py) fills every
-%% TOKEN written in double braces from the case's verified
-%% artifacts (report.md + model/valuation JSON + case metadata).
-%% Nothing is hand-typed: all numbers come from the evidence
-%% record, so the dossier cannot drift from the verified case.
-
-
+%% CoverageFlow report dossier. Values are supplied by export_dossier.py.
 \documentclass[11pt,a4paper]{article}
-\usepackage[a4paper,top=0.8in,bottom=0.8in,left=0.9in,right=0.9in]{geometry}
+\usepackage[a4paper,top=25mm,bottom=24mm,left=25mm,right=25mm,headheight=14pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathpazo}
+\renewcommand{\sfdefault}{ppl}
+\renewcommand{\ttdefault}{ppl}
+\usepackage{xcolor}
 \usepackage{booktabs}
-
-\newcommand{\rulefull}{\noindent\rule{\textwidth}{0.7pt}}
-\newcommand{\sect}[1]{\vspace{6pt}\noindent{\normalsize\scshape #1}\vspace{2pt}\\ \rulefull \vspace{2pt}}
-
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{fancyhdr}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+\usepackage{titlesec}
+\usepackage{needspace}
+\usepackage{ragged2e}
+\usepackage{multicol}
+\usepackage{microtype}
+\definecolor{ink}{HTML}{1A2520}
+\definecolor{muted}{HTML}{69746C}
+\definecolor{line}{HTML}{D7DED6}
+\definecolor{accent}{HTML}{476D48}
+\definecolor{amber}{HTML}{805B24}
+\color{ink}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{4pt}
-
-\pagestyle{empty}
-
+\setlength{\parskip}{9pt}
+\setlength{\emergencystretch}{3em}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\Urlmuskip=0mu plus 1mu\relax
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{{\sffamily\small\bfseries CoverageFlow} {\color{line}\quad / \quad} {\sffamily\small Research}}
+\fancyhead[R]{{\sffamily\small\color{muted} INTC \quad 2026-10-30}}
+\fancyfoot[L]{{\sffamily\footnotesize\color{muted} Approved report}}
+\fancyfoot[R]{{\sffamily\footnotesize\color{muted} INTC \quad / \quad \thepage}}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\titleformat{\section}{\sffamily\large\bfseries\color{ink}}{}{0pt}{}[\vspace{4pt}\color{line}\titlerule]
+\titlespacing*{\section}{0pt}{21pt}{9pt}
+\titleformat{\subsection}{\sffamily\normalsize\bfseries\color{ink}}{}{0pt}{}
+\titlespacing*{\subsection}{0pt}{15pt}{5pt}
+\newcommand{\evref}[1]{\textsuperscript{\sffamily\color{muted}\fontsize{7}{8}\selectfont[#1]}}
 \begin{document}
+\justifying
+\setlength{\parindent}{0pt}
+\vspace*{2mm}
+{\color{accent}\hrule height 2pt}
+\vspace{7mm}
+{\sffamily\small\bfseries\color{accent} EQUITY RESEARCH \quad / \quad INTC}\par
+\vspace{3mm}
+{\fontsize{25}{30}\selectfont\bfseries Research report}\par
+\vspace{4mm}
+{\sffamily\small\color{muted} Intel Corporation \quad | \quad INFORMATION CUTOFF \quad 2026-10-30}\par
+\vspace{4mm}
+{\sffamily\small\bfseries\color{amber} Approved report}\par
+{\sffamily\footnotesize\color{muted} Approved by Gaetano Marco Chiantia \quad | \quad Version v1-cand-43f \quad | \quad Candidate cand-43f01cba83f}\par
+\vspace{2mm}
+{\color{line}\hrule height 0.5pt}
+\vspace{1mm}
+\fontsize{11}{15.2}\selectfont
+\Needspace{9\baselineskip}
+\section*{Summary}
+Revenue rose to 13,500\evref{1} with gross profit of 5,175\evref{2}.
 
-% --------------------------------------------------------------- masthead
-\rulefull
-\begin{center}
-{\large\scshape Intel Corporation (INTC)}\\[1pt]
-{\small Equity Research --- Coverage Update \quad | \quad Sector: Semiconductors}\\[1pt]
-{\small Information cutoff: 2026-10-30 \quad | \quad Report version: v1-cand-43f \quad | \quad Candidate: cand-43f01cba83f}
-\end{center}
+The DCF yields 28.0\evref{3} per share; comps imply 26.0\evref{4}.
 
-\begin{tabular}{@{}p{0.32\textwidth}p{0.30\textwidth}p{0.30\textwidth}@{}}
-\textbf{Rating} & \textbf{Target price (DCF)} & \textbf{Analyst} \\
-Not rated --- verification run (course project) & 13.85/sh (exit mult.) \quad 6.51/sh (Gordon) & Gaetano Marco Chiantia \\
-\textbf{Published} & \textbf{Case} & \textbf{Backend evidence} \\
-2026-11-09T16:53:48Z & intc-fy2026q3-20261030 & model\_engine@1.0 / valuation\_engine@1.0 \\
-\end{tabular}
-
-\vspace{2pt}
-\rulefull
-
-% -------------------------------------------------------------- key data
-\sect{Key data (USDmm unless noted; from the verified model artifact)}
-\begin{tabular}{@{}lrr@{}}
-\toprule
-Metric & 2026-Q3 & 2025-Q3 \\
-\midrule
-Revenue (2026-Q3) & 13,500 & 12,500 \\
-Gross profit & 5,175 & 4,375 \\
-Operating income & 825 & 175 \\
-Net income & 700 & 150 \\
-Diluted EPS (USD) & 0.16 & 0.03 \\
-Cash \& equivalents & 25,000 & 21,000 \\
-Long-term debt & 50,000 & 48,000 \\
-Net debt (valuation) & 27,000 &  \\
-Diluted shares (mm) & 4,375 &  \\
-WACC (mandate) & 10.4\% &  \\
-Terminal growth (mandate) & 2.5\% &  \\
-Exit multiple (mandate, EBITDA) & 14.0x &  \\
-\bottomrule
-\end{tabular}
-
-% -------------------------------------------------------------- summary
-\sect{Summary}
-Revenue rose to 13,500 \texttt{[EV:income\_statement.revenue]} with gross profit of 5,175 \texttt{[EV:income\_statement.gross\_profit]}.
-The DCF yields 28.0 \texttt{[EV:dcf.per\_diluted\_share]} per share; comps imply 26.0 \texttt{[EV:comps.comps\_price]}.
-
-\sect{Results}
-\textit{(No ``Results'' section in the verified report.)}
-
-\sect{Segment detail}
-\textit{(No ``Segment detail'' section in the verified report.)}
-\vspace{2pt}
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-Segment & Revenue Q3'26 & Op.\ income Q3'26 & Revenue FY2025 \\
-\midrule
-Client Computing Group (CCG) & 6,000 & 700 & 24,000 \\
-Data Center \& AI (DCAI) & 4,500 & 300 & 12,000 \\
-Network \& Edge (NEX) & 2,000 & 150 & 6,000 \\
-Intel Foundry & 1,000 & -650 & 6,000 \\
-Altera & 800 & 250 & 6,000 \\
-Mobileye & 500 & 100 & 4,000 \\
-All other / intersegment eliminations & -1,300 & -25 & -6,000 \\
-\bottomrule
-\end{tabular}
-
-% -------------------------------------------------------------- outlook
-\sect{Outlook}
-\textit{(No ``Outlook'' section in the verified report.)}
-
-% -------------------------------------------------------------- valuation
-\sect{Valuation}
-\textit{(No ``Valuation'' section in the verified report.)}
-\vspace{4pt}
-
-\noindent\textbf{DCF (from the valuation artifact; \$ per diluted share)}\\
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Year & Revenue & FCF & Discount factor & PV \\
-\midrule
-Base (FY2025) & 52,000 & 1,040 & 1.00 & 1,040 \\
-Y1 & 56,680 & 1,700 & 0.906 & 1,540 \\
-Y2 & 61,625 & 2,465 & 0.820 & 2,022 \\
-Y3 & 66,831 & 3,342 & 0.743 & 2,483 \\
-Y4 & 72,293 & 4,338 & 0.673 & 2,920 \\
-Y5 & 78,001 & 5,460 & 0.610 & 3,329 \\
-\midrule
-PV of forecast FCF & \multicolumn{4}{r}{12,295} \\
-EV (exit multiple) & \multicolumn{4}{r}{87,589} \\
-EV (Gordon) & \multicolumn{4}{r}{55,492} \\
-Net debt & \multicolumn{4}{r}{(27,000)} \\
-\midrule
-Equity value (exit multiple) & \multicolumn{4}{r}{60,589} \\
-Equity value (Gordon) & \multicolumn{4}{r}{28,492} \\
-Per diluted share (exit multiple) & \multicolumn{4}{r}{\textbf{13.85}} \\
-Per diluted share (Gordon) & \multicolumn{4}{r}{\textbf{6.51}} \\
-\bottomrule
-\end{tabular}
-
-\noindent\textbf{Relative valuation (mandate peer block, as-of 2026-10-30)}\\
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Peer & P/E (TTM) & EV/EBITDA & P/S & Rev growth \\
-\midrule
-\textit{(No peer multiples supplied in this mandate; comps cross-check not computed.)} & & & & \\
-\midrule
-\end{tabular}
-
-\textit{Cross-check: DCF and relative valuation agree within mandate tolerance.}
-
-\noindent\textbf{Sensitivity: DCF value per diluted share, WACC $\times$ terminal growth}\\
-\begin{tabular}{@{}rrrrrr@{}}
-\toprule
-WACC \textbackslash{} g & 0.5\% & 1.5\% & 2.5\% & 3.5\% & 4.5\% \\
-\midrule
-6.4\% & 12.60 & 15.97 & 21.07 & 29.68 & 47.35 \\
-8.4\% & 7.43 & 9.08 & 11.30 & 14.43 & 19.16 \\
-10.4\% & 4.36 & 5.32 & 6.51 & 8.05 & 10.12 \\
-12.4\% & 2.35 & 2.95 & 3.68 & 4.56 & 5.68 \\
-14.4\% & 0.93 & 1.34 & 1.81 & 2.37 & 3.05 \\
-\bottomrule
-\end{tabular}
-
-% -------------------------------------------------------------- risks
-\sect{Risks}
-\textit{(No ``Risks'' section in the verified report.)}
-
-% -------------------------------------------------------------- evidence
-\sect{Methodology \& evidence appendix}
-
-\noindent All figures above are rendered from the case's verified artifacts
-(\texttt{model.json}, \texttt{valuation.json} produced by the deterministic
-engines; \texttt{report.md} produced by the writer role from the evidence
-ledger). Every artifact carries the candidate ID, the information cutoff and
-the input manifest reference. Acceptance: all numerical gates passed; two
-consecutive clean full critic reviews of the same candidate; findings
-closed only on critic-verified repairs; human approval recorded before
-publication.
-
-\vspace{3pt}
-\noindent\textbf{Input documents (frozen, SHA-256-hashed EDGAR bundle)}\\
-\begin{tabular}{@{}llll@{}}
+\clearpage
+\section*{Evidence references}
+{\sffamily\small\color{muted} References identify candidate filing sources or calculations. Unresolved references require review. One reference may cover multiple periods; check the cited filing and the underlying facts for the period used.}\par
+\small\setlength{\parskip}{7pt}
+\noindent\textbf{[1]} \textbf{Filing source.} intc-10q-2026q3; 10-Q; Filed 2026-10-30; Consolidated Statements of Operations; line 0. \href{https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm}{Open source document}; intc-10q-2026q3; 10-Q; Filed 2026-10-30; Consolidated Statements of Operations; line 1. \href{https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm}{Open source document}; intc-10q-2026q3; 10-Q; Filed 2026-10-30; Consolidated Statements of Operations; line 64. \href{https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm}{Open source document}\par
+\noindent\textbf{[2]} \textbf{Filing source.} intc-10q-2026q3; 10-Q; Filed 2026-10-30; Consolidated Statements of Operations; line 4. \href{https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm}{Open source document}; intc-10q-2026q3; 10-Q; Filed 2026-10-30; Consolidated Statements of Operations; line 5. \href{https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm}{Open source document}; intc-10q-2026q3; 10-Q; Filed 2026-10-30; Consolidated Statements of Operations; line 66. \href{https://www.sec.gov/Archives/edgar/data/50863/000005086326000191/intc-20260926.htm}{Open source document}\par
+\noindent\textbf{[3]} \textbf{Valuation calculation.} dcf / per diluted share in valuation.json. Review the model and assumptions for its inputs.\par
+\noindent\textbf{[4]} \textbf{Valuation calculation.} comps / comps price in valuation.json. Review the model and assumptions for its inputs.\par
+\Needspace{10\baselineskip}
+\section*{Input documents}
+{\sffamily\small\color{muted} Document identifiers and truncated hashes from the input manifest.}\par
+{\sffamily\small \begin{tabular}{@{}llll@{}}
 \toprule
 Document & Form & Filed & SHA-256 (first 16) \\
 \midrule
@@ -179,38 +96,8 @@ intc-8k-2024-12-03 & 8-K & 2024-12-03 & \texttt{1c164f678affbccf} \\
 intc-8k-2025-09-15 & 8-K & 2025-09-15 & \texttt{35e804da403a0d9e} \\
 intc-8k-2026-10-29 & 8-K & 2026-10-29 & \texttt{e89efc1f425b51f5} \\
 \bottomrule
-\end{tabular}
-
-\noindent\textbf{Candidate artifacts}\\
-\begin{tabular}{@{}lll@{}}
-\toprule
-Role & Artifact & SHA-256 (first 16) \\
-\midrule
-ingest & \texttt{rounds/round-001/generator/ingest-report.json} & \texttt{c8e02b583ebe30be} \\
-extractor & \texttt{rounds/round-001/generator/facts.json} & \texttt{a4ea19ef74cdf76b} \\
-model & \texttt{rounds/round-001/generator/forecast\_assumptions.json} & \texttt{9b5a20dbbc58f2a2} \\
-writer & \texttt{rounds/round-001/generator/report.md} & \texttt{ac80522aa3635e2f} \\
-engines & \texttt{rounds/round-001/generator/model.json} & \texttt{edefeb3a860b2eba} \\
-engines & \texttt{rounds/round-001/generator/valuation.json} & \texttt{8a60c1db2d0499ab} \\
-\bottomrule
-\end{tabular}
-
-\noindent\textbf{Approval record}\\
+\end{tabular}}
+\Needspace{6\baselineskip}
+\section*{Decision record}
 Decision \textbf{APPROVED} by Gaetano Marco Chiantia at \texttt{2026-11-09T16:53:48Z} (record \texttt{apr-0001}).
-
-% -------------------------------------------------------------- disclosures
-\sect{Disclosures}
-This dossier is a machine-rendered research note produced by CoverageFlow, a
-university-course project workflow (AI Coding in Finance, Fall 2026), from a
-frozen, hashed snapshot of SEC filings with information cutoff 2026-10-30. It
-is not investment advice, is not a product of a licensed research department,
-and must not be relied upon for investment decisions. Numbers are rendered
-verbatim from the verified evidence artifacts cited above.
-
-\vspace{2pt}
-\rulefull
-\begin{center}
-{\small CoverageFlow evidence dossier \quad | \quad case intc-fy2026q3-20261030 \quad | \quad version v1-cand-43f \quad | \quad cutoff 2026-10-30}
-\end{center}
-
 \end{document}
