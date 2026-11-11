@@ -242,7 +242,14 @@ def cmd_case_new(args, ws: Path) -> int:
     mandate = default_mandate(case_id, args.ticker, args.cutoff)
     if args.mandate:
         mandate = statestore.read_json(Path(args.mandate))
-    dispatch, backend = load_dispatch()
+    # The backend is pinned at creation. An unspecified backend means the
+    # offline stub, and the case then says so for good: a later run cannot
+    # swap it without --override-backend.
+    requested = _resolve_backend(args)
+    dispatch, backend = load_dispatch(
+        backend=requested, workspace=ws,
+        replay_dir=(ws / "cases" / case_id / "replay"
+                    if requested == "replay" else None))
     rg = registry_mod.VersionRegistry(registry_path(ws))
     bundle_dir = resolve_bundle_dir(ws, args.bundle, manifest)
     try:
@@ -254,6 +261,7 @@ def cmd_case_new(args, ws: Path) -> int:
             bundle_dir=bundle_dir)
     except FileExistsError as exc:
         raise SystemExit(str(exc))
+    _pin_backend(orch.case_dir, backend)
     _print({"created": case_id, "case_dir": str(orch.case_dir),
             "backend": backend,
             "bundle": str(bundle_dir) if bundle_dir else None,
@@ -355,29 +363,76 @@ def _find_case(ws: Path, case_id: str | None) -> Path:
     return sorted(candidates, key=lambda p: p.stat().st_mtime)[-1]
 
 
+def _requested_backend(args) -> str | None:
+    """The backend named on the command line: --replay or --backend, else None."""
+    if getattr(args, "replay", False):
+        return "replay"
+    return getattr(args, "backend", None) or None
+
+
 def _resolve_backend(args) -> str | None:
     """--replay > --backend > COVERAGEFLOW_BACKEND env (config layer).
 
-    Unset backbone (offline-first default): the scripted offline stub.
-    ``--backend auto`` runs live auto-detection (detect_available_backends);
-    an offline environment with nothing detected also lands on the stub.
+    Used where a case is created. For an existing case the pinned backend
+    decides (see _backend_for_existing_case); the environment never overrides it.
     """
-    if getattr(args, "replay", False):
-        return "replay"
-    explicit = getattr(args, "backend", None)
+    explicit = _requested_backend(args)
     if explicit:
         return explicit
     import os
     return os.environ.get("COVERAGEFLOW_BACKEND", "").strip().lower() or None
 
 
+def _backend_for_existing_case(args, ws: Path, case_dir: Path):
+    """(dispatch, backend_name) for run/resume, honouring the case's pin.
+
+    - no --backend: the pinned backend; a case with no pin must be told one.
+    - --backend equal to the pin: fine.
+    - --backend different from the pin: refused unless --override-backend, in
+      which case the override is traced and recorded.
+    """
+    pinned = _recorded_backend(case_dir)
+    requested = _requested_backend(args)
+    override = bool(getattr(args, "override_backend", False))
+    if requested is None and pinned is None:
+        import os
+        requested = os.environ.get("COVERAGEFLOW_BACKEND", "").strip().lower() or None
+        if requested is None:
+            raise SystemExit(
+                f"case {case_dir.name} has no recorded backend; pass "
+                "--backend <name> (it will be pinned to the case)")
+    wanted = requested
+    if wanted is None:
+        wanted = _name_to_arg(pinned)
+    dispatch, name = load_dispatch(
+        backend=wanted, workspace=ws,
+        replay_dir=case_dir / "replay" if wanted == "replay" else None)
+    if pinned is not None and name != pinned:
+        if not override:
+            raise SystemExit(
+                f"case {case_dir.name} is pinned to backend {pinned!r}; "
+                f"refusing to run it with {name!r}. Pass --override-backend "
+                "to change the backend deliberately.")
+        statestore.append_trace(case_dir, {
+            "event": "BACKEND_OVERRIDDEN",
+            "case_id": case_dir.name,
+            "detail": {"from": pinned, "to": name}})
+        _pin_backend(case_dir, name, force=True)
+    elif pinned is None:
+        _pin_backend(case_dir, name)
+    return dispatch, name
+
+
+def _name_to_arg(recorded: str) -> str:
+    """Map a recorded display name back to a load_dispatch argument."""
+    if recorded.startswith(("stub", "replay-stub")):
+        return "stub"
+    return recorded
+
+
 def cmd_run(args, ws: Path) -> int:
     case_dir = _find_case(ws, args.case)
-    backend = _resolve_backend(args)
-    dispatch, backend_name = load_dispatch(
-        backend=backend, workspace=ws,
-        replay_dir=case_dir / "replay" if backend == "replay" else None)
-    _stamp_backend(case_dir, backend_name)
+    dispatch, backend_name = _backend_for_existing_case(args, ws, case_dir)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
                             stub_engines=args.stub_engines, workspace=ws))
@@ -394,12 +449,17 @@ def _recorded_backend(case_dir: Path) -> str | None:
     return name if isinstance(name, str) and name else None
 
 
-def _stamp_backend(case_dir: Path, backend_name: str | None) -> None:
-    """Record the backend on the case so a later resume cannot swap it."""
+def _pin_backend(case_dir: Path, backend_name: str | None,
+                 force: bool = False) -> None:
+    """Record the backend on the case. Never overwrites a pin unless forced."""
     if not backend_name:
         return
     state = statestore.load_state(case_dir)
-    if not state or state.get("backend") == backend_name:
+    if not state:
+        return
+    if state.get("backend") == backend_name:
+        return
+    if state.get("backend") and not force:
         return
     state["backend"] = backend_name
     statestore.write_state(case_dir, state)
@@ -414,9 +474,7 @@ def cmd_resume(args, ws: Path) -> int:
     fixture numbers and nothing flagged it, because a stub is a valid backend.
     """
     case_dir = _find_case(ws, args.case)
-    backend = _resolve_backend(args) or _recorded_backend(case_dir)
-    dispatch, backend_name = load_dispatch(backend=backend, workspace=ws)
-    _stamp_backend(case_dir, backend_name)
+    dispatch, backend_name = _backend_for_existing_case(args, ws, case_dir)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
                             stub_engines=args.stub_engines, workspace=ws))
@@ -623,6 +681,8 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--cutoff", required=True)
     new.add_argument("--manifest", default=None)
     new.add_argument("--mandate", default=None)
+    new.add_argument("--backend", default=None,
+                     help="backend pinned to the case; omit to pin the offline stub")
     new.add_argument("--bundle", default=None,
                      help="frozen bundle directory (or bundle_id) whose "
                           "filings are copied into the case inputs; "
@@ -638,7 +698,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--case", default=None)
     run.add_argument("--backend", default=None,
                      help="auto | replay | claude | codex | kimi | vibe | api; "
-                          "omit for the offline stub (dev/test default)")
+                          "omit to use the backend the case is pinned to")
+    run.add_argument("--override-backend", action="store_true",
+                     help="allow --backend to differ from the case's pinned "
+                          "backend; the change is traced and recorded")
     run.add_argument("--replay", action="store_true")
     run.add_argument("--record", action="store_true")
     run.add_argument("--stub-engines", action="store_true",
@@ -651,6 +714,9 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument("--backend", default=None,
                         help="omit to inherit the backend the case was run "
                              "with; never silently falls back to the stub")
+    resume.add_argument("--override-backend", action="store_true",
+                        help="allow --backend to differ from the case's "
+                             "pinned backend; the change is traced")
     resume.add_argument("--stub-engines", action="store_true")
 
     # approve / gates
