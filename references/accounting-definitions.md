@@ -17,10 +17,13 @@ One canonical name per line. Extraction, model, and forecast artifacts use these
 - `income_statement.operating_income` — Operating Income (USDmm)
 - `income_statement.depreciation_and_amortization` — Depreciation And Amortization (USDmm). Alias of `cash_flow.depreciation_amortization`: the figure is reported once, in the cash flow statement. Extract it under the cash-flow name and leave this one absent rather than duplicating the value.
 - `income_statement.interest_expense` — Interest Expense (USDmm)
+- `income_statement.interest_and_other_net` — Interest And Other, Net (USDmm). File the filing line captioned "Interest and other, net" here. It is a net non-operating line, NOT interest expense: never file it under `income_statement.interest_expense`.
 - `income_statement.other_non_operating_income` — Other Non-Operating Income (Expense), Net (USDmm)
 - `income_statement.income_before_tax` — Pretax Income (USDmm)
 - `income_statement.income_tax_expense` — Income Tax Expense (USDmm)
 - `income_statement.net_income` — Net Income attributable to the parent (USDmm). Use the "net income attributable to <issuer>" line, NOT the pre-attribution "net income (loss)" total: it must tie to diluted EPS x diluted shares, and the non-controlling-interest line is excluded.
+- `income_statement.net_income_attributable` — Net Income Attributable To The Company (USDmm). Net income attributable to the company's shareholders (the EPS numerator). Same figure as `income_statement.net_income`; emit it under this name when the filing prints the attribution line.
+- `income_statement.net_income_noncontrolling` — Net Income Attributable To Non-Controlling Interests (USDmm). Income statement line for the non-controlling interests' share of net income.
 - `income_statement.basic_eps` — Basic EPS (USD)
 - `income_statement.diluted_eps` — Diluted EPS (USD)
 - `income_statement.diluted_shares_outstanding` — Weighted Average Diluted Shares (millions)
@@ -49,6 +52,7 @@ One canonical name per line. Extraction, model, and forecast artifacts use these
 - `balance_sheet.retained_earnings` — Retained Earnings (USDmm)
 - `balance_sheet.accumulated_other_comprehensive_income` — Accumulated Other Comprehensive Income (USDmm)
 - `balance_sheet.total_stockholders_equity` — Total Stockholders' Equity (USDmm)
+- `balance_sheet.noncontrolling_interests` — Non-Controlling Interests (USDmm). Balance-sheet non-controlling (minority) interests; valuation adds it to net claims.
 
 ## cash_flow.* (Cash Flow Statement)
 

@@ -192,8 +192,8 @@ class TestRepoCards:
             meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
             # 1.0 baseline; edited cards bump (extractor 1.2: period labels
             # for year-to-date columns; model/critic_lead 1.1: request_id;
-            # writer 1.3: a marker cites the clause it closes)
-            assert meta["version"] in ("1.0", "1.1", "1.2", "1.3"), role
+            # writer 1.3: a marker cites the clause it closes; extractor 1.4: attribution + interest_and_other_net; writer 1.4: units, no process text, changes-since-last)
+            assert meta["version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5"), role
             assert meta["role"] == role
             assert meta["produces"] == produces
 
@@ -241,7 +241,10 @@ class TestRepoCards:
         root = pa.default_root()
         for role in self.EXPECTED_CARDS:
             words = len((root / "prompts" / f"{role}.md").read_text().split())
-            assert words < 600, f"{role}.md has {words} words"
+            # writer 1.4 carries the unit / no-process-text / changes-since-
+            # last-note rules on top of the evidence-marker contract
+            cap = 850 if role == "writer" else 600
+            assert words < cap, f"{role}.md has {words} words"
 
 
 class TestCompactPayload:

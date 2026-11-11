@@ -250,6 +250,10 @@ def cmd_case_new(args, ws: Path) -> int:
         backend=requested, workspace=ws,
         replay_dir=(ws / "cases" / case_id / "replay"
                     if requested == "replay" else None))
+    if not _is_stub_backend(backend):
+        problems = live_mandate_problems(mandate)
+        if problems:
+            raise SystemExit(live_mandate_error(problems))
     rg = registry_mod.VersionRegistry(registry_path(ws))
     bundle_dir = resolve_bundle_dir(ws, args.bundle, manifest)
     try:
@@ -272,6 +276,62 @@ def cmd_case_new(args, ws: Path) -> int:
     return 0
 
 
+LIVE_MANDATE_EXAMPLE = """\
+  "assumptions": {
+    "market": {"as_of": "2026-10-30", "price": 24.50},
+    "peer_block": {"as_of": "2026-10-30", "peers": [
+      {"ticker": "AMD", "ev_ebitda": 21.0, "p_e_ttm": 33.0, "p_s": 6.1},
+      {"ticker": "NVDA", "ev_ebitda": 38.0, "p_e_ttm": 52.0, "p_s": 22.0}]},
+    "rating_bands": {"buy": 0.15, "sell": -0.10}      (optional)
+  }"""
+
+
+def _is_stub_backend(name: str | None) -> bool:
+    """True for the offline stub, replay and unspecified backends (demo path)."""
+    # "replay" re-serves recorded artifacts (no live model, no new market view)
+    return not name or str(name).startswith(("stub", "offline", "replay"))
+
+
+def live_mandate_problems(mandate: dict) -> list[str]:
+    """Missing human-owned fields a live (non-stub) case cannot do without.
+
+    Without a market price there is no upside, target or rating; without
+    peers there is no comparison with comparable companies.
+    """
+    a = (mandate or {}).get("assumptions") or {}
+    cutoff = (mandate or {}).get("cutoff_date")
+    problems: list[str] = []
+    market = a.get("market") or {}
+    price = market.get("price")
+    if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
+        problems.append("assumptions.market.price (a positive USD price per share)")
+    else:
+        as_of = market.get("as_of")
+        if not as_of:
+            problems.append("assumptions.market.as_of (date of the price, <= cutoff)")
+        elif cutoff and str(as_of)[:10] > str(cutoff)[:10]:
+            problems.append(f"assumptions.market.as_of {as_of} is after the cutoff "
+                            f"{cutoff} (a price must not post-date the cutoff)")
+    peers = (a.get("peer_block") or {}).get("peers") or []
+    usable = [p for p in peers if isinstance(p, dict) and any(
+        isinstance(p.get(k), (int, float)) and not isinstance(p.get(k), bool)
+        for k in ("ev_ebitda", "p_e_ttm", "p_s"))]
+    if not usable:
+        problems.append("assumptions.peer_block.peers (at least one peer with an "
+                        "ev_ebitda, p_e_ttm or p_s multiple)")
+    return problems
+
+
+def live_mandate_error(problems: list[str]) -> str:
+    return ("case new refused: the mandate for a live backend is missing or has "
+            "invalid:\n  - " + "\n  - ".join(problems)
+            + "\nWithout a market price there is no upside, target or rating; "
+              "without peers there is no comparison with comparable companies. "
+              "Add them to the mandate (--mandate file.json), for example:\n"
+            + LIVE_MANDATE_EXAMPLE
+            + "\n(the offline stub backend does not need them)")
+
+
 def _mandate_assumption_extras(wacc: float, terminal_growth: float,
                                as_of: str) -> dict:
     """Human-owned valuation extras required by the A1 valuation engine
@@ -282,11 +342,12 @@ def _mandate_assumption_extras(wacc: float, terminal_growth: float,
         "terminal_tolerance": 0.35,
         "nwc_pct_incremental": 0.0,
         "rating_bands": {"buy": 0.15, "sell": -0.10,
-                         "note": "upside above buy = Buy, below sell = Sell, "
-                                 "otherwise Hold; null without a market price"},
+                         "note": "optional: upside above buy = Buy, below sell = Sell, "
+                                 "otherwise Hold (defaults buy +15%, sell -10%); "
+                                 "null without a market price"},
         "market": {"as_of": as_of, "price": None,
-                   "note": "human-owned market data; fill at mandate "
-                           "creation (USD per share, as-of <= cutoff)"},
+                   "note": "REQUIRED for a live backend: human-owned market "
+                           "data, USD per share, as-of <= cutoff"},
         "own_band": {"as_of": as_of,
                      "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0],
                      "p_s": [2.5, 7.5],
@@ -324,7 +385,8 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
                 "margin_floor_gross": 0.30, "margin_ceiling_gross": 0.55,
             },
 "peer_block": {"as_of": cutoff,
-                           "peers": [], "note": "to be filled at mandate creation"},
+                           "peers": [], "note": "REQUIRED for a live backend: list of "
+                           "{ticker, ev_ebitda, p_e_ttm, p_s}"},
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff),
         },

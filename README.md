@@ -226,6 +226,11 @@ never required: every test and every evidence run is offline.
 - **Extraction boundaries**: facts come from structured statement/segment
   slices via the deterministic slicer; MD&A-only disclosures are noted in
   `facts.json` `notes`, not modeled.
+- **Live mandate requirements**: `case new` on a live backend (not the stub or
+  replay) refuses a mandate without `assumptions.market.price` (as_of <= cutoff)
+  or with no usable `assumptions.peer_block.peers`, and prints an example.
+  Optional `assumptions.rating_bands` = `{"buy": 0.15, "sell": -0.10}`: upside
+  above `buy` is Buy, below `sell` is Sell, otherwise Hold (these are the defaults).
 - **Comps**: the demo mandate ships without a filled peer block, so
   comps-implied price is `null` and the DCF/comps tolerance cross-check is
   reported but not differential-priced; the gate and table renderers handle

@@ -97,3 +97,58 @@ class TestEngineStillDefaultsAbsentBlocks:
         assert asm.own_band is None
         assert asm.market_price is None
         assert len(asm.sensitivity_points[0]) == 5  # engine default grid
+
+
+class TestLiveMandateRequirements:
+    """case new refuses a live mandate without price and peers (5.3)."""
+
+    def _ok(self):
+        m = cli.default_mandate("x-latest-20261030", "INTC", "2026-10-30")
+        a = m["assumptions"]
+        a["market"]["price"] = 24.5
+        a["peer_block"]["peers"] = [{"ticker": "AMD", "ev_ebitda": 20.0}]
+        return m
+
+    def test_default_mandate_is_not_live_ready(self):
+        m = cli.default_mandate("x-latest-20261030", "INTC", "2026-10-30")
+        probs = cli.live_mandate_problems(m)
+        assert any("market.price" in p for p in probs)
+        assert any("peer_block.peers" in p for p in probs)
+
+    def test_filled_mandate_passes(self):
+        assert cli.live_mandate_problems(self._ok()) == []
+
+    def test_price_after_cutoff_rejected(self):
+        m = self._ok()
+        m["assumptions"]["market"]["as_of"] = "2026-11-02"
+        assert any("after the cutoff" in p for p in cli.live_mandate_problems(m))
+
+    def test_peers_without_multiples_rejected(self):
+        m = self._ok()
+        m["assumptions"]["peer_block"]["peers"] = [{"ticker": "AMD", "p_e_ttm": None}]
+        assert any("peer_block.peers" in p for p in cli.live_mandate_problems(m))
+
+    def test_error_names_fields_and_gives_example(self):
+        msg = cli.live_mandate_error(cli.live_mandate_problems(
+            cli.default_mandate("x-latest-20261030", "INTC", "2026-10-30")))
+        assert "assumptions.market.price" in msg and "peer_block" in msg
+        assert '"price": 24.50' in msg and "rating_bands" in msg
+
+    def test_stub_and_replay_exempt_live_is_not(self):
+        assert cli._is_stub_backend("stub (offline)")
+        assert cli._is_stub_backend("replay-stub (offline)")
+        assert cli._is_stub_backend("replay")
+        assert not cli._is_stub_backend("claude-cli")
+
+    def test_case_new_refuses_live_backend_without_fields(self, tmp_path, monkeypatch):
+        import pytest
+        monkeypatch.setattr(cli, "load_dispatch",
+                            lambda **kw: (object(), "claude-cli"))
+        monkeypatch.setattr(cli, "_resolve_backend", lambda a: "claude")
+        args = type("A", (), dict(ticker="INTC", period="fy2026q3",
+                                  cutoff="2026-10-30", trigger_doc="intc-10q",
+                                  manifest=None, mandate=None, bundle=None,
+                                  stub_engines=True, backend="claude"))()
+        with pytest.raises(SystemExit) as ei:
+            cli.cmd_case_new(args, tmp_path)
+        assert "market.price" in str(ei.value)
