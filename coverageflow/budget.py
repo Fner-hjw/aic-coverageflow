@@ -53,6 +53,10 @@ DEFAULT_ROLE_TIMEOUTS = {
 }
 
 
+def _opt_float(v: Any) -> float | None:
+    return None if v is None else float(v)
+
+
 @dataclass
 class Limits:
     """Immutable per-case budget limits (from mandate.limits, with defaults)."""
@@ -61,6 +65,10 @@ class Limits:
     case_minutes: float = 45.0
     role_tokens_max: int = 60000
     approval_hours: float = 48.0
+    # USD caps; None = unlimited. Per-call cap travels in RoleCall.budget
+    # ["cost_usd_max"]; per-case cap is checked against used["cost_usd"].
+    call_cost_usd_max: float | None = None
+    case_cost_usd_max: float | None = None
     role_timeouts: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_ROLE_TIMEOUTS))
 
@@ -76,6 +84,8 @@ class Limits:
             case_minutes=float(d.get("case_minutes", DEFAULT_LIMITS["case_minutes"])),
             role_tokens_max=int(d.get("role_tokens_max", DEFAULT_LIMITS["role_tokens_max"])),
             approval_hours=float(d.get("approval_hours", DEFAULT_LIMITS["approval_hours"])),
+            call_cost_usd_max=_opt_float(d.get("call_cost_usd_max")),
+            case_cost_usd_max=_opt_float(d.get("case_cost_usd_max")),
             role_timeouts=timeouts,
         )
 
@@ -138,6 +148,7 @@ class BudgetTracker:
             # reuse is recorded: a critic saw "zero spend for ingest and
             # engines" and could not complete the per-role cap check.
             "reused_roles": dict(used.get("reused_roles") or {}),
+            "cost_usd": float(used.get("cost_usd") or 0.0),
         }
         self.clock_started: float | None = clock_started
 
@@ -166,6 +177,7 @@ class BudgetTracker:
             "retries_by_role": dict(self.used.get("retries_by_role") or {}),
             "grants": list(self.used.get("grants") or []),
             "reused_roles": dict(self.used.get("reused_roles") or {}),
+            "cost_usd": round(float(self.used.get("cost_usd") or 0.0), 6),
         }
 
     def limits_state(self) -> dict:
@@ -176,6 +188,8 @@ class BudgetTracker:
             "role_tokens_max": self.limits.role_tokens_max,
             "approval_hours": self.limits.approval_hours,
             "role_timeouts": dict(self.limits.role_timeouts),
+            "call_cost_usd_max": self.limits.call_cost_usd_max,
+            "case_cost_usd_max": self.limits.case_cost_usd_max,
         }
 
     # ------------------------------------------------------------- clocking
@@ -206,6 +220,25 @@ class BudgetTracker:
     def add_tokens(self, role: str, tokens_in: int | None, tokens_out: int | None) -> None:
         t = self.used["tokens_by_role"]
         t[role] = t.get(role, 0) + int(tokens_in or 0) + int(tokens_out or 0)
+
+    def add_cost(self, cost_usd: float | None) -> None:
+        """Accumulate reported USD spend (None = backend did not report)."""
+        if cost_usd is not None:
+            self.used["cost_usd"] = float(self.used.get("cost_usd") or 0.0) + float(cost_usd)
+
+    def used_cost_usd(self) -> float:
+        return float(self.used.get("cost_usd") or 0.0)
+
+    def _cost_breach(self) -> BudgetReason | None:
+        cap = self.limits.case_cost_usd_max
+        spent = self.used_cost_usd()
+        if cap is not None and spent >= cap:
+            return self._breach(
+                "case_cost",
+                f"case cost cap: ${spent:.4f} of ${cap:.4f} used",
+                {"cost_usd": round(spent, 6), "cap_usd": cap},
+            )
+        return None
 
     def note_reuse(self, role: str) -> None:
         """Record that *role* was carried forward rather than re-dispatched."""
@@ -279,6 +312,10 @@ class BudgetTracker:
         self.limits.role_tokens_max += tokens
         self.limits.case_minutes += minutes
         self.limits.rounds_max += rounds
+        if self.limits.case_cost_usd_max is not None:
+            # one more full USD allowance, like tokens and minutes
+            self.limits.case_cost_usd_max += self.limits.case_cost_usd_max
+            record["case_cost_usd_max_after"] = self.limits.case_cost_usd_max
         # The grant is one more full allowance for the CASE, not just for the
         # role that happened to breach first: the re-run re-dispatches every
         # role from the resume point, and a role sitting just under its old cap
@@ -315,6 +352,9 @@ class BudgetTracker:
                 f"role token cap for {role}: {tokens} of {self.limits.role_tokens_max} tokens used",
                 {"role": role, "tokens": tokens, "cap": self.limits.role_tokens_max},
             )
+        cost = self._cost_breach()
+        if cost is not None:
+            return False, cost
         return True, None
 
     def check_new_round(self) -> tuple[bool, BudgetReason | None]:
@@ -370,6 +410,9 @@ class BudgetTracker:
                 f"rounds budget overrun: {rounds} of {self.limits.rounds_max} rounds used",
                 {"rounds": rounds, "max": self.limits.rounds_max},
             )
+        cost = self._cost_breach()
+        if cost is not None:
+            return False, cost
         # per-role caps: any role at cap means the case ran out of fuel
         for role, tokens in self.used["tokens_by_role"].items():
             if tokens >= self.limits.role_tokens_max:

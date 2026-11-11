@@ -52,7 +52,12 @@ def _stderr_tail(stderr: str) -> str:
 
 
 def _extract_usage(obj: object) -> tuple[int | None, int | None]:
-    """Pull (input, output) token counts out of a parsed JSON envelope."""
+    """Pull (input, output) token counts out of a parsed JSON envelope.
+
+    Input counts every input token the model saw: fresh input plus prompt
+    cache writes plus prompt cache reads (the claude envelope reports them
+    separately; summing is a no-op for envelopes without cache fields).
+    """
     if not isinstance(obj, dict):
         return None, None
     usage = obj.get("usage")
@@ -60,10 +65,13 @@ def _extract_usage(obj: object) -> tuple[int | None, int | None]:
         return None, None
     inp = usage.get("input_tokens")
     out = usage.get("output_tokens")
-    return (
-        inp if isinstance(inp, int) else None,
-        out if isinstance(out, int) else None,
-    )
+    if not isinstance(inp, int):
+        return None, out if isinstance(out, int) else None
+    for key in ("cache_creation_input_tokens", "cache_read_input_tokens"):
+        extra = usage.get(key)
+        if isinstance(extra, int):
+            inp += extra
+    return inp, out if isinstance(out, int) else None
 
 
 class _TempFiles:
@@ -80,6 +88,19 @@ class _TempFiles:
                 pass
 
 
+def _write_temp(text: str, prefix: str, suffix: str) -> Path:
+    fd, name = tempfile.mkstemp(prefix=prefix, suffix=suffix)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    return Path(name)
+
+
+def _schema_text(schema: object) -> str | None:
+    if schema is None:
+        return None
+    return schema if isinstance(schema, str) else json.dumps(schema)
+
+
 class _CliBackendBase:
     """Shared runner: timeout, non-zero exit, missing binary -> ok=False.
 
@@ -92,6 +113,10 @@ class _CliBackendBase:
     name = "cli"
     cli_binary: str = ""
     soft_exit_codes: frozenset[int] = frozenset()
+    # When True the prompt is written to the child's stdin (never argv);
+    # _build_args then must not include it.
+    prompt_via_stdin: bool = False
+    model: str | None = None
 
     def __init__(self, cli_path: str | None = None) -> None:
         self._cli_path_override = cli_path
@@ -132,7 +157,8 @@ class _CliBackendBase:
             prompt_args, cleanup = self._build_args(assembled_prompt, call, timeout)
             args = [path] + list(prompt_args)
             stdout, stderr, returncode, timed_out = self._run(
-                args, timeout, workdir)
+                args, timeout, workdir,
+                stdin_text=assembled_prompt if self.prompt_via_stdin else None)
         except OSError as exc:  # not executable, permission, etc.
             return AgentResult(
                 ok=False,
@@ -193,6 +219,7 @@ class _CliBackendBase:
             )
 
         result = self._normalize_output(stdout)
+        result.model = result.model or self.model
         result.elapsed_seconds = elapsed
         result.tokens_in = result.tokens_in or tokens_in
         result.tokens_out = result.tokens_out or estimate_tokens_chars_per_four(
@@ -219,7 +246,8 @@ class _CliBackendBase:
 
     # -- Internals ----------------------------------------------------------
     def _run(self, args: list[str], timeout: float,
-             workdir: str | None) -> tuple[str, str, int, bool]:
+             workdir: str | None,
+             stdin_text: str | None = None) -> tuple[str, str, int, bool]:
         """Run *args*, capturing stdout/stderr incrementally.
 
         Returns ``(stdout, stderr, returncode, timed_out)``. On deadline the
@@ -229,7 +257,7 @@ class _CliBackendBase:
         """
         proc = subprocess.Popen(
             args,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL if stdin_text is None else subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -257,6 +285,19 @@ class _CliBackendBase:
             threading.Thread(target=_drain, args=(proc.stdout, out), daemon=True),
             threading.Thread(target=_drain, args=(proc.stderr, err), daemon=True),
         ]
+        if stdin_text is not None:
+            def _feed() -> None:
+                try:
+                    proc.stdin.write(stdin_text)
+                except (BrokenPipeError, ValueError, OSError):
+                    pass
+                finally:
+                    try:
+                        proc.stdin.close()
+                    except (BrokenPipeError, ValueError, OSError):
+                        pass
+
+            readers.append(threading.Thread(target=_feed, daemon=True))
         for reader in readers:
             reader.start()
 
@@ -296,19 +337,58 @@ class _CliBackendBase:
 
 
 class ClaudeBackend(_CliBackendBase):
-    """`claude -p` pinned to Sonnet at medium effort (fresh invocation)."""
+    """`claude -p` single-shot JSON emitter (fresh, isolated invocation).
+
+    Config: ``model`` ctor arg, else env ``CF_CLAUDE_MODEL``, else "sonnet";
+    ``effort`` / ``CF_CLAUDE_EFFORT`` (default "medium"); ``json_schema``
+    (dict or JSON string) or ``call.budget["json_schema"]``;
+    ``max_budget_usd`` or ``call.budget["cost_usd_max"]``.
+    """
 
     name = "claude"
     cli_binary = "claude"
+    prompt_via_stdin = True
+
+    SYSTEM_PROMPT = (
+        "You are a single-shot JSON emitter inside an automated harness. "
+        "Answer in one reply with exactly one JSON object and nothing else. "
+        "Do not use tools or ask questions."
+    )
+
+    def __init__(self, cli_path: str | None = None, model: str | None = None,
+                 effort: str | None = None, json_schema: object = None,
+                 max_budget_usd: float | None = None) -> None:
+        super().__init__(cli_path)
+        self.model = model or os.environ.get("CF_CLAUDE_MODEL") or "sonnet"
+        self.effort = effort or os.environ.get("CF_CLAUDE_EFFORT") or "medium"
+        self.json_schema = json_schema
+        self.max_budget_usd = max_budget_usd
 
     def _build_args(self, prompt: str, call: "RoleCall",
                     timeout: float) -> tuple[list[str], Path | None]:
-        return [
-            "-p", prompt,
-            "--model", "sonnet",
-            "--effort", "medium",
+        budget = getattr(call, "budget", None) or {}
+        args = [
+            "-p",
+            "--model", self.model,
+            "--effort", self.effort,
             "--output-format", "json",
-        ], None
+            "--tools", "",
+            "--strict-mcp-config",
+            "--mcp-config", '{"mcpServers":{}}',
+            "--setting-sources", "",
+            "--disable-slash-commands",
+            "--no-session-persistence",
+            "--system-prompt", self.SYSTEM_PROMPT,
+        ]
+        schema = _schema_text(budget.get("json_schema") or self.json_schema)
+        if schema:
+            args += ["--json-schema", schema]
+        cap = budget.get("cost_usd_max")
+        if cap is None:
+            cap = self.max_budget_usd
+        if cap is not None:
+            args += ["--max-budget-usd", f"{float(cap):g}"]
+        return args, None
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         try:
@@ -337,29 +417,65 @@ class ClaudeBackend(_CliBackendBase):
                 backend=self.name,
             )
         tokens_in, tokens_out = _extract_usage(envelope)
+        cost = envelope.get("total_cost_usd")
+        usage = envelope.get("usage") if isinstance(envelope.get("usage"), dict) else {}
+        cached = usage.get("cache_read_input_tokens")
         return AgentResult(
             ok=True,
             output_text=envelope["result"],
             backend=self.name,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            cost_usd=float(cost) if isinstance(cost, (int, float))
+            and not isinstance(cost, bool) else None,
+            tokens_cached=cached if isinstance(cached, int) else None,
         )
 
 
 class CodexBackend(_CliBackendBase):
-    """`codex exec` pinned to GPT-6 Luna at high effort."""
+    """`codex exec --json` (fresh, read-only, ephemeral); prompt on stdin.
+
+    Config: ``model`` ctor arg, else env ``CF_CODEX_MODEL``, else None (the
+    CLI's own default; ``--model`` omitted). ``reasoning_effort`` /
+    ``CF_CODEX_EFFORT`` likewise. ``json_schema`` (dict or JSON string) or
+    ``call.budget["json_schema"]`` is passed as ``--output-schema <file>``.
+    """
 
     name = "codex"
     cli_binary = "codex"
+    prompt_via_stdin = True
+
+    def __init__(self, cli_path: str | None = None, model: str | None = None,
+                 reasoning_effort: str | None = None,
+                 json_schema: object = None) -> None:
+        super().__init__(cli_path)
+        self.model = model or os.environ.get("CF_CODEX_MODEL") or None
+        self.reasoning_effort = (
+            reasoning_effort or os.environ.get("CF_CODEX_EFFORT") or None)
+        self.json_schema = json_schema
 
     def _build_args(self, prompt: str, call: "RoleCall",
                     timeout: float) -> tuple[list[str], Path | None]:
-        return [
-            "exec", prompt,
-            "--model", "gpt-6-luna",
-            "--config", 'model_reasoning_effort="high"',
-            "--json",
-        ], None
+        budget = getattr(call, "budget", None) or {}
+        args = [
+            "exec", "--json",
+            "--skip-git-repo-check",
+            "--sandbox", "read-only",
+            "--ephemeral",
+            "--ignore-user-config",
+        ]
+        if self.model:
+            args += ["--model", self.model]
+        if self.reasoning_effort:
+            args += ["--config", f'model_reasoning_effort="{self.reasoning_effort}"']
+        cleanup: _TempFiles | None = None
+        schema = _schema_text(budget.get("json_schema") or self.json_schema)
+        if schema:
+            path = _write_temp(schema, "cf-schema-", ".json")
+            args += ["--output-schema", str(path)]
+            cleanup = _TempFiles(path)
+        args.append("-")  # prompt is read from stdin, never argv
+        return args, cleanup
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         message: str | None = None
@@ -377,18 +493,20 @@ class CodexBackend(_CliBackendBase):
             parsed_lines += 1
             if not isinstance(obj, dict):
                 continue
-            if obj.get("type") == "error":
+            kind = obj.get("type")
+            if kind in ("error", "turn.failed"):
                 err_obj = obj
                 continue
             item = obj.get("item")
             if (
-                isinstance(item, dict)
-                and item.get("item_type") == "agent_message"
+                kind == "item.completed"
+                and isinstance(item, dict)
+                and item.get("type") == "agent_message"
                 and isinstance(item.get("text"), str)
             ):
                 message = item["text"]  # last agent message wins
-            if isinstance(obj.get("usage"), dict):
-                usage = obj["usage"]  # last usage record wins
+            if kind == "turn.completed" and isinstance(obj.get("usage"), dict):
+                usage = obj["usage"]  # last turn.completed wins
         if err_obj is not None and message is None:
             return AgentResult(
                 ok=False,
@@ -404,13 +522,17 @@ class CodexBackend(_CliBackendBase):
                 ),
                 backend=self.name,
             )
-        tokens_in, tokens_out = _extract_usage({"usage": usage or {}})
+        usage = usage or {}
+        tokens_in = usage.get("input_tokens")
+        tokens_out = usage.get("output_tokens")
+        cached = usage.get("cached_input_tokens")
         return AgentResult(
             ok=True,
             output_text=message,
             backend=self.name,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
+            tokens_in=tokens_in if isinstance(tokens_in, int) else None,
+            tokens_out=tokens_out if isinstance(tokens_out, int) else None,
+            tokens_cached=cached if isinstance(cached, int) else None,
         )
 
 

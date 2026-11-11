@@ -196,6 +196,25 @@ def parse_output_strict(raw: str, output_schema: str) -> tuple[dict | None, str 
     return parsed, None
 
 
+def check_cost_cap(call: RoleCall, result: AgentResult) -> str | None:
+    """Return an error message if the call blew its per-call USD cap.
+
+    ``call.budget["cost_usd_max"]`` of None/absent means unlimited; results
+    that report no cost (cost_usd None) are never failed by this check.
+    """
+    cap = call.budget.get("cost_usd_max")
+    cost = getattr(result, "cost_usd", None)
+    if cap is None or cost is None:
+        return None
+    if cost > float(cap):
+        return (
+            f"cost cap exceeded: ${cost:.4f} > budget cost_usd_max=${float(cap):.4f}; "
+            "repair: bound the output strictly to the artifact schema "
+            "(no commentary, no restating inputs)"
+        )
+    return None
+
+
 def check_token_cap(call: RoleCall, result: AgentResult) -> str | None:
     """Return an error message if the call blew its per-call token cap."""
     cap = call.budget.get("tokens_max")
@@ -308,6 +327,9 @@ def _trace_record(call: RoleCall, result: AgentResult, prompt_sha: str | None,
         "backend": result.backend or "?",
         "tokens_in": result.tokens_in,
         "tokens_out": result.tokens_out,
+        "tokens_cached": getattr(result, "tokens_cached", None),
+        "cost_usd": getattr(result, "cost_usd", None),
+        "model": getattr(result, "model", None),
         "detail": {
             "ok": result.ok,
             "error": result.error,
@@ -398,6 +420,10 @@ def dispatch_role(
         cap_error = check_token_cap(call, result)
         if cap_error is not None:
             result = result.failed(f"budget violation: {cap_error}")
+    if result.ok:
+        cost_error = check_cost_cap(call, result)
+        if cost_error is not None:
+            result = result.failed(f"budget violation: {cost_error}")
 
     result.trace = _trace_record(call, result, prompt_sha, card_version)
     return result, result.trace

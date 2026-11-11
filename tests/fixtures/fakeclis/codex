@@ -14,6 +14,12 @@ if argv_log:
     with open(argv_log, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(sys.argv) + "\n")
 
+stdin_text = "" if sys.stdin.isatty() else sys.stdin.read()
+stdin_log = os.environ.get("FAKE_STDIN_LOG")
+if stdin_log:
+    with open(stdin_log, "a", encoding="utf-8") as fh:
+        fh.write(stdin_text)
+
 behavior = os.environ.get("FAKE_BEHAVIOR", "ok")
 
 stdout_file = os.environ.get("FAKE_STDOUT_FILE")
@@ -22,9 +28,7 @@ if stdout_file:
         sys.stdout.write(fh.read())
     sys.exit(0)
 
-prompt = ""
-if "exec" in sys.argv and sys.argv.index("exec") + 1 < len(sys.argv):
-    prompt = sys.argv[sys.argv.index("exec") + 1]
+prompt = stdin_text
 
 if behavior == "sleep":
     time.sleep(float(os.environ.get("FAKE_SLEEP_SECONDS", "10")))
@@ -50,8 +54,8 @@ print(
     json.dumps(
         {
             "type": "item.completed",
-            "item": {"item_type": "agent_message", "text": result_text},
+            "item": {"id": "item_0", "type": "agent_message", "text": result_text},
         }
     )
 )
-print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 11, "output_tokens": 7}}))
+print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 11, "cached_input_tokens": 4, "output_tokens": 7, "reasoning_output_tokens": 0}}))
