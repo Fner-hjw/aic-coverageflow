@@ -55,7 +55,8 @@ date, and an SEC form name (`10-Q`) are labels, not claims, and need no
 marker. Every other number does.
 
 A marker cites the clause it closes: every number from the last comma,
-semicolon, colon, dash or sentence period up to the marker. So a band is cited
+semicolon, colon, dash (spaced or long, not the hyphen in `Year-1`) or sentence
+period up to the marker; a decimal point or thousands separator is not a break. So a band is cited
 once — `EV/EBITDA of 10.0x to 16.0x implies 27.97 to 44.31 USD
 [EV:comps.own_band]` — while a number in an earlier clause is not covered by a
 later marker. Put a marker at the end of every clause that states numbers.

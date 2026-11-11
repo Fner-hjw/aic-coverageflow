@@ -51,7 +51,7 @@ import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -67,8 +67,9 @@ from .dispatch import output_schema_for
 # constants
 # ---------------------------------------------------------------------------
 
-STATUSES = ("CREATED", "RUNNING", "PENDING_APPROVAL", "APPROVED",
-            "REJECTED", "BLOCKED", "EXHAUSTED", "STOPPED", "CLOSED")
+STATUSES = ("CREATED", "RUNNING", "PENDING_APPROVAL", "ESCALATED", "APPROVED",
+            "REJECTED", "BLOCKED", "EXHAUSTED", "STOPPED", "CLOSED",
+            "PUBLISHED_WITH_EXCEPTIONS")
 TERMINAL = ("APPROVED", "REJECTED", "BLOCKED", "EXHAUSTED", "STOPPED")
 
 # sub-stage order inside a round; the "engine" artifacts are recomputed as
@@ -111,6 +112,12 @@ def _blank_candidate(text: str) -> str:
 # Records the input-manifest hash an ingest report was produced against, so a
 # later round can prove the report still describes the same inputs.
 INGEST_INPUTS_SIDECAR = "ingest-inputs.sha256"
+
+# Same-role repair of a note whose numbers lack evidence markers. Counted under
+# its own key so it is bounded by retries_max without eating the budget of
+# ordinary invalid submissions.
+_EVIDENCE_RETRY_KEY = "writer:report_evidence_links"
+_EVIDENCE_FEEDBACK_PREFIX = "evidence-link gate: every number needs an [EV:<key>] marker. "
 
 # What each critic is contracted to read (see the --read line of its card).
 # A critic handed only sha256 digests cannot verify anything and reports
@@ -443,6 +450,11 @@ class Orchestrator:
                                f"{missing}; fetch them, then re-run")
             state = self._clear_block(state)
 
+        if state["status"] == "ESCALATED":
+            return self._summary(
+                state, "escalated: awaiting human resolution "
+                       "(PUBLISHED_WITH_EXCEPTIONS or REJECTED)")
+
         if state["status"] in TERMINAL:
             return self._saved_result(
                 state, f"case is {state['status']}; saved result returned")
@@ -571,7 +583,9 @@ class Orchestrator:
                         # the work itself is unverified: a gate failure or a
                         # missing review is not something a human can sign off.
                         if self._can_escalate(state):
-                            self._escalate_to_review(state, budget, reason)
+                            self._escalate_to_review(state, budget, reason.code,
+                                                     reason.message,
+                                                     reason.as_dict())
                             return self._summary(state, "escalated to review")
                         self.exhausted(state, budget, reason)
                         return self._summary(state, "budgets exhausted")
@@ -675,7 +689,8 @@ class Orchestrator:
                         # enforce its required top-level keys
                         payload=payload, output_schema=output_schema_for(role),
                         budget={"tokens_max": budget.limits.role_tokens_max,
-                                "timeout_seconds": budget.limits.timeout_for(role)},
+                                "timeout_seconds": budget.limits.timeout_for(role),
+                                "cost_usd_max": budget.limits.call_cost_usd_max},
                         write_scope=write_scope,
                         workdir=str(self.case_dir))
         self._trace(event="AGENT_DISPATCHED", request_id=req_id, role=role,
@@ -689,6 +704,9 @@ class Orchestrator:
         candidate_id = call.candidate_id
         budget.add_tokens(role, getattr(result, "tokens_in", None),
                           getattr(result, "tokens_out", None))
+        cost = getattr(result, "cost_usd", None)
+        if cost is not None:
+            budget.add_cost(cost)
         self._sync_budget(state, budget)
         # merge the dispatch record so the prompt sha and the real role-card
         # version reach trace.jsonl instead of being dropped at the seam
@@ -908,10 +926,20 @@ class Orchestrator:
                 # the declared slices must exist on disk before the extractor
                 # is handed their paths
                 err = self._materialize_slices(result.parsed)
+            if err is None and role == "writer":
+                # An unlinked number is a malformed note, not a failed round:
+                # send the gate's messages back to the writer alone. Only when
+                # the retry budget is spent does the note go on to the gates
+                # and the repair-packet path.
+                err = self._writer_evidence_feedback(
+                    state, budget, arts, result.parsed["report_md"])
             if err is None:
                 state["pending"]["retry_count"] = 0
                 break
-            self._handle_invalid(state, budget, role, err)
+            if role == "writer" and err.startswith(_EVIDENCE_FEEDBACK_PREFIX):
+                self._note_writer_evidence_retry(state, budget, err)
+            else:
+                self._handle_invalid(state, budget, role, err)
             payload = dict(payload)
             payload["submission_feedback"] = err    # same-role repair packet
         parsed = result.parsed
@@ -926,6 +954,42 @@ class Orchestrator:
                 statestore.sha256_json(self.input_manifest()) + "\n")
         self._stage_side_effects(state, budget, arts, stage)
         self._stage_done(state, stage)
+
+    def _writer_evidence_feedback(self, state: dict,
+                                  budget: budget_mod.BudgetTracker,
+                                  arts: Arts, report_md: str) -> str | None:
+        """Evidence-link gate messages for a fresh note, or None to proceed.
+
+        None also when the same-role retry budget for this failure is spent;
+        the gate then fails the round in the normal way.
+        """
+        ok, findings = gates.gate_report_evidence_links(
+            report_md, self._evidence_index(arts))
+        if ok:
+            return None
+        used = int((budget.used.get("retries_by_role") or {})
+                   .get(_EVIDENCE_RETRY_KEY, 0))
+        if used >= budget.limits.retries_max:
+            return None
+        return (_EVIDENCE_FEEDBACK_PREFIX + "\n".join(
+            f["summary"] for f in findings[:40]))
+
+    def _note_writer_evidence_retry(self, state: dict,
+                                    budget: budget_mod.BudgetTracker,
+                                    err: str) -> None:
+        """Count a same-role evidence-link repair; it consumes no round."""
+        p = state["pending"]
+        used = budget.note_retry(_EVIDENCE_RETRY_KEY)
+        p["retry_count"] += 1
+        self._sync_budget(state, budget)
+        self._persist(state)
+        self._trace(event="STATE_TRANSITION",
+                    detail={"repair_at_same_role": "writer", "error": err[:2000],
+                            "gate": "report_evidence_links",
+                            "retries": used, "round_consumed": False},
+                    role="writer", round=p["round"],
+                    request_id=p["request_id"],
+                    candidate_id=state["candidate"]["candidate_id"])
 
     def _stage_inputs(self, arts: Arts, stage: str) -> dict:
         """Role read-scope: exactly the inputs the role card contract allows."""
@@ -1292,7 +1356,8 @@ class Orchestrator:
         with none of them, and the same "header incomplete" finding every round.
         """
         from . import _prompt_assembly as pa
-        from . import __version__ as engine_version
+        from .model_engine import ENGINE_NAME as model_engine_name
+        from .valuation_engine import ENGINE_NAME as valuation_engine_name
 
         inputs = self.input_manifest()
         mandate = self.mandate()
@@ -1312,7 +1377,9 @@ class Orchestrator:
             "prompt_versions": prompt_versions,
             "engine_versions": {
                 "mapping": model.get("mapping_tables") or "1.0",
-                "engine": engine_version,
+                # the engines' own identifiers, as stamped in their artifacts
+                "model_engine": model_engine_name,
+                "valuation_engine": valuation_engine_name,
             },
             "scope_statement": self._scope_statement(arts),
         })
@@ -1696,7 +1763,40 @@ class Orchestrator:
             case_dir=self.case_dir,
             mapping_version=state["config_versions"]["mapping_tables"],
             evidence_index=self._evidence_index(arts),
+            current_period=self._current_period(),
         )
+
+    def _current_period(self) -> str | None:
+        """The trigger filing's period label in the extractor's format.
+
+        ``YYYY-QN`` for a 10-Q, ``FYYYYY`` for a 10-K (the model engine's
+        annual label). The doc id carries it
+        (``intc-10q-2026q3``, ``intc-10k-fy2025``); failing that, the period
+        end date does (fiscal quarters end within days of a calendar quarter
+        end, so the date is shifted back before taking the quarter).
+        """
+        scope = [d for d in self._extraction_scope() if d.get("role") == "trigger"]
+        if not scope:
+            return None
+        trig = scope[0]
+        doc_id = str(trig.get("doc_id") or "").lower()
+        is_q = str(trig.get("form") or "") == "10-Q"
+        m = re.search(r"(20\d{2})q([1-4])", doc_id)
+        if m and is_q:
+            return f"{m.group(1)}-Q{m.group(2)}"
+        m = re.search(r"fy(20\d{2})", doc_id)
+        if m and not is_q:
+            return f"FY{m.group(1)}"
+        end = None
+        for d in self.input_manifest().get("documents") or []:
+            if isinstance(d, dict) and d.get("doc_id") == trig.get("doc_id"):
+                end = str(d.get("period") or "")
+        try:
+            dt = datetime.strptime(end or "", "%Y-%m-%d") - timedelta(days=15)
+        except ValueError:
+            return None
+        return (f"{dt.year}-Q{(dt.month - 1) // 3 + 1}" if is_q
+                else f"FY{dt.year}")
 
     # ================================================================ repair
     def _issue_repair_packet(self, state: dict, arts: Arts,
@@ -1922,6 +2022,7 @@ class Orchestrator:
                         reviewer_count == len(reports))
         no_open = not led.blocking_findings()
         if reviewed_all and no_open:
+            state["candidate"]["stall"] = {"history": [], "streak": 0}
             cand = state["candidate"]
             if cand["last_review_candidate"] == candidate_id:
                 cand["clean_review_rounds"] += 1
@@ -1943,7 +2044,12 @@ class Orchestrator:
                              detail={"re_review_same_candidate": candidate_id,
                                      "streak": cand["clean_review_rounds"]})
             return
-        # findings remain: repair packet; loop starts the next full build
+        # findings remain. A reviewed round whose open blocking set did not
+        # shrink is a stall step; enough of them in a row stop the case
+        # instead of spending the remaining rounds on the same objections.
+        if reviewed_all and self._stalled(state, budget, led):
+            return
+        # repair packet; loop starts the next full build
         self._issue_repair_packet(state, arts, led,
                                   note="critic findings after full review")
 
@@ -2031,9 +2137,26 @@ class Orchestrator:
         silently swallows an objection is exactly what the ledger exists to
         prevent.
         """
-        if decision not in ("APPROVED", "REJECTED"):
-            raise ValueError("decision must be APPROVED or REJECTED")
+        if decision not in ("APPROVED", "REJECTED", "PUBLISHED_WITH_EXCEPTIONS"):
+            raise ValueError("decision must be APPROVED, REJECTED or "
+                             "PUBLISHED_WITH_EXCEPTIONS")
         state = self.load()
+        if state["status"] == "ESCALATED":
+            # An escalated case never met the acceptance rule, so APPROVED is
+            # not available: the human publishes it with the open findings
+            # recorded as exceptions, or rejects it.
+            if decision == "APPROVED":
+                raise RuntimeError(
+                    "an ESCALATED case cannot be APPROVED (acceptance needs "
+                    "2 consecutive clean reviews); resolve it with "
+                    "PUBLISHED_WITH_EXCEPTIONS or REJECTED")
+            if decision == "REJECTED":
+                return self._finish_rejection(state, by, reasoning)
+            return self._finish_published_with_exceptions(
+                state, by, reasoning, acknowledge_findings)
+        if decision == "PUBLISHED_WITH_EXCEPTIONS":
+            raise RuntimeError("PUBLISHED_WITH_EXCEPTIONS resolves an ESCALATED "
+                               f"case only (status={state['status']})")
         if state["status"] == "EXHAUSTED":
             raise RuntimeError("exhaustion never grants acceptance: case is EXHAUSTED")
         if state["status"] in ("APPROVED", "REJECTED", "CLOSED", "STOPPED"):
@@ -2094,11 +2217,7 @@ class Orchestrator:
                     "blocking findings remain and were not acknowledged: "
                     + ", ".join(outstanding))
             acknowledged = [f["finding_id"] for f in blocking]
-        # An escalated case was reviewed as often as the budget allowed and
-        # never came back clean, so the streak is 0 by construction. Requiring
-        # it would make escalation a dead end; the acknowledgement above is
-        # what replaces it.
-        if cand["clean_review_rounds"] < 2 and not cand.get("requires_acknowledgement"):
+        if cand["clean_review_rounds"] < 2:
             raise RuntimeError("acceptance requires 2 consecutive clean reviews")
         if not cand["gates_passed"]:
             raise RuntimeError("acceptance requires all numerical gates to pass")
@@ -2151,13 +2270,82 @@ class Orchestrator:
         return {"status": "CLOSED", "terminal": "APPROVED",
                 "report_version": f"v{version + 1}-{cand8}", "result": result}
 
+    def _finish_published_with_exceptions(
+            self, state: dict, by: str, reasoning: str,
+            acknowledge_findings: list[str] | None) -> dict:
+        """Resolve an ESCALATED case: publish with the open findings recorded.
+
+        Every open blocking finding must be named by the approver. The report
+        is published under a notice that lists them, and the outcome is
+        PUBLISHED_WITH_EXCEPTIONS, never APPROVED.
+        """
+        led = self.ledger()
+        cand = state["candidate"]
+        blocking = led.blocking_findings()
+        named = {str(f) for f in (acknowledge_findings or [])}
+        outstanding = [f["finding_id"] for f in blocking
+                       if f["finding_id"] not in named]
+        if outstanding:
+            raise RuntimeError(
+                "blocking findings remain and were not acknowledged: "
+                + ", ".join(outstanding))
+        if not cand["gates_passed"]:
+            raise RuntimeError("publishing requires all numerical gates to pass")
+        report_rel = self._report_rel_of(state)
+        if not self._artifact_intact(report_rel):
+            raise RuntimeError(
+                f"cannot publish {report_rel}: it is missing or its sha256 no "
+                "longer matches the verified artifact")
+        exceptions = [{"finding_id": f["finding_id"],
+                       "severity": f.get("severity"),
+                       "summary": f.get("summary"),
+                       "dedup_key": f.get("dedup_key")} for f in blocking]
+        self._approval_record(state, "PUBLISHED_WITH_EXCEPTIONS", by, reasoning,
+                              {"exceptions": exceptions,
+                               "escalation_reason": (state.get("reason") or {}
+                                                     ).get("code")})
+        cand8 = (cand["candidate_id"] or "unknown")[:8]
+        reports_dir = self.case_dir / "report"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        version = len(list(reports_dir.glob("v*.md")))
+        out_rel = f"report/v{version + 1}-{cand8}.md"
+        notice = ("> **PUBLISHED WITH EXCEPTIONS.** Not accepted by the review "
+                  f"process; {len(exceptions)} blocking finding(s) were open: "
+                  + "; ".join(f"{e['finding_id']} {e['summary']}"
+                              for e in exceptions) + "\n\n")
+        body = (self.case_dir / report_rel).read_text(encoding="utf-8")
+        statestore.atomic_write_text(self.case_dir / out_rel, notice + body)
+        message = (f"published with exceptions by {by}; "
+                   f"{len(exceptions)} open blocking finding(s) recorded")
+        state["status"] = "PUBLISHED_WITH_EXCEPTIONS"
+        state["reason"] = {"code": "PUBLISHED_WITH_EXCEPTIONS",
+                           "message": message, "detail": {"by": by}}
+        self._transition(state, "ESCALATED", "PUBLISHED_WITH_EXCEPTIONS",
+                         verified=out_rel, detail={"report_version": out_rel})
+        result = self._write_result(
+            state, "PUBLISHED_WITH_EXCEPTIONS", message,
+            code="PUBLISHED_WITH_EXCEPTIONS",
+            detail={"by": by, "exceptions": exceptions},
+            report_version=f"v{version + 1}-{cand8}")
+        state["status"] = "CLOSED"
+        self._transition(state, "PUBLISHED_WITH_EXCEPTIONS", "CLOSED",
+                         verified=out_rel)
+        self._trace(event="CASE_CLOSED", artifact="result.json",
+                    artifact_sha256=statestore.sha256_file(
+                        self.case_dir / "result.json"),
+                    candidate_id=cand["candidate_id"],
+                    detail={"terminal": "PUBLISHED_WITH_EXCEPTIONS"})
+        return {"status": "CLOSED", "terminal": "PUBLISHED_WITH_EXCEPTIONS",
+                "report_version": f"v{version + 1}-{cand8}", "result": result}
+
     def _finish_rejection(self, state: dict, by: str, reasoning: str) -> dict:
+        frm = state["status"]
         self._approval_record(state, "REJECTED", by, reasoning)
         state["status"] = "REJECTED"
         message = f"human rejected: {reasoning or 'no reasoning given'}"
         state["reason"] = {"code": "REJECTED", "message": message,
                            "detail": {"by": by}}
-        self._transition(state, "PENDING_APPROVAL", "REJECTED",
+        self._transition(state, frm, "REJECTED",
                          verified="approvals record")
         result = self._write_result(state, "REJECTED", message,
                                     code="REJECTED", detail={"by": by})
@@ -2291,30 +2479,78 @@ class Orchestrator:
             return False
         return bool(self.ledger().blocking_findings())
 
+    def _stalled(self, state: dict, budget: budget_mod.BudgetTracker,
+                 led: ledger_mod.FindingsLedger) -> bool:
+        """Record this reviewed round's open blocking keys; stop on a stall.
+
+        The stall rule: the set of open blocking dedup keys did not shrink for
+        ``stall_rounds`` consecutive reviewed rounds. Returns True when the
+        case was stopped (escalated, or exhausted when it cannot be escalated).
+        """
+        blocking = led.blocking_findings()
+        keys = sorted({f.get("dedup_key") or f["finding_id"] for f in blocking})
+        stall = state["candidate"].setdefault("stall",
+                                              {"history": [], "streak": 0})
+        history = stall.setdefault("history", [])
+        if history and len(keys) >= len(history[-1]):
+            stall["streak"] = int(stall.get("streak", 0)) + 1
+        else:
+            stall["streak"] = 0
+        history.append(keys)
+        limit = budget.limits.stall_rounds
+        if limit <= 0 or stall["streak"] < limit:
+            self._persist(state)
+            return False
+        message = (f"stalled: the set of open blocking findings "
+                   f"({len(keys)}) did not shrink for {stall['streak']} "
+                   f"consecutive reviewed rounds")
+        detail = {"stall_rounds": limit, "open_blocking_keys": keys}
+        if self._can_escalate(state):
+            self._escalate_to_review(state, budget, "STALLED", message, {
+                "code": "STALLED", "message": message, "detail": detail})
+        else:
+            self._sync_budget(state, budget)
+            self._trace(event="BUDGET_CHECK",
+                        detail={"check": "stall", "ok": False, **detail},
+                        round=state["pending"]["round"])
+            self.exhausted(state, budget, budget_mod.BudgetReason(
+                "STALLED", message, detail))
+        return True
+
     def _escalate_to_review(self, state: dict,
                             budget: budget_mod.BudgetTracker,
-                            reason: budget_mod.BudgetReason) -> None:
-        """Hand an unresolved case to the human instead of terminating it."""
+                            code: str, message: str, cause: dict) -> None:
+        """Hand an unresolved case to a human under its own status.
+
+        ESCALATED is not an approval route: the human may publish with the
+        open findings recorded as exceptions, or reject. APPROVED stays
+        reserved for the normal acceptance rule (two clean reviews).
+        """
         led = self.ledger()
         blocking = led.blocking_findings()
-        arts = Arts(round=state["candidate"]["built_round"])
-        self._enter_pending_approval(state, budget, arts)
-        state["candidate"]["requires_acknowledgement"] = True
+        budget.pause_clock()
+        state["pending"]["role"] = "escalation"
+        state["pending"]["stage"] = None
+        state["pending"]["request_id"] = None
+        state["pending"]["case_clock_started"] = None
+        state["pending"]["deadline"] = None
+        state["status"] = "ESCALATED"
         state["reason"] = {
-            "code": "ESCALATED",
-            "message": (f"round budget exhausted ({reason.message}); the "
-                        f"candidate passed every gate and was fully reviewed, "
-                        f"so it is escalated for human adjudication with "
-                        f"{len(blocking)} unresolved blocking finding(s)"),
-            "detail": {"budget": reason.as_dict(),
+            "code": code,
+            "message": (f"{message}; the candidate passed every gate and was "
+                        f"fully reviewed, so it is escalated for human "
+                        f"resolution with {len(blocking)} unresolved blocking "
+                        f"finding(s)"),
+            "detail": {"cause": cause,
                        "blocking_finding_ids": [f["finding_id"] for f in blocking]},
         }
         self._sync_budget(state, budget)
-        self._persist(state)
+        self._transition(state, "RUNNING", "ESCALATED",
+                         verified=f"escalated: {code}",
+                         detail={"escalated": code})
         self._trace(event="ESCALATED", round=state["pending"]["round"],
                     candidate_id=state["candidate"]["candidate_id"],
-                    detail={"blocking_findings": len(blocking),
-                            "budget_code": reason.code})
+                    detail={"blocking_findings": len(blocking), "code": code})
 
     def exhausted(self, state: dict, budget: budget_mod.BudgetTracker,
                   reason: budget_mod.BudgetReason) -> None:

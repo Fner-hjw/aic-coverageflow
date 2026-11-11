@@ -821,3 +821,50 @@ class TestPeriodCoverageGate:
                             ("derived.growth", "2024-Q1"))
         ok, findings = gates.gate_period_coverage(facts, "2026-Q3")
         assert ok, findings
+
+
+class TestMarkerScopeMatchesWriterCard:
+    IDX = {"a": "x", "b": "x"}
+
+    def _ok(self, md):
+        return gates.gate_report_evidence_links("## s\n\n" + md + "\n", self.IDX)[0]
+
+    def test_comma_colon_dash_semicolon_period_break_a_clause(self):
+        assert not self._ok("Revenue 1.5 billion, up 2.5 percent [EV:a].")
+        assert not self._ok("Revenue 1.5 billion: up 2.5 percent [EV:a].")
+        assert not self._ok("Revenue 1.5 billion - up 2.5 percent [EV:a].")
+        assert not self._ok("Revenue 1.5 billion; up 2.5 percent [EV:a].")
+        assert self._ok("Revenue 1.5 billion [EV:a], up 2.5 percent [EV:b].")
+
+    def test_decimal_and_thousands_are_not_breaks(self):
+        assert self._ok("Revenue 12,345.6 million [EV:a].")
+
+    def test_ordinal_year_labels_are_exempt_in_any_case(self):
+        for label in ("year 1", "Year 1", "Year-1", "YEAR-1", "yr 2"):
+            assert self._ok(f"In {label} margin is steady.")
+
+
+class TestPeriodCoverageGateCashFlowAndEngine:
+    def _facts(self, field, period):
+        return {"facts": [{"field": field, "period": period}]}
+
+    def test_cash_flow_prefix_is_checked(self):
+        ok, f = gates.gate_period_coverage(
+            self._facts("cash_flow.net_income", "2025-Q3"), "2026-Q3")
+        assert not ok and f[0]["dedup_key"].endswith("cash_flow")
+
+    def test_ytd_variant_counts(self):
+        ok, _ = gates.gate_period_coverage(
+            self._facts("cash_flow.net_income", "2026-Q3-YTD"), "2026-Q3")
+        assert ok
+
+    def test_engine_runs_the_gate_with_the_context_period(self):
+        eng = gates.GateEngine(schema_path="x", build_model_fn=None, value_fn=None)
+        ctx = gates.CandidateContext(
+            facts=self._facts("income_statement.revenue", "2025-Q3"),
+            forecast={}, report_md="", candidate_manifest={}, input_manifest={},
+            mandate={}, current_period="2026-Q3")
+        ok, f = eng._run_gate("period_coverage", ctx)
+        assert not ok
+        ctx.current_period = None
+        assert eng._run_gate("period_coverage", ctx)[0]

@@ -158,7 +158,7 @@ function severityChip(sev) {
 }
 
 const STATUS_LABELS = {
-  CREATED: "Created", RUNNING: "In progress", PENDING_APPROVAL: "Awaiting approval",
+  CREATED: "Created", RUNNING: "In progress", PENDING_APPROVAL: "Awaiting approval", ESCALATED: "Escalated",
   APPROVED: "Approved", CLOSED: "Closed", REJECTED: "Rejected",
   BLOCKED: "Blocked", EXHAUSTED: "Limits reached", STOPPED: "Stopped",
   INTERRUPTED: "Interrupted",
@@ -623,7 +623,7 @@ function dashboardOverview(rows, ordered) {
   const groups = [
     { label: "Ready to start", states: ["CREATED"], color: "active" },
     { label: "In progress", states: ["RUNNING"], color: "active" },
-    { label: "Needs attention", states: ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED", "INTERRUPTED"], color: "review" },
+    { label: "Needs attention", states: ["PENDING_APPROVAL", "ESCALATED", "BLOCKED", "EXHAUSTED", "STOPPED", "INTERRUPTED"], color: "review" },
     { label: "Closed", states: ["CLOSED", "APPROVED", "REJECTED"], color: "done" },
   ];
   const known = new Set(groups.flatMap(group => group.states));
@@ -646,7 +646,7 @@ function dashboardOverview(rows, ordered) {
 }
 
 function dashboardAttention(rows) {
-  const needsAction = rows.filter(c => ["PENDING_APPROVAL", "BLOCKED", "EXHAUSTED", "STOPPED", "INTERRUPTED"].includes(displayStatus(c)));
+  const needsAction = rows.filter(c => ["PENDING_APPROVAL", "ESCALATED", "BLOCKED", "EXHAUSTED", "STOPPED", "INTERRUPTED"].includes(displayStatus(c)));
   return h("div", { class: "attention-card" },
     h("span", { class: "kicker" }, "Needs attention"),
     h("strong", null, needsAction.length ? `${needsAction.length} ${needsAction.length === 1 ? "case needs" : "cases need"} a next step` : "Nothing waiting"),
@@ -1682,7 +1682,7 @@ async function renderCaseApproval(body, c) {
   const st = c.state;
   const rep = await quiet(() => Api.get(`/api/cases/${c.case_id}/report`));
   const b = st.budget;
-  if (!["PENDING_APPROVAL", "CLOSED", "APPROVED", "REJECTED"].includes(st.status)) {
+  if (!["PENDING_APPROVAL", "ESCALATED", "CLOSED", "APPROVED", "REJECTED"].includes(st.status)) {
     body.replaceChildren(emptyState("Not at the human gate",
       `The case is ${readableStatus(st.status).toLowerCase()}. Publication requires all gates, two clean reviews, closed findings, and this dossier.`, "approval-empty"));
     if (rep.ok) {
@@ -1704,7 +1704,7 @@ async function renderCaseApproval(body, c) {
   const blocking = blockingIds
     ? openFindings.filter(f => blockingIds.includes(f.finding_id))
     : openFindings.filter(f => f.severity === "major" || f.severity === "critical");
-  const escalated = (st.reason || {}).code === "ESCALATED";
+  const escalated = st.status === "ESCALATED";
 
   const cover = h("div", { class: "dossier-cover" },
     h("h2", null, "Approval dossier"),
@@ -1741,11 +1741,13 @@ async function renderCaseApproval(body, c) {
     h("label", { class: "signoff-field" }, h("span", null, "Review notes"), why),
     h("label", { class: "signoff-field" }, h("span", null, "Approver name"), who),
     h("div", { class: "signoff-actions" },
-      h("button", { class: "btn primary", onclick: () => decide("APPROVED") }, "Approve for publication"),
+      escalated
+        ? h("button", { class: "btn primary", onclick: () => decide("PUBLISHED_WITH_EXCEPTIONS") }, "Publish with exceptions")
+        : h("button", { class: "btn primary", onclick: () => decide("APPROVED") }, "Approve for publication"),
       h("button", { class: "btn danger", onclick: () => decide("REJECTED") }, "Reject")));
 
   async function decide(decision) {
-    if (decision === "APPROVED" && blocking.length && !why.value.trim()) {
+    if (decision !== "REJECTED" && blocking.length && !why.value.trim()) {
       toast("review notes required",
         `Name the ${blocking.length} objection(s) you are signing off over.`);
       why.focus();
@@ -1753,7 +1755,7 @@ async function renderCaseApproval(body, c) {
     }
     const r = await guard(() => Api.post(`/api/cases/${c.case_id}/approval`, {
       decision, by: who.value, reasoning: why.value,
-      acknowledge_findings: decision === "APPROVED"
+      acknowledge_findings: decision !== "REJECTED"
         ? blocking.map(f => f.finding_id) : [] }), "approval failed");
     if (r.ok) {
       toast(`recorded: ${decision}`, `decision ${r.data.decision_id}, auditable record stored`);
@@ -1771,7 +1773,7 @@ async function renderCaseApproval(body, c) {
           ["2. Critic coverage", escalated ? "Every critic reviewed the candidate; the round budget ran out before the objections settled." : `${st.candidate.clean_review_rounds} of 2 consecutive clean reviews, same candidate`],
           ["3. Blocking findings", blocking.length ? `${blocking.length} open (major/critical), must be named to approve` : "None open"],
           ["4. Advisory findings", openFindings.length - blocking.length > 0 ? `${openFindings.length - blocking.length} minor, advisory only` : "None"],
-          ["5. Human gate", st.status === "PENDING_APPROVAL" ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
+          ["5. Human gate", ["PENDING_APPROVAL", "ESCALATED"].includes(st.status) ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
         ])),
       rep.ok ? labeledPanel(`Rendered note for sign-off (${rep.data.version})`,
         renderNote(rep.data),
@@ -1779,9 +1781,9 @@ async function renderCaseApproval(body, c) {
           h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "Export dossier.pdf"),
           h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "Export dossier.html"),
           h("a", { class: "btn small", href: `#/case/${c.case_id}/report` }, "Report tab →"))) : null,
-      st.status === "PENDING_APPROVAL" ? act : decisionBox)));
+      ["PENDING_APPROVAL", "ESCALATED"].includes(st.status) ? act : decisionBox)));
 
-  if (st.status !== "PENDING_APPROVAL") {
+  if (!["PENDING_APPROVAL", "ESCALATED"].includes(st.status)) {
     const apr = (c.approvals || [])[0];
     decisionBox.replaceChildren(labeledPanel("Decision record",
       apr ? kv([

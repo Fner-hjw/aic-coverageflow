@@ -51,6 +51,7 @@ class AgentResult:
     tokens_in: int | None = None
     tokens_out: int | None = None
     raw_response_ref: str | None = None
+    cost_usd: float | None = None
 
 
 class ReplayScriptError(RuntimeError):
@@ -386,7 +387,9 @@ class StubDispatch:
     name = "stub"
 
     def __init__(self, scripts: dict[str, Any] | None = None,
-                 tokens_in: int = 140, tokens_out: int = 260):
+                 tokens_in: int = 140, tokens_out: int = 260,
+                 cost_usd: float | None = None):
+        self.cost_usd = cost_usd
         self.scripts = dict(scripts or {})
         self.tokens_in = tokens_in
         self.tokens_out = tokens_out
@@ -458,7 +461,8 @@ class StubDispatch:
         """Successful result, after materializing any files the role declares."""
         self._write_slices(call, parsed)
         return AgentResult(ok=True, parsed=parsed, output_text=str(parsed),
-                           tokens_in=self.tokens_in, tokens_out=self.tokens_out)
+                           tokens_in=self.tokens_in, tokens_out=self.tokens_out,
+                           cost_usd=self.cost_usd)
 
     @staticmethod
     def _write_slices(call: RoleCall, parsed: dict) -> None:

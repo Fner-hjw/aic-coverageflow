@@ -87,11 +87,12 @@ def real_dispatch_over(backend, workspace=None):
     return RealDispatch(backend)
 
 
-def _new_case(ws: Path) -> str:
+def _new_case(ws: Path, backend: str | None = None) -> str:
     from coverageflow import orchestrator as orch_mod
     case_id = orch_mod.new_case_id("INTC", "fy2026q3", "2026-10-30")
     cli.main(["--workspace", str(ws), "case", "new", "--ticker", "INTC",
-              "--trigger-doc", "intc-10q-2026q3", "--cutoff", "2026-10-30"])
+              "--trigger-doc", "intc-10q-2026q3", "--cutoff", "2026-10-30"]
+             + (["--backend", backend] if backend else []))
     # a case is only runnable once its source filing is in the inputs dir
     casekit.materialize_inputs(ws, case_id)
     return case_id
@@ -174,7 +175,7 @@ class TestRealDispatchRunOverRecordings:
         # --- 2. replay run via the CLI ------------------------------------
         rep_ws = tmp_path / "rep-ws"
         rep_ws.mkdir()
-        _new_case(rep_ws)
+        _new_case(rep_ws, backend="replay")
         rep_case_dir = rep_ws / "cases" / case_id
         rep_replay = rep_case_dir / "replay"
         rep_replay.mkdir()
@@ -237,3 +238,53 @@ class TestRealDispatchRunOverRecordings:
 
 def main():  # pragma: no cover
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+class TestBackendPinning:
+    def _ws(self, tmp_path):
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        return ws, _new_case(ws)
+
+    def test_case_creation_pins_the_backend(self, tmp_path):
+        ws, case_id = self._ws(tmp_path)
+        assert _load(ws, case_id)["backend"] == "stub (offline)"
+
+    def test_different_backend_is_refused_without_override(self, tmp_path):
+        ws, case_id = self._ws(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["--workspace", str(ws), "run", "--backend", "replay",
+                      "--stub-engines"])
+        assert "pinned" in str(exc.value)
+        with pytest.raises(SystemExit):
+            cli.main(["--workspace", str(ws), "resume", "--backend", "replay"])
+        assert _load(ws, case_id)["backend"] == "stub (offline)"
+
+    def test_override_is_traced_and_recorded(self, tmp_path):
+        ws, case_id = self._ws(tmp_path)
+        case_dir = ws / "cases" / case_id
+        (case_dir / "replay").mkdir()
+        with pytest.raises(Exception):
+            # no recordings: the run fails, but the override is already decided
+            cli.main(["--workspace", str(ws), "run", "--backend", "replay",
+                      "--override-backend", "--stub-engines"])
+        ev = [e for e in statestore.read_trace(case_dir)
+              if e["event"] == "BACKEND_OVERRIDDEN"]
+        assert ev and ev[0]["detail"] == {"from": "stub (offline)", "to": "replay"}
+        assert _load(ws, case_id)["backend"] == "replay"
+
+    def test_unpinned_case_requires_an_explicit_backend(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("COVERAGEFLOW_BACKEND", raising=False)
+        ws, case_id = self._ws(tmp_path)
+        case_dir = ws / "cases" / case_id
+        st = _load(ws, case_id)
+        st.pop("backend")
+        statestore.write_state(case_dir, st)
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["--workspace", str(ws), "run", "--stub-engines"])
+        assert "no recorded backend" in str(exc.value)
+
+    def test_run_without_flag_uses_the_pin(self, tmp_path):
+        ws, case_id = self._ws(tmp_path)
+        assert cli.main(["--workspace", str(ws), "run", "--stub-engines"]) == 0
+        assert _load(ws, case_id)["backend"] == "stub (offline)"

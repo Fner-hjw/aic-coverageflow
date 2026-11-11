@@ -455,6 +455,35 @@ class TestInvalidSubmissions:
         assert len(dispatch.calls_of("extractor")) == 2
 
 
+class TestEvidenceLinkFailureIsASubmissionRepair:
+    BAD = _writer_output("## Result\n\nRevenue was 12.7 billion in the quarter.\n")
+
+    def test_unlinked_number_redispatches_writer_only_without_a_round(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"writer": [self.BAD]})
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "PENDING_APPROVAL"
+        assert st["budget"]["used"]["rounds"] == 1
+        assert len(dispatch.calls_of("writer")) == 2
+        # model and extractor were not re-run
+        assert len(dispatch.calls_of("model")) == 1
+        sent = dispatch.calls_of("writer")[1].payload["submission_feedback"]
+        assert "lacks an evidence marker" in sent
+        assert st["budget"]["used"]["retries_by_role"][
+            "writer:report_evidence_links"] == 1
+
+    def test_exhausted_retries_fall_through_to_the_gate(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"writer": [self.BAD] * 4})
+        orch.run()
+        # retries_max repairs, then the note goes to the gate and fails it
+        assert len(dispatch.calls_of("writer")) >= 4
+        gates_json = statestore.read_json(
+            case_dir / "rounds/round-001/numerical/gates.json")
+        assert not gates_json["passed"]
+
+
 class TestCandidateChangeResetsStreak:
     def test_any_candidate_artifact_change_resets_clean_streak(self, tmp_path):
         # R1: clean review of candidate A (streak 1)
@@ -674,8 +703,8 @@ class TestSeverityAwareAcceptance:
         orch.run()
         st = load_state(case_dir)
         # never accepted: the major is still open and the case needs a human
-        assert st["status"] == "PENDING_APPROVAL"
-        assert st["candidate"]["requires_acknowledgement"] is True
+        assert st["status"] == "ESCALATED"
+        assert st["reason"]["code"] == "STALLED"
         rows = ledger.FindingsLedger(case_dir).all_findings()
         major = [r for r in rows if r["severity"] == "major"]
         assert major and major[0]["status"] == "open"
@@ -888,7 +917,11 @@ class TestManifestHeader:
         # every role that produced an artifact is pinned to a card version
         for role in ("ingest", "extractor", "model", "writer"):
             assert manifest["prompt_versions"][role]
-        assert manifest["engine_versions"]["engine"]
+        from coverageflow.model_engine import ENGINE_NAME as ME
+        from coverageflow.valuation_engine import ENGINE_NAME as VE
+        assert manifest["engine_versions"]["model_engine"] == ME
+        assert manifest["engine_versions"]["valuation_engine"] == VE
+        assert "0.1.0" not in json.dumps(manifest["engine_versions"])
         assert manifest["engine_versions"]["mapping"]
 
     def test_scope_statement_reports_reuse_instead_of_claiming_a_full_rebuild(
@@ -1012,10 +1045,9 @@ class TestBudgetExhaustion:
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         orch.run()
         st = load_state(case_dir)
-        assert st["status"] == "PENDING_APPROVAL"
-        assert st["candidate"]["requires_acknowledgement"] is True
-        assert st["reason"]["code"] == "ESCALATED"
-        assert st["reason"]["detail"]["budget"]["code"] == "rounds"
+        assert st["status"] == "ESCALATED"
+        assert st["reason"]["code"] == "rounds"
+        assert st["reason"]["detail"]["cause"]["code"] == "rounds"
         assert st["reason"]["detail"]["blocking_finding_ids"]
         assert st["budget"]["used"]["rounds"] == 2
         events = [e["event"] for e in statestore.read_trace(case_dir)]
@@ -1071,6 +1103,7 @@ class TestBudgetExhaustion:
         """
         mandate = json.loads(json.dumps(casekit.MANDATE))
         mandate["limits"]["role_tokens_max"] = 1000
+        mandate["limits"]["stall_rounds"] = 0   # this test is about grants
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         dispatch.tokens_in = 700
@@ -1134,36 +1167,114 @@ class TestBudgetExhaustion:
         # stopping on the counter it had already exhausted
         assert len(dispatch.calls_of("extractor")) > calls_before
 
-    def test_escalation_is_not_acceptance(self, tmp_path):
-        # escalation hands the case to a human; it does not approve anything.
-        # A blanket approval that swallows the objections is refused.
+    def _escalated(self, tmp_path):
         mandate = json.loads(json.dumps(casekit.MANDATE))
         mandate["limits"]["rounds_max"] = 2
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         orch.run()
-        st = load_state(case_dir)
-        assert st["status"] == "PENDING_APPROVAL"
-        with pytest.raises(RuntimeError, match="not acknowledged"):
-            orch.record_approval(decision="APPROVED", by="Sup")
-        assert load_state(case_dir)["status"] == "PENDING_APPROVAL"
+        return orch, case_dir
 
-    def test_an_approver_may_sign_off_over_named_objections(self, tmp_path):
+    def test_escalation_is_not_acceptance(self, tmp_path):
+        # escalation hands the case to a human; APPROVED is never available
+        orch, case_dir = self._escalated(tmp_path)
+        st = load_state(case_dir)
+        assert st["status"] == "ESCALATED"
+        ids = st["reason"]["detail"]["blocking_finding_ids"]
+        with pytest.raises(RuntimeError, match="cannot be APPROVED"):
+            orch.record_approval(decision="APPROVED", by="Sup",
+                                 acknowledge_findings=ids)
+        assert load_state(case_dir)["status"] == "ESCALATED"
+        assert not list((case_dir / "report").glob("v*.md"))
+
+    def test_rerun_of_an_escalated_case_does_not_continue_it(self, tmp_path):
+        orch, case_dir = self._escalated(tmp_path)
+        out = orch.run()
+        assert out["status"] == "ESCALATED"
+
+    def test_published_with_exceptions_needs_every_open_finding_named(self, tmp_path):
+        orch, case_dir = self._escalated(tmp_path)
+        with pytest.raises(RuntimeError, match="not acknowledged"):
+            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup")
+        assert load_state(case_dir)["status"] == "ESCALATED"
+
+    def test_published_with_exceptions_records_the_open_findings(self, tmp_path):
+        orch, case_dir = self._escalated(tmp_path)
+        ids = load_state(case_dir)["reason"]["detail"]["blocking_finding_ids"]
+        out = orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup",
+                                   reasoning="objection judged wrong",
+                                   acknowledge_findings=ids)
+        assert out["terminal"] == "PUBLISHED_WITH_EXCEPTIONS"
+        result = statestore.read_json(case_dir / "result.json")
+        assert result["terminal"] == "PUBLISHED_WITH_EXCEPTIONS"
+        assert [e["finding_id"] for e in result["reason"]["detail"]["exceptions"]] == ids
+        published = next((case_dir / "report").glob("v*.md")).read_text()
+        assert published.startswith("> **PUBLISHED WITH EXCEPTIONS.**")
+        approvals = list((case_dir / "approvals").glob("apr-*.json"))
+        rec = statestore.read_json(approvals[0])
+        assert rec["decision"] == "PUBLISHED_WITH_EXCEPTIONS"
+        assert rec["exceptions"]
+
+    def test_an_escalated_case_can_be_rejected(self, tmp_path):
+        orch, case_dir = self._escalated(tmp_path)
+        out = orch.record_approval(decision="REJECTED", by="Sup", reasoning="no")
+        assert out["terminal"] == "REJECTED"
+
+    def test_published_with_exceptions_is_only_for_escalated_cases(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        with pytest.raises(RuntimeError, match="ESCALATED"):
+            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup")
+
+
+class TestStallRule:
+    def _shrinking(self, counts):
+        """critic_c1 raises counts[i] distinct major findings in review i."""
+        seen = {"n": 0}
+
+        def c1(payload):
+            i = min(seen["n"], len(counts) - 1)
+            seen["n"] += 1
+            rep = _critic_findings()
+            rep["findings"] = [dict(rep["findings"][0],
+                                    summary=f"distinct objection number {k} {i}",
+                                    dedup_key=f"obj-{k}")
+                               for k in range(counts[i])]
+            return rep
+        return {"critic_c1": c1}
+
+    def test_flat_blocking_set_stalls_after_two_rounds_without_shrinking(self, tmp_path):
         mandate = json.loads(json.dumps(casekit.MANDATE))
-        mandate["limits"]["rounds_max"] = 2
+        mandate["limits"]["rounds_max"] = 10
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         orch.run()
         st = load_state(case_dir)
-        ids = st["reason"]["detail"]["blocking_finding_ids"]
-        out = orch.record_approval(decision="APPROVED", by="Sup",
-                                   reasoning="the objection is wrong: the blend "
-                                             "does include the segment",
-                                   acknowledge_findings=ids)
-        assert out["terminal"] == "APPROVED"
-        result = statestore.read_json(case_dir / "result.json")
-        assert result["reason"]["detail"]["acknowledged_findings"] == ids
-        assert "acknowledged" in result["reason"]["message"]
+        assert st["status"] == "ESCALATED"
+        assert st["reason"]["code"] == "STALLED"
+        # three reviewed rounds: the first sets the baseline, two fail to shrink
+        assert st["budget"]["used"]["rounds"] == 3
+
+    def test_stall_rounds_is_mandate_configurable(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["rounds_max"] = 10
+        mandate["limits"]["stall_rounds"] = 1
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
+        orch.run()
+        st = load_state(case_dir)
+        assert st["reason"]["code"] == "STALLED"
+        assert st["budget"]["used"]["rounds"] == 2
+
+    def test_shrinking_set_does_not_stall(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["rounds_max"] = 4
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts=self._shrinking([4, 3, 2, 1]), mandate=mandate)
+        orch.run()
+        st = load_state(case_dir)
+        assert st["reason"]["code"] == "rounds"
+        assert st["budget"]["used"]["rounds"] == 4
 
 
 class TestApprovalDeadline:
@@ -1285,8 +1396,7 @@ class TestRepairPacketsFromCritics:
             tmp_path, scripts={"critic_c1": tampering_critic}, mandate=mandate)
         orch.run()
         st = load_state(case_dir)
-        assert st["status"] == "PENDING_APPROVAL"
-        assert st["candidate"]["requires_acknowledgement"] is True
+        assert st["status"] == "ESCALATED"
         led = ledger.FindingsLedger(case_dir)
         # the tampered evidence (sha "f"*64) must never appear in ANY close
         # record; only legitimately-verified evidence closed findings
@@ -1966,3 +2076,54 @@ class TestBudgetFindingsAreNotRepairWork:
         from coverageflow.orchestrator import _growth_aliases
         assert _growth_aliases({"series": {
             "balance_sheet.total_assets": {"FY2025": 211429.0}}}) == []
+
+
+class TestCostWiring:
+    def test_reported_cost_is_accumulated_and_cap_reaches_the_call(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["call_cost_usd_max"] = 5.0
+        orch, dispatch, clk, case_dir = build_env(tmp_path, mandate=mandate)
+        dispatch.cost_usd = 0.25
+        orch.run()
+        st = load_state(case_dir)
+        assert st["budget"]["used"]["cost_usd"] == pytest.approx(
+            0.25 * len(dispatch.calls))
+        assert all(c.budget["cost_usd_max"] == 5.0 for c in dispatch.calls)
+
+    def test_case_cost_cap_exhausts_the_case(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["case_cost_usd_max"] = 0.6
+        orch, dispatch, clk, case_dir = build_env(tmp_path, mandate=mandate)
+        dispatch.cost_usd = 0.25
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "EXHAUSTED"
+        assert st["reason"]["code"] == "case_cost"
+
+    def test_unreported_cost_stays_zero(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        assert load_state(case_dir)["budget"]["used"]["cost_usd"] == 0.0
+
+
+class TestPeriodCoverageWiring:
+    def test_current_period_is_derived_from_the_trigger_filing(self, tmp_path):
+        orch, *_ = build_env(tmp_path)
+        assert orch._current_period() == "2026-Q3"
+
+    def test_period_falls_back_to_the_period_end_date(self, tmp_path):
+        manifest = json.loads(json.dumps(casekit.MANIFEST))
+        for d in manifest["documents"]:
+            d["doc_id"] = d["doc_id"].replace("2026q3", "latest")
+            d["period"] = "2026-09-26"
+        orch, *_ = build_env(tmp_path, manifest=manifest)
+        assert orch._current_period() == "2026-Q3"
+
+    def test_gate_runs_in_the_pipeline_and_fails_on_a_missing_period(self, tmp_path):
+        assert "period_coverage" in gates.GATE_ORDER
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        rep = statestore.read_json(case_dir / "rounds/round-001/numerical/gates.json")
+        names = [r["gate"] for r in rep["results"]]
+        assert names.index("period_coverage") == names.index("citation_presence") + 1
+        assert all(r["ok"] for r in rep["results"] if r["gate"] == "period_coverage")
