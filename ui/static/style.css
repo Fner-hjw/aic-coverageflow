@@ -2375,3 +2375,17 @@ button.btn:disabled[aria-busy="true"] { opacity: .8; cursor: progress; }
                  background: var(--accent-wash); border: 1px solid var(--accent); border-radius: 6px; }
 .update-banner[hidden] { display: none; }
 .update-banner strong { color: var(--ink); }
+
+/* bundle cards (replace the cramped table) ------------------------------ */
+.bundle-list { display: grid; gap: 10px; }
+.bundle-card { padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 8px; background: #fff;
+               display: grid; gap: 8px; }
+.bundle-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bundle-card-head strong { font-size: 14px; overflow-wrap: anywhere; }
+.bundle-badge { font-size: 10.5px; font-weight: 620; color: var(--ink-3); padding: 2px 7px;
+                border: 1px solid var(--hairline-2); border-radius: 999px; white-space: nowrap; }
+.bundle-card-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.bundle-card .bundle-actions { justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--hairline); }
+@media (min-width: 1000px) {
+  .bundle-layout > :last-child { align-self: start; position: sticky; top: 16px; }
+}

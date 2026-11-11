@@ -2881,15 +2881,18 @@ Views.bundles = async function bundles(view) {
           h("div", { class: "actions" },
             freezeBtn))),
       labeledPanel("3. Frozen bundles on disk",
-        list.ok ? h("table", { class: "grid bundle-table" },
-          h("thead", null, h("tr", null, h("th", null, "Bundle"), h("th", null, "SHA-256"),
-            h("th", { class: "num" }, "Documents"), h("th", null, "Cutoff"), h("th", null, ""))),
-          h("tbody", null, ...list.data.bundles.map(b => h("tr", null,
-            h("td", { class: "id", "data-label": "Bundle" }, b.bundle_id),
-            h("td", { class: "id muted", "data-label": "SHA-256" }, (b.bundle_sha256 || "").slice(0, 18) + "…"),
-            h("td", { class: "num", "data-label": "Documents" }, String(b.documents.length)),
-            h("td", { class: "num filing-date-text", "data-label": "Cutoff" }, b.as_of_cutoff),
-            h("td", { class: "bundle-table-action", "data-label": "Manage" }, bundleActions(b))))))
+        list.ok && list.data.bundles.length ? h("div", { class: "bundle-list" },
+          ...[...list.data.bundles].sort((x, y) => (Number(!!y.editable) - Number(!!x.editable)) || String(y.as_of_cutoff).localeCompare(String(x.as_of_cutoff))).map(b =>
+            h("article", { class: "bundle-card" },
+              h("div", { class: "bundle-card-head" },
+                h("strong", { class: "id" }, b.bundle_id),
+                b.editable ? null : h("span", { class: "bundle-badge", title: "Ships with the project; read-only" }, "Built-in"),
+                b.parent_bundle ? h("span", { class: "bundle-badge", title: `Created by updating ${b.parent_bundle}` }, `from ${b.parent_bundle}`) : null),
+              h("div", { class: "bundle-card-meta" },
+                h("span", null, `${b.documents.length} documents`),
+                h("span", null, `Cutoff ${b.as_of_cutoff}`),
+                h("span", { class: "id", title: b.bundle_sha256 }, `SHA ${(b.bundle_sha256 || "").slice(0, 10)}…`)),
+              b.editable ? bundleActions(b) : null)))
           : emptyState("No bundles", "Create one from the search results."))));
   paintChosen();
 };
