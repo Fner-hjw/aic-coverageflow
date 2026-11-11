@@ -26,6 +26,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .render_note import render_clean, strip_process_sections
+
 TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "references" \
     / "dossier-template.tex"
 
@@ -512,7 +514,10 @@ def render_dossier_tex(evidence: dict, template_path: Path | None = None) -> str
         .read_text(encoding="utf-8")
     ev = evidence
     mandate, model, valuation = ev["mandate"], ev["model"], ev["valuation"]
-    sections = _md_sections(ev["report_md"] or "")
+    # The marked report stays the verified record; the dossier body drops
+    # process/control sections (open findings, dispositions, harness text).
+    report_md = strip_process_sections(ev["report_md"] or "")
+    sections = _md_sections(report_md)
 
     company_name = {"INTC": "Intel Corporation"}.get(
         (mandate.get("ticker") or "").upper(), mandate.get("ticker", "Covered company"))
@@ -521,7 +526,7 @@ def render_dossier_tex(evidence: dict, template_path: Path | None = None) -> str
     pt_gordon = _fmt_usd((dcf.get("per_diluted_share") or {}).get("gordon"))
     cand = ev["state"].get("candidate", {}).get("candidate_id") or ""
     result = ev["result"] or {}
-    title, report_body, evidence_keys = _report_tex(ev["report_md"] or "", ev)
+    title, report_body, evidence_keys = _report_tex(report_md, ev)
     approval = ev.get("approval") or {}
     approved = approval.get("decision") == "APPROVED"
 
@@ -570,6 +575,30 @@ def render_dossier_tex(evidence: dict, template_path: Path | None = None) -> str
     return tex
 
 
+def evidence_index_from_facts(evidence: dict) -> dict[str, dict]:
+    """key -> {doc_id, anchor, locator} from the candidate's cited facts."""
+    idx: dict[str, dict] = {}
+    for fact in (evidence.get("facts") or {}).get("facts") or []:
+        cit = fact.get("citation") or {}
+        if fact.get("field") and fact["field"] not in idx:
+            idx[fact["field"]] = {k: cit[k] for k in ("doc_id", "anchor", "locator")
+                                  if cit.get(k)}
+    return idx
+
+
+def write_clean_note(evidence: dict, out_path: Path) -> Path:
+    """Write the reader-facing note (footnotes, no process text) to *out_path*.
+
+    The marked report in report/ remains the verified record.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        render_clean(evidence.get("report_md") or "",
+                     evidence_index_from_facts(evidence)), encoding="utf-8")
+    return out_path
+
+
 def build_dossier(case_dir: Path, out_dir: Path | None = None,
                   compile_pdf: bool = True) -> dict:
     """Render + compile; returns written paths and compilation status."""
@@ -579,6 +608,7 @@ def build_dossier(case_dir: Path, out_dir: Path | None = None,
     tex_path = out_dir / "dossier.tex"
     tex_path.write_text(render_dossier_tex(evidence), encoding="utf-8")
 
+    clean_path = write_clean_note(evidence, out_dir / "note.clean.md")
     pdf_path = out_dir / "dossier.pdf"
     compiled = False
     if compile_pdf and shutil.which("pdflatex"):
@@ -592,6 +622,7 @@ def build_dossier(case_dir: Path, out_dir: Path | None = None,
                 proc.stdout[-4000:] + "\n---STDERR---\n" + proc.stderr[-2000:],
                 encoding="utf-8")
     return {"evidence_case": str(evidence["case_dir"]), "tex": str(tex_path),
+            "clean_note": str(clean_path),
             "pdf": str(pdf_path) if compiled else None, "compiled": compiled,
             "report_version": evidence["report_version"]}
 
