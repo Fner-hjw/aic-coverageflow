@@ -76,9 +76,11 @@ TERMINAL = ("APPROVED", "REJECTED", "BLOCKED", "EXHAUSTED", "STOPPED")
 # part of the model stage (idempotent deterministic engines)
 STAGE_ORDER = ("ingest", "extractor", "model", "writer", "candidate",
                "gates", "critics", "merge")
+# Only stages an agent decides have a role. "candidate" (manifest) and "merge"
+# (critic report merge) are controller execution: deterministic code, no
+# dispatch (docs/design-decisions.md, "Controller code, not lead agents").
 STAGE_ROLE = {"ingest": "ingest", "extractor": "extractor", "model": "model",
-              "writer": "writer", "candidate": "generator_lead",
-              "critics": "critics", "merge": "critic_lead"}
+              "writer": "writer"}
 STAGE_ARTIFACT = {"ingest": "ingest-report.json", "extractor": "facts.json",
                   "model": "forecast_assumptions.json", "writer": "report.md",
                   "candidate": "candidate-manifest.json"}
@@ -101,6 +103,10 @@ _HEADER_KEYS = frozenset({"role", "artifact", "request_id", "candidate_id",
 CANDIDATE_FILES = ["ingest-report.json", "facts.json",
                    "forecast_assumptions.json", "report.md",
                    "model.json", "valuation.json"]
+# Rubric checks from different critics that judge the same property. A critic
+# failing one of these on an artifact while another critic passes a check in
+# the same group is a disagreement the merge keeps explicit (conflict_group).
+CHECK_OVERLAP = {"numbers": ("C1.2", "C2.1")}
 CANDIDATE_ROLES = ("ingest", "extractor", "model", "writer", "engines", "engines")
 
 # The note's header carries the candidate id, which is a digest over the note.
@@ -154,6 +160,56 @@ DEFAULT_CONFIG_VERSIONS = {
     "engines": "1.0",
     "schema": "1.0",
 }
+
+
+_MODEL_FACT_PREFIXES = ("income_statement.", "segments.")
+_MODEL_CASHFLOW = frozenset({
+    "cash_flow.capital_expenditure", "cash_flow.depreciation_amortization",
+    "cash_flow.operating_cash_flow", "cash_flow.stock_based_compensation",
+    "cash_flow.working_capital_changes", "cash_flow.net_income"})
+
+
+def _model_wants_fact(fact: Any) -> bool:
+    """Facts the model role needs to propose growth and margins: segment and
+    consolidated P&L lines, capex, D&A and operating cash items, every period.
+    Balance sheet and financing lines are not inputs to a growth proposal."""
+    name = str(fact.get("field") or "") if isinstance(fact, dict) else ""
+    if not name:
+        return True
+    return name.startswith(_MODEL_FACT_PREFIXES) or name in _MODEL_CASHFLOW
+
+
+_PERIOD_RE = re.compile(r"^(?:FY)?(\d{4})(?:-Q([1-4]))?(-YTD)?$")
+
+
+def _writer_period_filter(current: str | None) -> Callable[[Any], bool]:
+    """Keep the periods a note reports: current, its YTD, the prior-year
+    comparables, the previous quarter, and the last fiscal year. A period the
+    parser does not recognise is kept (never starve the writer)."""
+    m = _PERIOD_RE.match(current or "")
+    if not m:
+        return lambda f: True
+    year, q = int(m.group(1)), m.group(2)
+    keep: set[tuple] = set()
+    if q:
+        qn = int(q)
+        keep |= {(year, qn, False), (year, qn, True),
+                 (year - 1, qn, False), (year - 1, qn, True),
+                 (year - 1, None, False)}
+        keep |= ({(year, qn - 1, False), (year, qn - 1, True)} if qn > 1
+                 else {(year - 1, 4, False), (year - 1, 4, True)})
+    else:
+        keep |= {(year, None, False), (year - 1, None, False),
+                 (year - 2, None, False)}
+
+    def keep_fact(f: Any) -> bool:
+        pm = _PERIOD_RE.match(str(f.get("period") or "")) \
+            if isinstance(f, dict) else None
+        if not pm:
+            return True
+        return (int(pm.group(1)), int(pm.group(2)) if pm.group(2) else None,
+                bool(pm.group(3))) in keep
+    return keep_fact
 
 
 def _iso_from_epoch(epoch: float) -> str:
@@ -736,16 +792,8 @@ class Orchestrator:
             if not isinstance(parsed.get("report_md"), str) or \
                     not parsed["report_md"].strip():
                 return "writer submission must include non-empty report.md text"
-        elif role == "generator_lead":
-            if not isinstance(parsed.get("reports"), list) or \
-                    not isinstance(parsed.get("evidence_index"), dict):
-                return "lead submission must include reports and an evidence index"
         elif role.startswith("critic_c"):
             return self._validate_critic_report(role, parsed)
-        elif role == "critic_lead":
-            for k in ("clean", "coverage_ok", "reviewer_count"):
-                if k not in parsed:
-                    return f"merged report missing required key {k!r}"
         return None
 
     def _validate_critic_report(self, role: str, parsed: dict) -> str | None:
@@ -905,8 +953,17 @@ class Orchestrator:
 
     def _run_build_stage(self, state: dict, budget: budget_mod.BudgetTracker,
                          arts: Arts, stage: str) -> None:
-        role = STAGE_ROLE[stage]
         rel = arts.rel("generator", STAGE_ARTIFACT[stage])
+
+        if stage == "candidate":
+            # Controller execution, not an agent decision: the manifest is a
+            # list of hashes the orchestrator already computed.
+            if not self._artifact_intact(rel):
+                self._build_candidate_manifest(state, arts, rel)
+            self._stage_side_effects(state, budget, arts, stage)
+            self._stage_done(state, stage)
+            return
+        role = STAGE_ROLE[stage]
 
         # ingest is a pure function of the frozen input manifest. Re-dispatching
         # it every round re-reads every filing and spends the whole role
@@ -924,53 +981,13 @@ class Orchestrator:
             return
 
         candidate_id = None
-        if stage == "ingest":
-            payload = {"case_id": state["case_id"], "round": arts.round,
-                       "input_manifest": self.input_manifest(),
-                       "mandate": self.mandate(),
-                       "anchor_candidates": self._anchor_candidates(),
-                       # which documents must be extracted, not just which
-                       # one triggered the case
-                       "extraction_scope": self._extraction_scope(),
-                       "carried_findings": self._carried()}
-        else:
-            payload = {"case_id": state["case_id"], "round": arts.round,
-                       "carried_findings": self._carried(),
-                       # every role works under the frozen mandate: the writer
-                       # needs the report policy and cutoff, the model needs
-                       # the forecast bounds. Withholding it made the writer
-                       # report the bounds as "not supplied".
-                       "mandate": self.mandate(),
-                       # provenance the note's header block must carry; the
-                       # writer cannot invent a bundle id it was never given
-                       "bundle": self._bundle_provenance(),
-                       "prior_artifacts": self._stage_inputs(arts, stage)}
-        if stage == "candidate":
-            # the candidate id is only known once all artifacts exist:
-            # stamp headers, THEN assemble the manifest payload
-            candidate_id = self._candidate_id(arts)
-            self._stamp_candidate_id(state, arts, candidate_id)
-            payload.update({
-                "candidate_id": candidate_id,
-                "cutoff_date": self.mandate()["cutoff_date"],
-                "input_manifest_sha256": statestore.sha256_json(
-                    self.input_manifest()),
-                "artifacts": self._candidate_artifact_list(arts),
-                "evidence_index": self._evidence_index(arts),
-                "scope_statement": ("full rebuild; stages may short-circuit internal "
-                                    "work via hash-match proofs; carried findings "
-                                    "must be addressed"),
-            })
+        payload = self._generator_payload(state, arts, stage)
         while True:
             result = self._dispatch_role(state, budget, role, payload,
                                          candidate_id, [rel])
             self._block_if_unrunnable(state, role, result)
             err = self._validate_submission(role, state["pending"]["request_id"],
                                             result)
-            if err is None and stage == "candidate":
-                err = self._check_lead_manifest(arts, result.parsed)
-                if err is None:
-                    result.parsed = self._stamp_manifest_header(arts, result.parsed)
             if err is None and stage == "ingest":
                 # the declared slices must exist on disk before the extractor
                 # is handed their paths
@@ -1003,6 +1020,79 @@ class Orchestrator:
                 statestore.sha256_json(self.input_manifest()) + "\n")
         self._stage_side_effects(state, budget, arts, stage)
         self._stage_done(state, stage)
+
+    def _generator_payload(self, state: dict, arts: Arts, stage: str) -> dict:
+        """The bound payload for a generator-team role (ingest..writer)."""
+        if stage == "ingest":
+            return {"case_id": state["case_id"], "round": arts.round,
+                    "input_manifest": self.input_manifest(),
+                    "mandate": self.mandate(),
+                    "anchor_candidates": self._anchor_candidates(),
+                    # which documents must be extracted, not just which
+                    # one triggered the case
+                    "extraction_scope": self._extraction_scope(),
+                    "carried_findings": self._carried()}
+        inputs = self._stage_inputs(arts, stage)
+        inputs = self._scope_inputs(stage, inputs)
+        return {"case_id": state["case_id"], "round": arts.round,
+                "carried_findings": self._carried(),
+                # every role works under the frozen mandate: the writer
+                # needs the report policy and cutoff, the model needs
+                # the forecast bounds. Withholding it made the writer
+                # report the bounds as "not supplied".
+                "mandate": self.mandate(),
+                # provenance the note's header block must carry; the
+                # writer cannot invent a bundle id it was never given
+                "bundle": self._bundle_provenance(),
+                "prior_artifacts": inputs}
+
+    def _scope_inputs(self, stage: str, inputs: dict) -> dict:
+        """Role-scoped view of the facts ledger (model and writer only).
+
+        The ledger on disk stays whole; only the copy handed to a role is
+        narrowed. Anything the filter cannot classify is kept.
+        """
+        facts = inputs.get("facts")
+        if stage not in ("model", "writer") or not isinstance(facts, dict) \
+                or not isinstance(facts.get("facts"), list):
+            return inputs
+        if stage == "model":
+            keep = lambda f: _model_wants_fact(f)
+        else:
+            keep = _writer_period_filter(self._current_period())
+        scoped = [f for f in facts["facts"] if keep(f)]
+        out = dict(inputs)
+        out["facts"] = dict(facts, facts=scoped or facts["facts"])
+        return out
+
+    def _build_candidate_manifest(self, state: dict, arts: Arts, rel: str) -> None:
+        """Compute the candidate manifest in code and write it.
+
+        The old generator-lead agent only echoed these hashes and had its
+        header overwritten by the harness, so it added no information.
+        Writing it here is identical content with no dispatch. Request id is
+        a controller id (``ctl-rNNN``): there is no agent request to bind.
+        """
+        candidate_id = self._candidate_id(arts)
+        self._stamp_candidate_id(state, arts, candidate_id)
+        manifest = {
+            "request_id": f"ctl-r{arts.round:03d}",
+            "candidate_id": candidate_id,
+            "round": arts.round,
+            "reports": self._candidate_artifact_list(arts),
+            "evidence_index": self._evidence_index(arts),
+            "scope_statement": "",
+            "conformance": "schema 1.0",
+            "prompt_version": "1.0",
+        }
+        manifest = self._stamp_manifest_header(arts, manifest)
+        sha = statestore.atomic_write_json(self.case_dir / rel, manifest)
+        arts.files[rel] = sha
+        arts.content[rel] = manifest
+        self._verified[rel] = sha
+        self._transition(state, "RUNNING", "RUNNING", verified=rel,
+                         detail={"artifact_written": rel,
+                                 "built_by": "controller"})
 
     def _writer_evidence_feedback(self, state: dict,
                                   budget: budget_mod.BudgetTracker,
@@ -1385,17 +1475,6 @@ class Orchestrator:
             idx.setdefault(key, valuation_rel)
         return idx
 
-    def _check_lead_manifest(self, arts: Arts, manifest: dict) -> str | None:
-        """The lead must echo the orchestrator-computed candidate manifest."""
-        expected = {r["artifact"]: r["sha256"]
-                    for r in self._candidate_artifact_list(arts)}
-        reported = {r.get("artifact"): r.get("sha256")
-                    for r in manifest.get("reports", [])}
-        if reported != expected:
-            return ("candidate manifest integrity mismatch: the lead did not "
-                    "echo the verified artifact hashes")
-        return None
-
     def _stamp_manifest_header(self, arts: Arts, manifest: dict) -> dict:
         """Write the provenance header the harness knows into the manifest.
 
@@ -1411,8 +1490,7 @@ class Orchestrator:
         inputs = self.input_manifest()
         mandate = self.mandate()
         prompt_versions: dict[str, str] = {}
-        for role in sorted(set(STAGE_ROLE.values()) | set(CRITIC_ROLES)
-                           | {"critic_lead"}):
+        for role in sorted(set(STAGE_ROLE.values()) | set(CRITIC_ROLES)):
             card = pa.default_root() / "prompts" / f"{role}.md"
             if card.is_file():
                 prompt_versions[role] = pa.parse_role_card(card)["version"]
@@ -1861,8 +1939,7 @@ class Orchestrator:
                 headers[name] = {k: content.get(k) for k in
                                  ("request_id", "candidate_id", "provenance")}
         expected: dict[str, str] = {}
-        for role in sorted(set(STAGE_ROLE.values()) | set(CRITIC_ROLES)
-                           | {"critic_lead"}):
+        for role in sorted(set(STAGE_ROLE.values()) | set(CRITIC_ROLES)):
             card = pa.default_root() / "prompts" / f"{role}.md"
             if card.is_file():
                 expected[role] = pa.parse_role_card(card)["version"]
@@ -2048,27 +2125,7 @@ class Orchestrator:
                    for role in CRITIC_ROLES]
         rel = arts.rel("critic", "merged-findings.json")
         reports = [r for r in reports if r is not None]
-        # built ONCE, outside the loop: rebuilding it each iteration threw
-        # away the submission_feedback the repair depends on
-        payload = {
-            "case_id": state["case_id"], "round": round_no,
-            "candidate_id": candidate_id,
-            "critic_reports": reports,
-            "carried_findings": self._carried(),
-            "built_round": state["candidate"]["built_round"],
-        }
-        while True:
-            result = self._dispatch_role(state, budget, "critic_lead", payload,
-                                         candidate_id, [rel])
-            err = self._validate_submission("critic_lead",
-                                           state["pending"]["request_id"], result)
-            if err is None:
-                state["pending"]["retry_count"] = 0
-                break
-            self._handle_invalid(state, budget, "critic_lead", err)
-            payload = dict(payload)
-            payload["submission_feedback"] = err
-        merged = result.parsed
+        merged = self._merge_critic_reports(round_no, candidate_id, reports)
         sha = statestore.atomic_write_json(self.case_dir / rel, merged)
         arts.files[rel] = sha
         arts.content[rel] = merged
@@ -2148,6 +2205,60 @@ class Orchestrator:
         # repair packet; loop starts the next full build
         self._issue_repair_packet(state, arts, led,
                                   note="critic findings after full review")
+
+    def _merge_critic_reports(self, round_no: int, candidate_id: str,
+                              reports: list[dict]) -> dict:
+        """Merge the critic reports in code (replaces the critic-lead agent).
+
+        Union of every finding, unchanged except for ``source_critic`` and the
+        computed ``dedup_key``. Findings with the same computed key collapse
+        into the first one (``duplicates`` lists the others). A disagreement
+        is kept explicit: when one critic fails a check in a CHECK_OVERLAP
+        group on an artifact and another critic passes a check of that group,
+        the failing finding gets ``conflict_group`` ``<group>:<artifact>``.
+        Nothing is dropped and nothing is accepted here.
+        """
+        findings: list[dict] = []
+        by_key: dict[str, dict] = {}
+        for rep in reports:
+            role = rep.get("role") or "critic"
+            for raw in rep.get("findings") or []:
+                f = dict(raw)
+                f["source_critic"] = role
+                f["dedup_key"] = ledger_mod.compute_dedup_key(f)
+                first = by_key.get(f["dedup_key"])
+                if first is not None:
+                    first.setdefault("duplicates", []).append(f.get("finding_id"))
+                    continue
+                by_key[f["dedup_key"]] = f
+                findings.append(f)
+        passed: dict[str, set[str]] = {}
+        for rep in reports:
+            for c in rep.get("checks") or []:
+                if isinstance(c, dict) and c.get("result") == "pass":
+                    for group, ids in CHECK_OVERLAP.items():
+                        if c.get("check_id") in ids:
+                            passed.setdefault(group, set()).add(rep.get("role"))
+        for f in findings:
+            for group, ids in CHECK_OVERLAP.items():
+                if f.get("check_id") in ids and \
+                        passed.get(group, set()) - {f["source_critic"]}:
+                    arts_ = ",".join(sorted(f.get("affected_artifacts") or []))
+                    f["conflict_group"] = f"{group}:{arts_}"
+                    f["disagreeing_critics"] = sorted(
+                        passed[group] - {f["source_critic"]})
+        return {
+            "round": round_no, "candidate_id": candidate_id,
+            "findings": findings,
+            "clean": not findings,
+            "coverage_ok": {r.get("role") for r in reports} == set(CRITIC_ROLES),
+            "reviewer_count": len(reports),
+            "conflicts_kept": any(f.get("conflict_group") for f in findings),
+            "fresh_context_proofs": [f"{r.get('role')}|{r.get('request_id')}|fresh"
+                                     for r in reports],
+            "merged_by": "controller",
+            "conformance": "schema 1.0", "prompt_version": "1.0",
+        }
 
     def _apply_critic_closures(self, state: dict, arts: Arts,
                                reports: list[dict],

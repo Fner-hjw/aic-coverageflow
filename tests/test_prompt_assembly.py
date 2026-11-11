@@ -178,8 +178,6 @@ class TestRepoCards:
         "extractor": "facts.json",
         "model": "forecast_assumptions.json",
         "writer": "report.md",
-        "generator_lead": "candidate-manifest.json",
-        "critic_lead": "merged-findings.json",
         "critic_c1": "critic-report.json",
         "critic_c2": "critic-report.json",
         "critic_c3": "critic-report.json",
@@ -209,7 +207,7 @@ class TestRepoCards:
 
     def test_critic_cards_pin_the_locked_rubric_and_only_it(self):
         root = pa.default_root()
-        for role in ("critic_lead", "critic_c1", "critic_c2", "critic_c3", "critic_c4"):
+        for role in ("critic_c1", "critic_c2", "critic_c3", "critic_c4"):
             meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
             assert meta["references"] == ["critic-rubric-v1.1.md"], role
 

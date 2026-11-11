@@ -34,12 +34,12 @@ the lecture's "roles and handoffs" pattern made mechanical:
 | Role | Sees (read-scope) | Writes (write-scope) | Never |
 |---|---|---|---|
 | **Orchestrator** (pure Python, no LLM) | everything — it is code | `state.json`, `trace.jsonl`, repair packets | be persuaded; the mandate is fixed |
-| Generator lead | bound request | candidate manifest (IDs + hashes) | update control state; approve |
+| Generator lead (controller code) | computed artifact hashes | candidate manifest (IDs + hashes) | n/a: no agent |
 | Data & Ingest | mandate, new doc, prior manifest | ingest report + slices | network; alter inputs |
 | Extraction | slices only | `facts.json` (every fact cited) | invent facts; uncited numbers |
 | Model & Valuation | facts + mandate assumptions | forecast proposal; engine artifacts | LLM arithmetic — the math is code |
 | Report Draft | facts, model, valuation, findings | `report.md` with `[EV:…]` links | numbers absent from the ledger |
-| Critic lead | candidate evidence + fixed rubric | merged findings (conflicts kept) | unilaterally accept |
+| Critic lead (controller code) | the four critic reports | merged findings (conflicts kept) | n/a: no agent |
 | Critics C1–C4 | evidence + fixed criteria; **fresh context every round** | findings | edit candidate artifacts |
 | Human approver | dossier + evidence trail | approval record | skipped by the system |
 
@@ -232,7 +232,7 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 | Lecture concept | CoverageFlow realization | Code / evidence |
 |---|---|---|
 | Orchestrator / control | `Orchestrator` state machine: dispatch, routing, budgets, gates, checkpoints; only writer of `state.json`/`trace.jsonl` | `orchestrator.py`, `statestore.py` |
-| Generator / Critic roles | Generator lead + 4 build specialists; Critic lead + 4 fresh reviewers (C1–C4), fixed rubric | `orchestrator.py`, `prompts/*.md` |
+| Generator / Critic roles | 4 build specialists + controller-built manifest; 4 fresh reviewers (C1–C4), fixed rubric, controller-side merge | `orchestrator.py`, `prompts/*.md` |
 | Handoffs (roles) | read-scope = bound payload; write-scope = one schema-validated artifact; stale request rejected | `dispatch.py`, §1.1 table |
 | Harness (agency control) | prompt assembly from preamble+card+refs+bound request; no in-model tools; budget+timeout per role call | `_prompt_assembly.py`, `dispatch.py`, `budget.py` |
 | Loop / graph | CREATED…CLOSED states; per-round graph build→gates→critics→merge→decide; state-first transitions | `orchestrator.py` §2 here |

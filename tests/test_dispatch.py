@@ -257,8 +257,7 @@ class TestStrictParsing:
         assert err and "unknown output schema ref" in err
 
     def test_role_output_schema_covers_every_role(self):
-        for role in ("ingest", "extractor", "model", "writer", "generator_lead",
-                     "critic_lead", "critic_c1", "critic_c4"):
+        for role in ("ingest", "extractor", "model", "writer", "critic_c1", "critic_c4"):
             assert disp.output_schema_for(role) in disp._SCHEMA_REQUIRED_KEYS
         with pytest.raises(LookupError):
             disp.output_schema_for("nobody")

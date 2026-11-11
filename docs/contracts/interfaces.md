@@ -21,7 +21,7 @@ ui/                    # FastAPI service (A4): api.py ws.py static/index.html st
 ```python
 @dataclass(frozen=True)
 class RoleCall:
-    role: str                    # ingest|extractor|model|writer|critic_c1..c4|generator_lead|critic_lead
+    role: str                    # ingest|extractor|model|writer|critic_c1..c4
     request_id: str
     candidate_id: str | None
     role_card: dict              # {"path":"prompts/ingest.md", "version":"1.0", "sha256":"..."}

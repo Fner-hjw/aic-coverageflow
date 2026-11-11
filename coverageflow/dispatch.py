@@ -28,7 +28,7 @@ __all__ = ["RoleCall", "AgentResult", "HealthReport", "dispatch_role"]
 class RoleCall:
     """One bound role request dispatched to a backend (interfaces s1)."""
 
-    role: str                    # ingest|extractor|model|writer|critic_c1..c4|generator_lead|critic_lead
+    role: str                    # ingest|extractor|model|writer|critic_c1..c4
     request_id: str
     candidate_id: str | None
     role_card: dict              # {"path": "prompts/ingest.md", "version": "1.0", "sha256": "..."}
@@ -91,8 +91,6 @@ ROLE_OUTPUT_SCHEMA: dict[str, str] = {
     "extractor": "facts.json",
     "model": "forecast_assumptions.json",
     "writer": "report.md",
-    "generator_lead": "candidate-manifest.json",
-    "critic_lead": "merged-findings.json",
     **{f"critic_c{i}": "critic-report.json" for i in range(1, 5)},
 }
 
