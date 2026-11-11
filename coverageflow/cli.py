@@ -219,6 +219,24 @@ def _print(obj) -> None:
 # command implementations
 # ---------------------------------------------------------------------------
 
+def _bundle_manifest_at_cutoff(bundle_dir: Path | None, cutoff: str,
+                               trigger_doc: str) -> dict:
+    """The bundle's manifest restricted to filings filed on or before cutoff."""
+    if bundle_dir is None:
+        raise SystemExit("--bundle did not resolve to a frozen bundle")
+    full = statestore.read_json(Path(bundle_dir) / "manifest.json")
+    docs = [d for d in full.get("documents", [])
+            if str(d.get("filed", "9999")) <= cutoff]
+    if not any(d.get("doc_id") == trigger_doc for d in docs):
+        raise SystemExit(
+            f"trigger document {trigger_doc!r} is not in bundle "
+            f"{full.get('bundle_id')!r} on or before {cutoff}")
+    out = dict(full)
+    out["documents"] = docs
+    out["as_of_cutoff"] = cutoff
+    return out
+
+
 def cmd_case_new(args, ws: Path) -> int:
     """case new --ticker INTC --trigger-doc <doc-id> --cutoff YYYY-MM-DD."""
     case_id = new_case_id(args.ticker, args.period, args.cutoff)
@@ -239,6 +257,14 @@ def cmd_case_new(args, ws: Path) -> int:
     }
     if args.manifest:
         manifest = statestore.read_json(Path(args.manifest))
+    elif args.bundle:
+        # A bundle is the case's evidence set: take its manifest, keeping only
+        # filings on or before the cutoff. A one-document manifest built from
+        # the trigger alone left the case without the prior 10-K and the
+        # prior-year 10-Q, so the valuation had no twelve-month base.
+        manifest = _bundle_manifest_at_cutoff(
+            resolve_bundle_dir(ws, args.bundle, manifest), args.cutoff,
+            args.trigger_doc)
     mandate = default_mandate(case_id, args.ticker, args.cutoff)
     if args.mandate:
         mandate = statestore.read_json(Path(args.mandate))

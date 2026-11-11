@@ -299,3 +299,19 @@ def test_case_stop_ends_a_case_as_stopped(tmp_path):
     assert rc == 0
     st = statestore.load_state(tmp_path / "cases" / case_id)
     assert st["status"] == "STOPPED" and "superseded" in st["reason"]["message"]
+
+
+def test_case_new_with_bundle_takes_every_filing_up_to_the_cutoff(tmp_path):
+    import json
+    from pathlib import Path
+    bundle = Path(__file__).resolve().parents[1] / "data" / "intel-bundle"
+    rc = cli.main(["--workspace", str(tmp_path), "case", "new", "--ticker", "INTC",
+                   "--period", "fy2026q3", "--trigger-doc", "intc-10q-2026q3",
+                   "--cutoff", "2026-10-30", "--bundle", str(bundle)])
+    assert rc == 0
+    case = tmp_path / "cases" / "intc-fy2026q3-20261030"
+    docs = json.loads((case / "inputs" / "manifest.json").read_text())["documents"]
+    ids = {d["doc_id"] for d in docs}
+    assert {"intc-10k-fy2025", "intc-10q-2025q3", "intc-10q-2026q3"} <= ids
+    assert all(d["filed"] <= "2026-10-30" for d in docs)
+    assert all((case / d["path"]).is_file() for d in docs)
