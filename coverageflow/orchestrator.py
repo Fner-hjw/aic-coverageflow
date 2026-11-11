@@ -112,6 +112,12 @@ def _blank_candidate(text: str) -> str:
 # later round can prove the report still describes the same inputs.
 INGEST_INPUTS_SIDECAR = "ingest-inputs.sha256"
 
+# Same-role repair of a note whose numbers lack evidence markers. Counted under
+# its own key so it is bounded by retries_max without eating the budget of
+# ordinary invalid submissions.
+_EVIDENCE_RETRY_KEY = "writer:report_evidence_links"
+_EVIDENCE_FEEDBACK_PREFIX = "evidence-link gate: every number needs an [EV:<key>] marker. "
+
 # What each critic is contracted to read (see the --read line of its card).
 # A critic handed only sha256 digests cannot verify anything and reports
 # "unverifiable" findings every round, so the candidate never converges.
@@ -908,10 +914,20 @@ class Orchestrator:
                 # the declared slices must exist on disk before the extractor
                 # is handed their paths
                 err = self._materialize_slices(result.parsed)
+            if err is None and role == "writer":
+                # An unlinked number is a malformed note, not a failed round:
+                # send the gate's messages back to the writer alone. Only when
+                # the retry budget is spent does the note go on to the gates
+                # and the repair-packet path.
+                err = self._writer_evidence_feedback(
+                    state, budget, arts, result.parsed["report_md"])
             if err is None:
                 state["pending"]["retry_count"] = 0
                 break
-            self._handle_invalid(state, budget, role, err)
+            if role == "writer" and err.startswith(_EVIDENCE_FEEDBACK_PREFIX):
+                self._note_writer_evidence_retry(state, budget, err)
+            else:
+                self._handle_invalid(state, budget, role, err)
             payload = dict(payload)
             payload["submission_feedback"] = err    # same-role repair packet
         parsed = result.parsed
@@ -926,6 +942,42 @@ class Orchestrator:
                 statestore.sha256_json(self.input_manifest()) + "\n")
         self._stage_side_effects(state, budget, arts, stage)
         self._stage_done(state, stage)
+
+    def _writer_evidence_feedback(self, state: dict,
+                                  budget: budget_mod.BudgetTracker,
+                                  arts: Arts, report_md: str) -> str | None:
+        """Evidence-link gate messages for a fresh note, or None to proceed.
+
+        None also when the same-role retry budget for this failure is spent;
+        the gate then fails the round in the normal way.
+        """
+        ok, findings = gates.gate_report_evidence_links(
+            report_md, self._evidence_index(arts))
+        if ok:
+            return None
+        used = int((budget.used.get("retries_by_role") or {})
+                   .get(_EVIDENCE_RETRY_KEY, 0))
+        if used >= budget.limits.retries_max:
+            return None
+        return (_EVIDENCE_FEEDBACK_PREFIX + "\n".join(
+            f["summary"] for f in findings[:40]))
+
+    def _note_writer_evidence_retry(self, state: dict,
+                                    budget: budget_mod.BudgetTracker,
+                                    err: str) -> None:
+        """Count a same-role evidence-link repair; it consumes no round."""
+        p = state["pending"]
+        used = budget.note_retry(_EVIDENCE_RETRY_KEY)
+        p["retry_count"] += 1
+        self._sync_budget(state, budget)
+        self._persist(state)
+        self._trace(event="STATE_TRANSITION",
+                    detail={"repair_at_same_role": "writer", "error": err[:2000],
+                            "gate": "report_evidence_links",
+                            "retries": used, "round_consumed": False},
+                    role="writer", round=p["round"],
+                    request_id=p["request_id"],
+                    candidate_id=state["candidate"]["candidate_id"])
 
     def _stage_inputs(self, arts: Arts, stage: str) -> dict:
         """Role read-scope: exactly the inputs the role card contract allows."""

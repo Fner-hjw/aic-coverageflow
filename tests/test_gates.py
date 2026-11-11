@@ -821,3 +821,24 @@ class TestPeriodCoverageGate:
                             ("derived.growth", "2024-Q1"))
         ok, findings = gates.gate_period_coverage(facts, "2026-Q3")
         assert ok, findings
+
+
+class TestMarkerScopeMatchesWriterCard:
+    IDX = {"a": "x", "b": "x"}
+
+    def _ok(self, md):
+        return gates.gate_report_evidence_links("## s\n\n" + md + "\n", self.IDX)[0]
+
+    def test_comma_colon_dash_semicolon_period_break_a_clause(self):
+        assert not self._ok("Revenue 1.5 billion, up 2.5 percent [EV:a].")
+        assert not self._ok("Revenue 1.5 billion: up 2.5 percent [EV:a].")
+        assert not self._ok("Revenue 1.5 billion - up 2.5 percent [EV:a].")
+        assert not self._ok("Revenue 1.5 billion; up 2.5 percent [EV:a].")
+        assert self._ok("Revenue 1.5 billion [EV:a], up 2.5 percent [EV:b].")
+
+    def test_decimal_and_thousands_are_not_breaks(self):
+        assert self._ok("Revenue 12,345.6 million [EV:a].")
+
+    def test_ordinal_year_labels_are_exempt_in_any_case(self):
+        for label in ("year 1", "Year 1", "Year-1", "YEAR-1", "yr 2"):
+            assert self._ok(f"In {label} margin is steady.")

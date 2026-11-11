@@ -483,7 +483,7 @@ _EXEMPT_SPAN = re.compile(
     # "year 1 is FY2026E" numbers a forecast column, it does not measure
     # the company. The column is cited by the value it carries, not by
     # its index, so the ordinal needs no marker of its own.
-    r"|(?i:\b(?:year|yr|y)\s+\d+\b)"
+    r"|(?i:\b(?:year|yr|y)[\s-]*\d+\b)"
     # "9M FY2026" is a nine-month span label, the same kind of label as
     # "Q3" and "FY2026". The 9 is not a measurement of the company.
     r"|\b\d{1,2}M\b(?=\s+(?:FY|Q)\d)"
@@ -495,11 +495,13 @@ _EXEMPT_SPAN = re.compile(
 )
 
 
-# A clause ends at a sentence period or a semicolon. The period must be
-# followed by whitespace so a decimal point is not a break. Commas are not
-# breaks: a note states a current and a prior figure in one sentence and cites
-# them together, and splitting on the comma made that unciteable.
-_CLAUSE_BREAK = re.compile(r";|\.(?=\s|$)")
+# A clause ends where the writer card says a marker's reach stops: a comma,
+# semicolon, colon, dash or sentence period. The punctuation must be followed
+# by whitespace (or, for a colon, markdown emphasis) so a decimal point, a
+# thousands separator, a hyphen inside a word ("Year-1", "10-Q") and a time or
+# ratio are not breaks. A dash is a break only when spaced or a long dash.
+_CLAUSE_BREAK = re.compile(
+    r";|,(?=\s)|:(?=[\s*_]|$)|(?<=\s)-(?=\s)|[\u2013\u2014]|\.(?=\s|$)")
 
 
 def _clause_start(line: str, pos: int, skip_spans: list[tuple[int, int]]) -> int:

@@ -455,6 +455,35 @@ class TestInvalidSubmissions:
         assert len(dispatch.calls_of("extractor")) == 2
 
 
+class TestEvidenceLinkFailureIsASubmissionRepair:
+    BAD = _writer_output("## Result\n\nRevenue was 12.7 billion in the quarter.\n")
+
+    def test_unlinked_number_redispatches_writer_only_without_a_round(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"writer": [self.BAD]})
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "PENDING_APPROVAL"
+        assert st["budget"]["used"]["rounds"] == 1
+        assert len(dispatch.calls_of("writer")) == 2
+        # model and extractor were not re-run
+        assert len(dispatch.calls_of("model")) == 1
+        sent = dispatch.calls_of("writer")[1].payload["submission_feedback"]
+        assert "lacks an evidence marker" in sent
+        assert st["budget"]["used"]["retries_by_role"][
+            "writer:report_evidence_links"] == 1
+
+    def test_exhausted_retries_fall_through_to_the_gate(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(
+            tmp_path, scripts={"writer": [self.BAD] * 4})
+        orch.run()
+        # retries_max repairs, then the note goes to the gate and fails it
+        assert len(dispatch.calls_of("writer")) >= 4
+        gates_json = statestore.read_json(
+            case_dir / "rounds/round-001/numerical/gates.json")
+        assert not gates_json["passed"]
+
+
 class TestCandidateChangeResetsStreak:
     def test_any_candidate_artifact_change_resets_clean_streak(self, tmp_path):
         # R1: clean review of candidate A (streak 1)
