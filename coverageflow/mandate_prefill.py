@@ -36,9 +36,10 @@ from typing import Any, Callable
 from . import bundle as bundle_mod
 from . import market_data as md
 from . import mandate_check
+from . import prefill_text as pt
 
 REFERENCES = Path(__file__).resolve().parent.parent / "references"
-NOT_AVAILABLE = "not available — enter manually"
+NOT_AVAILABLE = "Not available. Enter manually"
 
 DEFAULT_ERP = 0.05
 DEFAULT_DEBT_SPREAD = 0.015
@@ -48,6 +49,7 @@ BETA_RANGE = (0.3, 2.5)
 TAX_SANE = (0.05, 0.35)
 MARGIN_WIDEN = 0.05
 MAX_PEERS = 5
+LABEL = {"ev_ebitda": "EV/EBITDA", "p_e_ttm": "P/E", "p_s": "P/S"}
 
 # Fallback segment growth bounds (the repo's existing defaults); companyfacts
 # carries no segment-dimensioned history, so these are used and labelled as such.
@@ -157,12 +159,20 @@ def suggest_peers_by_sic(cik: str, ticker: str, fetch: Fetch, n: int = MAX_PEERS
             "sha256": md._sha(raw)}
 
 
-def _peer_row(tk: str, cutoff: str, fetch: Fetch) -> tuple[dict, dict]:
-    """(row, provenance-by-field) for one peer, or raise PrefillError."""
+def _peer_row(tk: str, cutoff: str, fetch: Fetch,
+              step: Callable[[str], None] | None = None) -> tuple[dict, dict]:
+    """(row, provenance-by-field) for one peer, or raise PrefillError.
+
+    ``step(kind)`` is called with "price" then "filings" before each download.
+    """
     cik = bundle_mod.resolve_ticker(tk, fetch)
     if not cik:
         raise PrefillError("no CIK in the SEC ticker index")
+    if step:
+        step("price")
     px = md.daily_close(tk, cutoff, fetch)
+    if step:
+        step("filings")
     f = md.fundamentals(cik, cutoff, fetch)
     m = f["metrics"]
     mult = multiples(px["price"], m)
@@ -179,13 +189,14 @@ def _peer_row(tk: str, cutoff: str, fetch: Fetch) -> tuple[dict, dict]:
         inputs[k] = {"value": v["value"], "tag": v["tag"], "as_of": v["as_of"],
                      "filed": v["filed"], "basis": v["basis"]}
     prov = {}
-    basis = {"ev_ebitda": "(price x diluted shares + debt - cash) / (TTM operating income + TTM D&A)",
-             "p_e_ttm": "price / (TTM net income attributable / diluted shares)",
-             "p_s": "price x diluted shares / TTM revenue",
-             "rev_growth_yoy": "latest fiscal year revenue / prior fiscal year - 1"}
+    basis = {"ev_ebitda": "Enterprise value (price × diluted shares + debt − cash) divided by "
+                          "trailing twelve months operating income plus depreciation and amortisation.",
+             "p_e_ttm": "Price divided by trailing twelve months earnings per diluted share.",
+             "p_s": "Market value of equity (price × diluted shares) divided by trailing twelve months revenue.",
+             "rev_growth_yoy": "Latest fiscal-year revenue over the prior fiscal year, minus 1."}
     for k in ("ev_ebitda", "p_e_ttm", "p_s", "rev_growth_yoy"):
         if row[k] is None:
-            prov[k] = _entry(None, "none", f"{NOT_AVAILABLE} (inputs missing or earnings not positive)")
+            prov[k] = _entry(None, "none", f"{NOT_AVAILABLE} (inputs missing or earnings not positive).")
         else:
             prov[k] = _entry(row[k], "derived", basis[k], url=f["url"], as_of=px["date"],
                              sha256=f["sha256"], inputs=inputs)
@@ -219,13 +230,33 @@ def multiples(price: float, m: dict) -> dict:
 def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
                     peers: list[str] | None = None, *, erp: float = DEFAULT_ERP,
                     debt_spread: float = DEFAULT_DEBT_SPREAD, period: str = "fy2026q3",
-                    references_dir: Path | None = None) -> dict:
-    """Build a proposed mandate for ``ticker`` as of ``cutoff`` (YYYY-MM-DD)."""
+                    references_dir: Path | None = None,
+                    progress: Callable[[int, int, str], None] | None = None) -> dict:
+    """Build a proposed mandate for ``ticker`` as of ``cutoff`` (YYYY-MM-DD).
+
+    ``progress(step, total, label)`` is called before each network step (a
+    download or a group of cached lookups); ``total`` is known up front from
+    the peer list and only shrinks when a suggested peer list comes back short.
+    """
     from . import cli
     from .orchestrator import new_case_id
 
     ticker = ticker.strip().upper()
     fetch = _Cached(fetch or md.default_fetch())
+    sets = load_peer_sets(references_dir)
+    given = ([p.strip().upper() for p in peers if p.strip()] if peers
+             else sets.get(ticker))
+    given = [t for t in given if t != ticker] if given is not None else None
+    # own: index, price, filings; SIC suggestion (1 step) when no peer list;
+    # each peer: price + filings; then risk-free and two weekly-price series.
+    plan = {"n": 0, "total": 3 + (0 if given is not None else 1)
+            + 2 * (len(given) if given is not None else MAX_PEERS) + 3}
+
+    def step(label: str) -> None:
+        plan["n"] += 1
+        if progress:
+            progress(plan["n"], plan["total"], label)
+
     case_id = new_case_id(ticker, period, cutoff)
     m = cli.default_mandate(case_id, ticker, cutoff)
     a = m["assumptions"]
@@ -235,9 +266,10 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
 
     def miss(path: str, why: str = "") -> None:
         missing.append(path)
-        prov[path] = _entry(None, "none", NOT_AVAILABLE + (f" ({why})" if why else ""))
+        prov[path] = _entry(None, "none", NOT_AVAILABLE + (f" ({why})" if why else "") + ".")
 
     cik = None
+    step(f"Resolving {ticker} in the SEC ticker index")
     try:
         cik = bundle_mod.resolve_ticker(ticker, fetch)
     except Exception as exc:
@@ -245,22 +277,23 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
     if not cik:
         raise PrefillError(f"{ticker}: not found in the SEC ticker index (check the symbol)")
     m["cik"] = cik
-    prov["cik"] = _entry(cik, "sec:company_tickers", "exact ticker match in the SEC ticker index",
+    prov["cik"] = _entry(cik, "sec:company_tickers", "Exact ticker match in the SEC ticker index.",
                          url="https://www.sec.gov/files/company_tickers.json", as_of=cutoff)
-    prov["assumptions.as_of"] = _entry(cutoff, "mandate", "the mandate cutoff date")
+    prov["assumptions.as_of"] = _entry(cutoff, "mandate", "The mandate cutoff date.")
 
     # ---- price ----------------------------------------------------------
     price = None
+    step(f"Price for {ticker}")
     try:
         price = md.daily_close(ticker, cutoff, fetch)
         a["market"] = {"as_of": price["date"], "price": _round(price["price"], 4),
                        "note": f"closing price from {price['source']}; as-of <= cutoff"}
         prov["assumptions.market.price"] = _entry(
             _round(price["price"], 4), price["source"],
-            f"last daily close on or before {cutoff}", url=price["url"],
+            "Last close on or before the cutoff.", url=price["url"],
             as_of=price["date"], sha256=price["sha256"])
         prov["assumptions.market.as_of"] = _entry(price["date"], price["source"],
-                                                  "date of that close (never after the cutoff)",
+                                                  "Date of that close, never after the cutoff.",
                                                   url=price["url"], as_of=price["date"],
                                                   sha256=price["sha256"])
         for f in price["failures"]:
@@ -272,40 +305,47 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
 
     # ---- own fundamentals ------------------------------------------------
     own = None
+    step(f"SEC filings for {ticker}")
     try:
         own = md.fundamentals(cik, cutoff, fetch)
     except Exception as exc:
         warnings.append(f"{ticker} fundamentals: {exc}")
 
     # ---- peers -------------------------------------------------------------
-    sets = load_peer_sets(references_dir)
     peer_src: tuple[str, str, dict] | None = None
     if peers:
         names = [p.strip().upper() for p in peers if p.strip()]
-        peer_src = ("user", "peers given on the command line / form", {})
+        peer_src = ("user", "Peers entered by you.", {})
     elif ticker in sets:
         names = sets[ticker]
-        peer_src = ("references/peer-sets.json", f"curated peer list for {ticker}", {})
+        peer_src = ("references/peer-sets.json", f"Curated peer list for {ticker}.", {})
     else:
+        step(f"Finding same-industry peers for {ticker} in EDGAR")
         try:
             s = suggest_peers_by_sic(cik, ticker, fetch)
             names = s["tickers"]
             peer_src = (f"sec:sic-{s['sic']}",
-                        f"same-SIC ({s['sic']}) companies in EDGAR, first {len(names)} by "
-                        "SEC ticker-index order; coarse, review before use",
+                        f"Companies with the same SIC code ({s['sic']}) in EDGAR, first "
+                        f"{len(names)} in SEC ticker-index order. The grouping is coarse, "
+                        "so review it before use.",
                         {"url": s["url"], "sha256": s["sha256"]})
         except Exception as exc:
             names = []
             warnings.append(f"peer suggestion by SIC failed: {exc}")
+        plan["total"] = plan["n"] + 2 * len([t for t in names if t != ticker]) + 3
     rows: list[dict] = []
     row_prov: list[dict] = []
     used: list[str] = []
-    for tk in names:
-        if tk == ticker:
-            continue
+    todo = [t for t in names if t != ticker]
+    for i, tk in enumerate(todo, 1):
+        def peer_step(kind: str, tk=tk, i=i) -> None:
+            step(f"Price for {tk}" if kind == "price"
+                 else f"SEC filings for {tk} ({i} of {len(todo)} peers)")
+        before = plan["n"]
         try:
-            row, pv = _peer_row(tk, cutoff, fetch)
+            row, pv = _peer_row(tk, cutoff, fetch, peer_step)
         except Exception as exc:
+            plan["total"] -= 2 - (plan["n"] - before)   # steps this peer never reached
             warnings.append(f"peer {tk} skipped: {exc}")
             continue
         flags = [k for k in ("ev_ebitda", "p_e_ttm", "p_s") if row[k] is None]
@@ -337,7 +377,8 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
         a["exit_multiple_ebitda"] = _round(statistics.median(evs), 1)
         prov["assumptions.exit_multiple_ebitda"] = _entry(
             a["exit_multiple_ebitda"], "derived",
-            f"median peer EV/EBITDA ({len(evs)} peer(s): {', '.join(map(str, evs))})",
+            f"Median peer EV/EBITDA of {len(evs)} peer{'s' if len(evs) != 1 else ''} "
+            f"({pt.number_list(evs)}).",
             as_of=cutoff)
     else:
         a["exit_multiple_ebitda"] = None
@@ -350,29 +391,35 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
         if len(vals) >= 2:
             band[key] = [min(vals), max(vals)]
             prov[path] = _entry(band[key], "derived",
-                                f"min and max of {len(vals)} peer {col} values", as_of=cutoff)
+                                f"Lowest and highest of {len(vals)} peer {LABEL[col]} values.", as_of=cutoff)
         else:
             miss(path, "needs at least 2 peer values")
     a["own_band"] = band
 
     # ---- tax, margins, bounds ---------------------------------------------
     a["tax_rate"] = DEFAULT_TAX
-    prov["assumptions.tax_rate"] = _entry(DEFAULT_TAX, "default", "statutory US 21% default; "
-                                          "effective rate not computable from filed data")
+    prov["assumptions.tax_rate"] = _entry(
+        DEFAULT_TAX, "default", f"Statutory {pt.pct_short(DEFAULT_TAX)}. The effective rate "
+        "could not be computed from filed data.")
     hist = (own or {}).get("history") or {}
     etr = hist.get("effective_tax_rate")
     if etr and TAX_SANE[0] <= etr["value"] <= TAX_SANE[1]:
         a["tax_rate"] = _round(etr["value"], 3)
         prov["assumptions.tax_rate"] = _entry(
-            a["tax_rate"], "derived", etr["basis"], url=own["url"], as_of=etr["as_of"],
+            a["tax_rate"], "derived",
+            f"Effective rate for the year to {pt.day(etr['as_of'])}: income tax divided by "
+            f"pre-tax income = {pt.pct(etr['value'], 1)}.",
+            url=own["url"], as_of=etr["as_of"],
             sha256=own["sha256"])
     elif etr:
         prov["assumptions.tax_rate"]["basis"] = (
-            f"statutory 21% default; effective rate {etr['value']:.3f} ({etr['basis']}) "
-            f"outside the sane range {TAX_SANE}")
+            f"Statutory {pt.pct_short(DEFAULT_TAX)}. The effective rate for the year to "
+            f"{pt.day(etr['as_of'])} ({pt.pct(etr['value'], 1)}) is outside the "
+            f"{pt.pct_short(TAX_SANE[0], 0)[:-1]}–{pt.pct_short(TAX_SANE[1], 0)} range, "
+            "so it is not used.")
     a["terminal_growth"] = DEFAULT_TERMINAL_GROWTH
     prov["assumptions.terminal_growth"] = _entry(
-        DEFAULT_TERMINAL_GROWTH, "default", "long-run policy default (2.5%)")
+        DEFAULT_TERMINAL_GROWTH, "default", f"Long-run policy default.")
 
     fb = a["forecast_bounds"]
     gm = hist.get("gross_margin") or []
@@ -381,45 +428,50 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
         lo = max(0.0, _round(min(vals) - MARGIN_WIDEN, 2))
         hi = min(1.0, _round(max(vals) + MARGIN_WIDEN, 2))
         fb["margin_floor_gross"], fb["margin_ceiling_gross"] = lo, hi
-        basis = (f"fiscal-year gross margin range {min(vals):.3f}..{max(vals):.3f} "
-                 f"({gm[0][0]}..{gm[-1][0]}) widened by {MARGIN_WIDEN:.2f}")
+        basis = (f"Fiscal-year range {pt.pct(min(vals), 1)}–{pt.pct(max(vals), 1)} "
+                 f"({pt.year(gm[0][0])}–{pt.year(gm[-1][0])}), widened by "
+                 f"{pt.points(MARGIN_WIDEN)}.")
         for k, v in (("margin_floor_gross", lo), ("margin_ceiling_gross", hi)):
             prov[f"assumptions.forecast_bounds.{k}"] = _entry(
                 v, "derived", basis, url=own["url"], as_of=gm[-1][0], sha256=own["sha256"])
     else:
         for k in ("margin_floor_gross", "margin_ceiling_gross"):
             prov[f"assumptions.forecast_bounds.{k}"] = _entry(
-                fb[k], "default", "existing default; gross margin history not available "
-                "from companyfacts (review)")
+                fb[k], "default", "Existing default. Gross margin history is not available "
+                "in SEC filings data, so review it.")
     segs = KNOWN_SEGMENT_BOUNDS.get(ticker)
     growth = hist.get("revenue_growth") or []
-    ctx = (f"; consolidated FY revenue growth was {min(g for _, g in growth):.3f}.."
-           f"{max(g for _, g in growth):.3f} (context only)") if growth else ""
+    ctx = (f" Consolidated fiscal-year revenue growth ranged from "
+           f"{pt.pct(min(g for _, g in growth), 1)} to {pt.pct(max(g for _, g in growth), 1)} "
+           "(context only).") if growth else ""
     if segs:
         fb["segments"] = copy.deepcopy(segs)
         for name, b in segs.items():
             prov[f"assumptions.forecast_bounds.segments.{name}"] = _entry(
-                b, "default", f"existing default bounds for {ticker}; segment history is not "
-                f"in SEC companyfacts (no dimensioned facts){ctx}")
+                b, "default", f"Existing default bounds for {ticker}. Segment history is not "
+                f"in SEC filings data.{ctx}")
     else:
         fb["segments"] = {}
         miss("assumptions.forecast_bounds.segments",
              "no default segment set for this ticker; segment history is not in companyfacts")
     for k in ("dcf_comps_tolerance", "terminal_tolerance", "nwc_pct_incremental"):
-        prov[f"assumptions.{k}"] = _entry(a[k], "default", "existing default, unchanged")
+        prov[f"assumptions.{k}"] = _entry(a[k], "default", "Existing default, unchanged.")
     prov["assumptions.rating_bands"] = _entry(a["rating_bands"], "default",
-                                              "existing default bands (buy +15%, sell -10%)")
+                                              "Existing default bands: buy at +15%, sell at -10%.")
 
     # ---- WACC ---------------------------------------------------------------
     a["wacc"] = None
     wacc_why = []
     rf = beta_info = None
+    step("US Treasury 10-year yield")
     try:
         rf = md.risk_free(cutoff, fetch)
     except Exception as exc:
         wacc_why.append(f"risk-free: {exc}")
     try:
+        step(f"Two years of weekly prices for the {md.BENCHMARK} benchmark")
         bench = md.weekly_closes(md.BENCHMARK, cutoff, fetch)
+        step(f"Two years of weekly prices for {ticker}, for beta")
         stock = md.weekly_closes(ticker, cutoff, fetch)
         beta_info = md.regress_beta(stock["series"], bench["series"])
         beta_info.update(stock=stock, bench=bench)
@@ -459,9 +511,12 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
         }
         prov["assumptions.wacc"] = _entry(
             a["wacc"], "derived",
-            f"CAPM: Ke = rf {rf['rate']:.4f} + beta {beta:.2f} x ERP {erp:.3f}; "
-            f"Kd = rf + {debt_spread:.3f} spread, after {tax:.0%} tax; weights by market cap "
-            "and total debt" + ("; beta clamped to " + str(BETA_RANGE) if clamped else ""),
+            f"CAPM. Risk-free rate {pt.pct(rf['rate'])} + {beta:.2f} beta × "
+            f"{pt.pct(erp, 1)} risk premium = {pt.pct_short(ke)} cost of equity; "
+            f"cost of debt {pt.pct(kd_pre)} before {pt.pct_short(tax)} tax; weighted by "
+            "market value of equity and total debt."
+            + (f" Beta clamped from {raw_beta:.2f} to {beta:.2f} "
+               f"(allowed range {BETA_RANGE[0]}–{BETA_RANGE[1]})." if clamped else ""),
             url=rf["url"], as_of=cutoff, inputs=inputs)
         if clamped:
             warnings.append(f"beta {raw_beta:.2f} clamped to {beta:.2f}")
@@ -474,8 +529,8 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
         a["sensitivity"] = cli._mandate_assumption_extras(
             a["wacc"], a["terminal_growth"], cutoff)["sensitivity"]
         prov["assumptions.sensitivity"] = _entry(
-            a["sensitivity"], "derived", "grid centred on the proposed WACC and terminal growth "
-            "(+/- 2 and 4 points WACC, +/- 1 and 2 points growth)", as_of=cutoff)
+            a["sensitivity"], "derived", "Grid centred on the proposed WACC and terminal growth "
+            "(±2 and 4 points of WACC, ±1 and 2 points of growth).", as_of=cutoff)
 
     m["status"] = "proposed"
     m["proposed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
