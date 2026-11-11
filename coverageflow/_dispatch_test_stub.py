@@ -274,6 +274,7 @@ def _default_generator_lead(payload: dict) -> dict:
 
 def _default_critic(critic_role: str) -> Callable[[dict], dict]:
     def build(payload: dict) -> dict:
+        # finding_id here is the LEDGER id (fnd-NNNN) the carried row exposes
         carried = payload.get("carried_findings", [])
         artifacts = payload.get("candidate_artifacts", {}) or {}
         resolutions = []
@@ -282,6 +283,7 @@ def _default_critic(critic_role: str) -> Callable[[dict], dict]:
                 "finding_id": f["finding_id"],
                 "resolved": True,
                 "verified_evidence": _resolve_evidence(f, artifacts),
+                "check_performed": "stub: re-inspected the repaired artifact",
             })
         return {
             "role": critic_role,
