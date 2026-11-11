@@ -2026,8 +2026,18 @@ class Orchestrator:
         return path.stat().st_size if path.is_file() else None
 
     def _area_carried(self, role: str) -> list[dict]:
-        """The blocking findings this critic raised, with their ledger ids."""
-        return [f for f in self._carried() if f.get("source_critic") == role]
+        """The blocking findings this critic raised, with their ledger ids.
+
+        A finding with no critic source (a hand-seeded rehearsal finding) is
+        nobody's by origin; critic_c1 takes it so exactly one critic must
+        verify it. Gate findings are closed by their gate, not by a critic.
+        """
+        out = []
+        for f in self._carried():
+            src = f.get("source_critic")
+            if src == role or (role == "critic_c1" and not src):
+                out.append(f)
+        return out
 
     def _run_merge_and_decide(self, state: dict, budget: budget_mod.BudgetTracker,
                               arts: Arts) -> None:

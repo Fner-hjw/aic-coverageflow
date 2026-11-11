@@ -186,3 +186,13 @@ class TestCards:
         ver = pa.parse_role_card(root / "prompts" / "writer.md")["version"]
         assert set(re.findall(r'prompt_version\("([^"]+)"\)', text)) == {ver}
         assert set(re.findall(r'"prompt_version":"([^"]+)"', text)) == {ver}
+
+
+class TestOrphanFindings:
+    def test_a_finding_with_no_critic_source_goes_to_c1_only(self, tmp_path):
+        orch, *_ = build_env(tmp_path)
+        orch.ledger().open_finding({"severity": "major", "summary": "seeded",
+                                    "affected_artifacts": ["report.md"],
+                                    "dedup_key": "demo"}, round=1)
+        assert len(orch._area_carried("critic_c1")) == 1
+        assert orch._area_carried("critic_c2") == []
