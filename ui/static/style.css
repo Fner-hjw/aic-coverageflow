@@ -2376,16 +2376,29 @@ button.btn:disabled[aria-busy="true"] { opacity: .8; cursor: progress; }
 .update-banner[hidden] { display: none; }
 .update-banner strong { color: var(--ink); }
 
-/* bundle cards (replace the cramped table) ------------------------------ */
-.bundle-list { display: grid; gap: 10px; }
-.bundle-card { padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 8px; background: #fff;
-               display: grid; gap: 8px; }
-.bundle-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.bundle-card-head strong { font-size: 14px; overflow-wrap: anywhere; }
-.bundle-badge { font-size: 10.5px; font-weight: 620; color: var(--ink-3); padding: 2px 7px;
-                border: 1px solid var(--hairline-2); border-radius: 999px; white-space: nowrap; }
-.bundle-card-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
-.bundle-card .bundle-actions { justify-content: flex-start; padding-top: 8px; border-top: 1px solid var(--hairline); }
-@media (min-width: 1000px) {
-  .bundle-layout > :last-child { align-self: start; position: sticky; top: 16px; }
+/* bundle library (casebook style, full width) -------------------------- */
+.bundle-library { margin-top: 20px; }
+.bundle-columns, .bundle-row {
+  grid-template-columns: minmax(220px, 1.3fr) minmax(150px, 1fr) minmax(170px, 1fr)
+                         minmax(130px, .8fr) 262px;
+}
+.bundle-row {
+  display: grid; column-gap: 20px; align-items: center;
+  min-height: 76px; padding: 14px 24px; border-bottom: 1px solid var(--hairline);
+}
+.bundle-row:last-child { border-bottom: 0; }
+.bundle-row:hover { background: #f7faf2; box-shadow: inset 3px 0 var(--signal); }
+.bundle-row .ticker-tile { width: 42px; height: 42px; font-size: 11px; }
+.bundle-row .case-identity { grid-template-columns: 42px minmax(0, 1fr); }
+.bundle-cell { display: grid; gap: 3px; min-width: 0; }
+.bundle-cell strong { font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.bundle-cell span { color: var(--ink-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bundle-cell .bundle-hash { color: var(--ink); font: 12px var(--mono); }
+.bundle-readonly { justify-self: end; color: var(--ink-3); font-size: 11px; }
+.bundle-row .bundle-actions { justify-content: flex-end; flex-wrap: nowrap; }
+.bundle-row .bundle-actions input { width: 130px; }
+@media (max-width: 1180px) {
+  .bundle-columns { display: none; }
+  .bundle-row { grid-template-columns: minmax(200px, 1.4fr) minmax(140px, 1fr); row-gap: 12px; }
+  .bundle-row .bundle-actions, .bundle-readonly { grid-column: 1 / -1; justify-content: flex-start; justify-self: start; }
 }

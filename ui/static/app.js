@@ -2610,6 +2610,48 @@ function filingDatePicker(label, initialValue = "") {
 
 /* ----------------------------------------------- bundle builder ---------- */
 
+/* Frozen-bundle library: same casebook styling as the dashboard queue. */
+function bundleLibrary(list, actionsFor) {
+  const bundles = list.ok ? [...list.data.bundles] : [];
+  const panel = h("section", { class: "queue-panel bundle-library" },
+    h("header", { class: "queue-head" },
+      h("div", null, h("span", { class: "kicker" }, "Library"), h("h2", null, "Frozen bundles")),
+      h("span", { class: "queue-count" }, `${bundles.length} on disk`)));
+  if (!bundles.length) {
+    panel.append(emptyState("No bundles", "Create one from the search results above."));
+    return panel;
+  }
+  panel.append(h("div", { class: "queue-columns bundle-columns", "aria-hidden": "true" },
+    ["Bundle", "Contents", "Coverage", "Integrity", ""].map(t => h("span", null, t))));
+  bundles.sort((x, y) => (Number(!!y.editable) - Number(!!x.editable))
+    || String(y.as_of_cutoff).localeCompare(String(x.as_of_cutoff)));
+  panel.append(h("div", { class: "queue-list" }, ...bundles.map(b => {
+    const docs = b.documents || [];
+    const ticker = String((docs[0] || {}).doc_id || b.bundle_id).split("-")[0].toUpperCase();
+    const forms = {};
+    docs.forEach(d => { const f = d.form || "Other"; forms[f] = (forms[f] || 0) + 1; });
+    const mix = Object.entries(forms).sort((x, y) => y[1] - x[1]).slice(0, 4)
+      .map(([f, n]) => `${n} × ${f}`).join(" · ");
+    const filed = docs.map(d => d.filed).filter(Boolean).sort();
+    const origin = b.parent_bundle ? `Updated from ${b.parent_bundle}`
+      : b.editable ? "Frozen in this workspace" : "Built-in sample";
+    return h("div", { class: "bundle-row" },
+      h("div", { class: "case-identity" },
+        h("span", { class: "ticker-tile" }, ticker.slice(0, 4)),
+        h("div", null, h("strong", null, b.bundle_id), h("span", { class: "case-id" }, origin))),
+      h("div", { class: "bundle-cell" },
+        h("strong", null, `${docs.length} documents`), h("span", null, mix || "No documents")),
+      h("div", { class: "bundle-cell" },
+        h("strong", null, `Cutoff ${b.as_of_cutoff}`),
+        h("span", null, filed.length ? `Filed ${filed[0]} → ${filed[filed.length - 1]}` : "")),
+      h("div", { class: "bundle-cell" },
+        h("span", { class: "bundle-hash", title: b.bundle_sha256 }, (b.bundle_sha256 || "").slice(0, 16) + "…"),
+        h("span", null, "SHA-256")),
+      b.editable ? actionsFor(b) : h("span", { class: "bundle-readonly" }, "Read-only"));
+  })));
+  return panel;
+}
+
 Views.bundles = async function bundles(view) {
   CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
   document.title = "Source bundles | CoverageFlow";
@@ -2862,38 +2904,24 @@ Views.bundles = async function bundles(view) {
     routeHead("Source intake", "Source bundles",
       "Find filings, choose the documents, and freeze a hashed snapshot."),
     h("div", { class: "two-col bundle-layout" },
-      h("div", null,
-        labeledPanel("1. Search EDGAR by ticker",
-          h("div", { class: "form-grid" },
-            h("label", { class: "f" }, h("span", null, "Ticker"), tickerIn),
-            h("label", { class: "f" }, h("span", null, "Forms"), formsIn),
-            h("div", { class: "f filing-date-label" }, h("span", null, "Filed from"), filedFrom.root),
-            h("div", { class: "f filing-date-label" }, h("span", null, "Filed to"), filedTo.root)),
-          h("div", { class: "actions" },
-            h("button", { class: "btn primary", onclick: search }, "Search filings")),
-          note, results),
-        labeledPanel("2. Snapshot selection",
-          updateBanner,
-          chosenBox,
-          h("div", { class: "form-grid mt2" },
-            h("label", { class: "f" }, h("span", null, "CIK"), cikIn),
-            h("label", { class: "f" }, h("span", null, "Bundle name"), nameIn)),
-          h("div", { class: "actions" },
-            freezeBtn))),
-      labeledPanel("3. Frozen bundles on disk",
-        list.ok && list.data.bundles.length ? h("div", { class: "bundle-list" },
-          ...[...list.data.bundles].sort((x, y) => (Number(!!y.editable) - Number(!!x.editable)) || String(y.as_of_cutoff).localeCompare(String(x.as_of_cutoff))).map(b =>
-            h("article", { class: "bundle-card" },
-              h("div", { class: "bundle-card-head" },
-                h("strong", { class: "id" }, b.bundle_id),
-                b.editable ? null : h("span", { class: "bundle-badge", title: "Ships with the project; read-only" }, "Built-in"),
-                b.parent_bundle ? h("span", { class: "bundle-badge", title: `Created by updating ${b.parent_bundle}` }, `from ${b.parent_bundle}`) : null),
-              h("div", { class: "bundle-card-meta" },
-                h("span", null, `${b.documents.length} documents`),
-                h("span", null, `Cutoff ${b.as_of_cutoff}`),
-                h("span", { class: "id", title: b.bundle_sha256 }, `SHA ${(b.bundle_sha256 || "").slice(0, 10)}…`)),
-              b.editable ? bundleActions(b) : null)))
-          : emptyState("No bundles", "Create one from the search results."))));
+      labeledPanel("1. Search EDGAR by ticker",
+        h("div", { class: "form-grid" },
+          h("label", { class: "f" }, h("span", null, "Ticker"), tickerIn),
+          h("label", { class: "f" }, h("span", null, "Forms"), formsIn),
+          h("div", { class: "f filing-date-label" }, h("span", null, "Filed from"), filedFrom.root),
+          h("div", { class: "f filing-date-label" }, h("span", null, "Filed to"), filedTo.root)),
+        h("div", { class: "actions" },
+          h("button", { class: "btn primary", onclick: search }, "Search filings")),
+        note, results),
+      labeledPanel("2. Snapshot selection",
+        updateBanner,
+        chosenBox,
+        h("div", { class: "form-grid mt2" },
+          h("label", { class: "f" }, h("span", null, "CIK"), cikIn),
+          h("label", { class: "f" }, h("span", null, "Bundle name"), nameIn)),
+        h("div", { class: "actions" },
+          freezeBtn))),
+    bundleLibrary(list, bundleActions));
   paintChosen();
 };
 
