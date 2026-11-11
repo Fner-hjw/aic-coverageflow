@@ -147,7 +147,8 @@ def assembled_prompt_sha256(prompt: str) -> str:
 # The first element of the list is the header line naming the columns. The
 # citation fields a critic needs to verify evidence (doc_id, slice_id,
 # locator) are kept; the per-fact ``confidence`` and the free-text citation
-# ``anchor`` are not rendered. A literal "|" inside a cell is written as "/"
+# ``anchor`` are not rendered, and a slice_id that starts with ``<doc_id>/`` is
+# shown without that prefix (``IS`` for ``intc-10q-2026q3/IS``). A literal "|" inside a cell is written as "/"
 # and line breaks as a space, so a row always splits into exactly 7 cells.
 FACT_COLUMNS = ("field", "period", "value", "unit", "doc_id", "slice_id", "locator")
 FACT_HEADER = "|".join(FACT_COLUMNS)
@@ -164,10 +165,13 @@ def _cell(value) -> str:
 
 def render_fact_row(fact: dict) -> str:
     cite = fact.get("citation") if isinstance(fact.get("citation"), dict) else {}
+    doc_id, slice_id = cite.get("doc_id"), cite.get("slice_id")
+    if isinstance(doc_id, str) and isinstance(slice_id, str) \
+            and slice_id.startswith(doc_id + "/"):
+        slice_id = slice_id[len(doc_id) + 1:]    # "intc-10q/IS" -> "IS"
     return "|".join(_cell(v) for v in (
         fact.get("field"), fact.get("period"), fact.get("value"),
-        fact.get("unit"), cite.get("doc_id"), cite.get("slice_id"),
-        cite.get("locator")))
+        fact.get("unit"), doc_id, slice_id, cite.get("locator")))
 
 
 def _is_fact(obj) -> bool:

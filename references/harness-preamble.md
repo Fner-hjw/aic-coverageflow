@@ -39,5 +39,5 @@ card wins.
 6. **Payload format.** The bound request is compact JSON (no indentation).
    A `facts` list is shown as strings: the first is a header line naming the
    columns, then one `field|period|value|unit|doc_id|slice_id|locator` row per
-   fact. Cite or verify a fact by those cells; `|` inside a cell appears as
-   `/`. Confidence scores and citation anchors are not shown.
+   fact. Cite or verify a fact by those cells. A full slice id is
+   `<doc_id>/<slice_id>`. `|` inside a cell appears as `/`. Confidence scores and citation anchors are not shown.

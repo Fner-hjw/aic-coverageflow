@@ -254,6 +254,6 @@ class TestCompactPayload:
         out = pa._canonical_request_json({"a": {"facts": [fact]}})
         assert "\n" not in out and ": " not in out
         assert pa.FACT_HEADER in out
-        assert ("income_statement.revenue|2026-Q3|16513|USDmm|d1|d1/IS|line 3/x"
+        assert ("income_statement.revenue|2026-Q3|16513|USDmm|d1|IS|line 3/x"
                 in out)
         assert "confidence" not in out
