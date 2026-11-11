@@ -423,11 +423,13 @@ def test_renamed_segment_abbreviations_map_to_the_canonical_series():
     """
     from coverageflow import model_engine as me
 
-    per_period, global_alias = me._rule_index(me.load_mapping("1.0"))
+    mapping = me.load_mapping("1.0")
+    per_period, global_alias = me._rule_index(mapping)
+    slugs, aliases = me.mapping_segment_slugs(mapping), me._alias_table(mapping)
     for name in ("CCG", "CCPG", "Client Computing Group",
                  "Client Computing and Physical AI Group"):
         assert me._canonical_segment_field(
-            name, "revenue", "2026-Q3", per_period, global_alias
+            name, "revenue", "2026-Q3", per_period, global_alias, slugs, aliases
         ) == "segments.ccg.revenue", name
 
 

@@ -1055,6 +1055,13 @@ class Orchestrator:
                 inline_text=(stage == "extractor"))
         if stage in ("model", "writer", "candidate"):
             out["facts"] = self._lazy(arts, arts.rel("generator", "facts.json"))
+        if stage == "model":
+            # the segments the proposal must cover, from the mapping table
+            from coverageflow import model_engine as me
+            mapping = me.load_mapping(
+                self.load()["config_versions"]["mapping_tables"],
+                ticker=self.mandate().get("ticker"))
+            out["segment_slugs"] = me.mapping_segment_slugs(mapping)
         if stage in ("writer", "candidate"):
             out["forecast"] = self._lazy(arts, arts.rel("generator",
                                                         "forecast_assumptions.json"))
@@ -1225,6 +1232,8 @@ class Orchestrator:
                                           or statestore.sha256_json(forecast))
         model["candidate_id"] = state["candidate"]["candidate_id"]
         model["cutoff"] = mandate["cutoff_date"]
+        from coverageflow.model_engine import period_ends_from_manifest
+        model["period_ends"] = period_ends_from_manifest(self.input_manifest())
         try:
             valuation = self.gate_engine.value_fn(
                 model, forecast, mandate["assumptions"])

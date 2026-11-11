@@ -1,7 +1,7 @@
 """TDD smoke + style tests for export_xlsx.
 
 Builds the model on the same valuation fixture (hand-known numbers: FY2025
-revenue 52,000; 2026-Q3 revenue 13,500; DCF per share exit-multiple 9.5495)
+revenue 52,000; 2026-Q3 revenue 13,500; DCF per share exit-multiple 2.5569)
 and exports the 5-tab institutional workbook.
 """
 
@@ -87,10 +87,11 @@ def test_dcf_tab_has_projection_and_market_vs_intrinsic(workbook):
                   "PV", "Terminal value", "Enterprise value", "Equity value",
                   "per diluted share", "Market vs. intrinsic"):
         assert label.lower() in flat.lower(), f"DCF tab missing label: {label}"
-    # hand-computed DCF outputs present (exit per-share 9.5495, Gordon 6.8439)
-    assert _find(ws, 9.5495, rel=1e-3), "exit-multiple per-share value missing"
-    assert _find(ws, 6.8439, rel=1e-3), "Gordon per-share value missing"
-    assert _find(ws, 12603.515, rel=1e-3), "PV sum missing"
+    # DCF outputs present (valuation_engine@2.0 fixture; the hand math lives in
+    # test_valuation.py: exit per-share 2.5569, Gordon 0.3168, PV of FCF 6,850.3)
+    assert _find(ws, 2.5569, rel=1e-3), "exit-multiple per-share value missing"
+    assert _find(ws, 0.3168, rel=1e-3), "Gordon per-share value missing"
+    assert _find(ws, 6850.311, rel=1e-3), "PV sum missing"
 
 
 def test_dcf_tab_displays_unavailable_cross_check(tmp_path):
@@ -199,7 +200,10 @@ class TestCoverageNoteTellsTheTruth:
     """
 
     def _export(self, tmp_path, model):
-        valuation = value_company(model, Forecast.from_payload(FORECAST),
+        # value the full model: with no fiscal year and no year-to-date pair
+        # the engine (correctly) has no base period
+        full = build_model(Facts.from_payload(valuation_payload()), "1.0")
+        valuation = value_company(full, Forecast.from_payload(FORECAST),
                                   Assumptions.from_payload(ASSUMPTIONS))
         out = export_model_xlsx(model, valuation, tmp_path / "model.xlsx")
         return openpyxl.load_workbook(out)["Statements Model"]

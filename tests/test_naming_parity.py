@@ -13,7 +13,7 @@ Segment conventions are additionally pinned:
   - mandate/forecast_bounds keys are the case-sensitive schema names
     (CCG, DCAI, NEX, Foundry, Altera, Mobileye);
   - canonical series ids are the lowercase slugs
-    (segments.ccg.revenue, ... per model_engine.SEGMENT_SLUGS);
+    (segments.ccg.revenue, ... per the mapping table);
   - quarterly facts use as-reported full segment names, translated onto the
     canonical ids via references/segment-mapping-v1.json;
   - undistributed remainders live in the optional segments.all_other_* residual
@@ -131,8 +131,8 @@ def test_segment_conventions_documented_and_consistent_with_engine():
     assert mapping["canonical_series"]["segments"] == schema_names
     canonical_slugs = [s.lower() for s in schema_names]
 
-    from coverageflow.model_engine import SEGMENT_SLUGS
-    assert sorted(SEGMENT_SLUGS) == sorted(canonical_slugs), (
+    from coverageflow.model_engine import mapping_segment_slugs
+    assert sorted(mapping_segment_slugs(mapping)) == sorted(canonical_slugs), (
         "model_engine canonical slugs and schema segment names disagree")
 
     # the doc pins both conventions and the translation table

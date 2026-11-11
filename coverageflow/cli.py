@@ -279,6 +279,11 @@ def _mandate_assumption_extras(wacc: float, terminal_growth: float,
     (lo, hi per multiple), sensitivity.{wacc_points,terminal_growth_points}.
     """
     return {
+        "terminal_tolerance": 0.35,
+        "nwc_pct_incremental": 0.0,
+        "rating_bands": {"buy": 0.15, "sell": -0.10,
+                         "note": "upside above buy = Buy, below sell = Sell, "
+                                 "otherwise Hold; null without a market price"},
         "market": {"as_of": as_of, "price": None,
                    "note": "human-owned market data; fill at mandate "
                            "creation (USD per share, as-of <= cutoff)"},

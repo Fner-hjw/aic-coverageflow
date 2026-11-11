@@ -26,23 +26,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ENGINE_NAME = "model_engine@1.0"
-SEGMENT_SLUGS = ["ccg", "dcai", "nex", "foundry", "altera", "mobileye"]
-# Issuers rename segments and the extractor reports the name as printed, so a
-# fact arrives as segments.CCPG.revenue while every consumer reads
-# segments.ccg.revenue. Without this table the segment block is silently empty
-# even though the filing carries the numbers.
-_SEGMENT_ALIASES = {
-    "ccpg": "ccg", "ccg": "ccg",
-    "client computing group": "ccg",
-    "client computing and process engineering group": "ccg",
-    "dcai": "dcai", "data center and ai": "dcai",
-    "data center and artificial intelligence": "dcai",
-    "data center group": "dcai",
-    "nex": "nex", "network and edge": "nex",
-    "intel foundry": "foundry", "foundry": "foundry",
-    "altera": "altera", "programmable solutions": "altera",
-    "mobileye": "mobileye",
-}
 _SEGMENT_FIELD_RE = re.compile(r"^segments\.([A-Za-z0-9 &_'-]+?)\.(revenue|operating_income)$")
 _Q_RE = re.compile(r"^(\d{4})-Q([1-4])$")
 _FY_RE = re.compile(r"^FY(\d{4})$")
@@ -91,11 +74,25 @@ def _normalize_period(raw: str) -> str:
     return p
 
 
+def _infer_ticker(facts: tuple["Fact", ...]) -> str | None:
+    """Ticker from the citations' doc ids (``intc-10q-2026q3`` -> ``intc``).
+
+    Bundle documents are named ``<ticker>-<form>-<period>``; when every cited
+    document agrees on the prefix, that is the issuer. Mixed or absent
+    citations give None (default mapping).
+    """
+    prefixes = {str(f.citation["doc_id"]).split("-")[0].lower()
+                for f in facts
+                if isinstance(f.citation, dict) and f.citation.get("doc_id")}
+    return prefixes.pop() if len(prefixes) == 1 else None
+
+
 @dataclass(frozen=True)
 class Facts:
     facts: tuple[Fact, ...]
     candidate_id: str | None = None
     request_id: str | None = None
+    ticker: str | None = None
 
     @classmethod
     def from_payload(cls, payload: dict | list | None) -> "Facts":
@@ -117,6 +114,7 @@ class Facts:
             facts=facts,
             candidate_id=payload.get("candidate_id"),
             request_id=payload.get("request_id"),
+            ticker=payload.get("ticker") or _infer_ticker(facts),
         )
 
     @property
@@ -170,6 +168,12 @@ class Model:
     candidate_id: str | None = None
     cutoff: str | None = None
     mapping_version: str = "1.0"
+    # canonical segment slugs of this issuer, from its mapping table
+    segment_slugs: list[str] = field(default_factory=list)
+    mapping_file: str | None = None
+    # period label -> period-end date (ISO). Not derivable from facts; the
+    # orchestrator fills it from the input manifest (period_ends_from_manifest).
+    period_ends: dict[str, str] = field(default_factory=dict)
 
     @property
     def periods(self) -> list[str]:
@@ -199,6 +203,9 @@ class Model:
             "cutoff": self.cutoff,
             "series": series_view,
             "mapping_tables": self.mapping_version,
+            "mapping_file": self.mapping_file,
+            "segment_slugs": list(self.segment_slugs),
+            "period_ends": dict(self.period_ends),
             "checks": self.checks,
             # Every derived series states the formula the engine actually
             # applied. Without this the only description of net debt was the
@@ -217,14 +224,72 @@ def _default_mapping_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "references"
 
 
-def load_mapping(mapping_version: str, mapping_dir: Path | None = None) -> dict:
+def slugify(name: str) -> str:
+    """Canonical segment slug: lower case, non-alphanumerics collapsed to _."""
+    return re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
+
+
+def _mapping_path(n: str, mapping_dir: Path | None, ticker: str | None) -> Path:
+    base = mapping_dir or _default_mapping_dir()
+    if ticker:
+        specific = base / f"segment-mapping-{ticker.lower()}-v{n}.json"
+        if specific.is_file():
+            return specific
+    return base / f"segment-mapping-v{n}.json"
+
+
+def load_mapping(mapping_version: str, mapping_dir: Path | None = None,
+                 ticker: str | None = None) -> dict:
+    """Mapping table for *ticker* (``segment-mapping-<ticker>-v<N>.json``),
+    else the default ``segment-mapping-v<N>.json``."""
     m = re.match(r"v?(\d+)", str(mapping_version).strip().lower())
     if not m:
         raise ModelEngineError(f"uninterpretable mapping version: {mapping_version!r}")
-    path = (mapping_dir or _default_mapping_dir()) / f"segment-mapping-v{m.group(1)}.json"
+    path = _mapping_path(m.group(1), mapping_dir, ticker)
     if not path.is_file():
         raise ModelEngineError(f"segment mapping table not found: {path}")
-    return json.loads(path.read_text("utf-8"))
+    data = json.loads(path.read_text("utf-8"))
+    data["_file"] = path.name
+    return data
+
+
+def mapping_segment_slugs(mapping: dict) -> list[str]:
+    """Canonical segment slugs declared by the mapping table."""
+    return [slugify(n) for n in
+            (mapping.get("canonical_series") or {}).get("segments", [])]
+
+
+def _alias_table(mapping: dict) -> dict[str, str]:
+    """Lower-cased as-reported name -> slug, from the table's ``aliases``
+    block plus every direct rule and the canonical names themselves."""
+    out: dict[str, str] = {}
+    for n in (mapping.get("canonical_series") or {}).get("segments", []):
+        out[str(n).strip().lower()] = slugify(n)
+    for name, canon in (mapping.get("aliases") or {}).items():
+        out[str(name).strip().lower()] = slugify(canon)
+    return out
+
+
+def period_ends_from_manifest(manifest: dict) -> dict[str, str]:
+    """Period label -> period-end date from an input manifest.
+
+    10-K ``...-fy2025`` -> ``FY2025``; 10-Q ``...-2026q3`` -> ``2026-Q3`` and
+    ``2026-Q3-YTD`` (a 10-Q's year-to-date columns end on the same date).
+    """
+    out: dict[str, str] = {}
+    for d in (manifest or {}).get("documents", []):
+        end, doc_id = d.get("period"), str(d.get("doc_id", "")).lower()
+        if not end:
+            continue
+        m = re.search(r"-10k-fy(\d{4})$", doc_id)
+        if m:
+            out[f"FY{m.group(1)}"] = end
+            continue
+        m = re.search(r"-10q-(\d{4})q([1-4])$", doc_id)
+        if m:
+            out[f"{m.group(1)}-Q{m.group(2)}"] = end
+            out[f"{m.group(1)}-Q{m.group(2)}-YTD"] = end
+    return out
 
 
 def _rule_index(mapping: dict) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
@@ -245,17 +310,18 @@ def _rule_index(mapping: dict) -> tuple[dict[str, dict[str, str]], dict[str, str
 
 
 def _canonical_segment_field(name: str, measure: str, period: str,
-                             per_period: dict, global_alias: dict) -> str:
+                             per_period: dict, global_alias: dict,
+                             slugs: list[str], aliases: dict[str, str]) -> str:
     norm = name.strip()
-    if norm.lower() in SEGMENT_SLUGS:
+    if norm.lower() in slugs:
         return f"segments.{norm.lower()}.{measure}"
     if "all other" in norm.lower():
         return f"segments.all_other_{measure}"
     canon = per_period.get(period, {}).get(norm) or global_alias.get(norm)
     if canon:
         return f"segments.{canon}.{measure}"
-    # the filing's own name for a segment the model already knows
-    alias = _SEGMENT_ALIASES.get(norm.lower())
+    # the filing's own name for a segment the mapping already knows
+    alias = aliases.get(norm.lower())
     if alias:
         return f"segments.{alias}.{measure}"
     return f"segments.{norm}.{measure}"  # leave untouched (visible, not canonical)
@@ -310,6 +376,8 @@ def build_model(
     required_fields: list[str] | None = None,
     mapping_dir: Path | None = None,
     absolute_tol: float = _ABS_TOL,
+    ticker: str | None = None,
+    period_ends: dict[str, str] | None = None,
 ) -> Model:
     """Build the consistent canonical series from facts. Deterministic, pure.
 
@@ -323,8 +391,11 @@ def build_model(
     if not facts.facts:
         raise MissingFactError("facts payload is empty")
 
-    mapping = load_mapping(mapping_version, mapping_dir) if mapping_version else {}
+    ticker = ticker or facts.ticker
+    mapping = load_mapping(mapping_version, mapping_dir, ticker) if mapping_version else {}
     per_period, global_alias = _rule_index(mapping)
+    slugs = mapping_segment_slugs(mapping)
+    aliases = _alias_table(mapping)
 
     series: dict[str, dict[str, float]] = {}
     for f in facts.facts:
@@ -332,7 +403,7 @@ def build_model(
         m = _SEGMENT_FIELD_RE.match(fld)
         if m:
             fld = _canonical_segment_field(m.group(1), m.group(2), f.period,
-                                           per_period, global_alias)
+                                           per_period, global_alias, slugs, aliases)
         series.setdefault(fld, {})[f.period] = f.value
 
     # ---- required fields -------------------------------------------------
@@ -347,6 +418,9 @@ def build_model(
         candidate_id=candidate_id or facts.candidate_id,
         cutoff=cutoff,
         mapping_version=str(mapping_version),
+        segment_slugs=slugs,
+        mapping_file=mapping.get("_file"),
+        period_ends=dict(period_ends or {}),
     )
 
     _sanity_bounds(model)
@@ -409,9 +483,9 @@ def _reconciliation_checks(model: Model, tol: float) -> None:
         if rev is not None:
             seg_sum = sum(
                 model.series.get(f"segments.{s}.revenue", {}).get(p, 0.0)
-                for s in SEGMENT_SLUGS
+                for s in model.segment_slugs
             )
-            have_all = all(p in model.series.get(f"segments.{s}.revenue", {}) for s in SEGMENT_SLUGS)
+            have_all = all(p in model.series.get(f"segments.{s}.revenue", {}) for s in model.segment_slugs)
             residual = model.series.get("segments.all_other_revenue", {}).get(p, 0.0)
             if have_all and abs(seg_sum + residual - rev) <= tol:
                 seg_check[p] = "ok"
@@ -478,12 +552,12 @@ def _derive_margins(model: Model) -> None:
                 model.series.setdefault(derived, {})[p] = v / rv
         seg_sum = 0.0
         have_seg = False
-        for s in SEGMENT_SLUGS:
+        for s in model.segment_slugs:
             sr = model.series.get(f"segments.{s}.revenue", {}).get(p)
             if sr is not None:
                 seg_sum += sr
                 have_seg = True
-        for s in SEGMENT_SLUGS:
+        for s in model.segment_slugs:
             seg_rev = model.series.get(f"segments.{s}.revenue", {}).get(p)
             seg_oi = model.series.get(f"segments.{s}.operating_income", {}).get(p)
             if seg_rev:

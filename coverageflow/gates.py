@@ -45,6 +45,7 @@ GATE_ORDER = (
     "forecast_bounds",
     "candidate_manifest_integrity",
     "recompute",
+    "terminal_reconciliation",
     "report_evidence_links",
     "controls_conformance",
 )
@@ -338,6 +339,63 @@ def gate_period_coverage(facts: dict, current_period: str,
                               f"trigger filing's slice",
         ))
     return (not findings, findings)
+
+
+# ---------------------------------------------------------------------------
+# terminal value reconciliation (valuation_engine@2.0)
+# ---------------------------------------------------------------------------
+
+def gate_terminal_reconciliation(valuation: dict, mandate: dict) -> tuple[bool, list[dict]]:
+    """Exit-multiple and Gordon terminal values must agree within tolerance.
+
+    Fails when ``dcf.terminal.reconciliation.within`` is false. The tolerance
+    is the engine's (mandate ``terminal_tolerance``); the mandate argument is
+    used only to report it if the artifact lacks one.
+    """
+    term = ((valuation or {}).get("dcf") or {}).get("terminal") or {}
+    rec = term.get("reconciliation")
+    if not isinstance(rec, dict):
+        return False, [_finding(
+            "terminal_reconciliation", "terminal:reconciliation-missing",
+            "valuation.json carries no dcf.terminal.reconciliation block",
+            ["valuation.json"],
+            required_evidence="terminal reconciliation from valuation_engine@2.0")]
+    # Two thresholds. ``terminal_tolerance`` (default 35%) only decides how the
+    # engine forms the target (mean of both terminal values, or Gordon alone).
+    # The gate blocks on ``terminal_gate_ratio_max`` (default 3x): a candidate
+    # whose terminal values differ by more than that, or whose Gordon value is
+    # not positive, is broken, not merely debatable. The exit multiple is a
+    # human mandate input, so blocking on the tight band would stop cases no
+    # agent can repair.
+    assumptions = (mandate or {}).get("assumptions") or {}
+    hard = float(assumptions.get("terminal_gate_ratio_max", 3.0))
+    ratio = rec.get("ratio")
+    if rec.get("within") or (ratio is not None and 1.0 / hard <= ratio <= hard):
+        return True, []
+    tol = f"{hard:.1f}x"
+    tv_exit = (term.get("exit_multiple") or {}).get("terminal_value")
+    tv_g = (term.get("gordon") or {}).get("terminal_value")
+    mult = (term.get("exit_multiple") or {}).get("multiple")
+    g = (term.get("gordon") or {}).get("terminal_growth")
+    imp_mult = term.get("implied_exit_multiple_from_gordon")
+    imp_g = term.get("implied_growth_from_exit")
+
+    def f(v, spec):
+        return "n/a" if v is None else format(v, spec)
+
+    return False, [_finding(
+        "terminal_reconciliation", "terminal:outside-tolerance",
+        f"exit-multiple terminal value {f(tv_exit, ',.0f')} (multiple {f(mult, '.1f')}x) "
+        f"and Gordon terminal value {f(tv_g, ',.0f')} (growth {f(g, '.2%')}) "
+        f"differ: ratio {f(ratio, '.2f')} outside the gate limit {tol}; "
+        f"the Gordon value implies an exit multiple of {f(imp_mult, '.1f')}x and "
+        f"the exit multiple implies terminal growth of {f(imp_g, '.2%')}",
+        ["valuation.json"],
+        required_evidence="terminal assumptions (exit multiple, terminal growth, "
+                          "WACC) that reconcile within the mandate tolerance")]
+
+
+terminal_reconciliation = gate_terminal_reconciliation
 
 
 # ---------------------------------------------------------------------------
@@ -875,6 +933,13 @@ class GateEngine:
                 "recompute", "engine:model-fault",
                 f"model engine failed during recomputation: {exc}",
                 ["model.json"], required_evidence="a runnable model engine")])])
+        # period-end dates come from the input manifest, not the facts; carry
+        # the submitted ones so the recomputed discounting is the same
+        if (model_json or {}).get("period_ends"):
+            if isinstance(model, dict):
+                model["period_ends"] = dict(model_json["period_ends"])
+            elif hasattr(model, "period_ends"):
+                model.period_ends = dict(model_json["period_ends"])
         # series comparison
         submitted = (model_json or {}).get("series", {})
         recomputed = model.get("series", {}) if isinstance(model, dict) else {}
@@ -970,6 +1035,8 @@ class GateEngine:
             return self._schema_findings(ctx.facts)
         if gate == "citation_presence":
             return gate_citation_presence(ctx.facts, manifest=ctx.input_manifest)
+        if gate == "terminal_reconciliation":
+            return gate_terminal_reconciliation(ctx.valuation_json or {}, mandate)
         if gate == "period_coverage":
             return gate_period_coverage(ctx.facts, ctx.current_period or "")
         if gate == "forecast_bounds":

@@ -1,0 +1,71 @@
+{
+ "mapping_version": "1.0",
+ "owner": "A1 runtime (data-only; the model engine interprets this table)",
+ "company": "Advanced Micro Devices, Inc.",
+ "cik": "0000002488",
+ "ticker": "AMD",
+ "canonical_series": {
+  "segments": [
+   "Data Center",
+   "Client and Gaming",
+   "Embedded"
+  ],
+  "measures": [
+   "revenue",
+   "operating_income"
+  ],
+  "coherence": "segment revenue + optional All Other residual should reconcile to income_statement.revenue"
+ },
+ "aliases": {
+  "data center segment": "Data Center",
+  "client and gaming segment": "Client and Gaming",
+  "embedded segment": "Embedded"
+ },
+ "source_documents": {
+  "FY2024": "amd-10k-fy2024",
+  "FY2025": "amd-10k-fy2025",
+  "2025-Q1": "amd-10q-2025q1",
+  "2025-Q2": "amd-10q-2025q2",
+  "2025-Q3": "amd-10q-2025q3",
+  "2026-Q1": "amd-10q-2026q1",
+  "2026-Q2": "amd-10q-2026q2",
+  "2026-Q3": "amd-10q-2026q3"
+ },
+ "periods": {
+  "FY2024": {
+   "doc_id": "amd-10k-fy2024",
+   "as_reported_segments": [
+    "Data Center",
+    "Client",
+    "Gaming",
+    "Embedded",
+    "All Other"
+   ],
+   "notes": "FY2024 10-K reports Client and Gaming separately; the FY2025 10-K recasts prior periods into Client and Gaming. Use the recast figures.",
+   "rules": []
+  },
+  "FY2025": {
+   "doc_id": "amd-10k-fy2025",
+   "as_reported_segments": [
+    "Data Center",
+    "Client and Gaming",
+    "Embedded",
+    "All Other"
+   ],
+   "rules": [
+    {
+     "as_reported": "Data Center",
+     "canonical": "data_center"
+    },
+    {
+     "as_reported": "Client and Gaming",
+     "canonical": "client_and_gaming"
+    },
+    {
+     "as_reported": "Embedded",
+     "canonical": "embedded"
+    }
+   ]
+  }
+ }
+}

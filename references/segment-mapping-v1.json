@@ -3,6 +3,7 @@
  "owner": "A1 runtime (data-only; the model engine interprets this table, it is evolvable via the evolution loop)",
  "company": "Intel Corporation",
  "cik": "0000050863",
+ "ticker": "INTC",
  "canonical_series": {
   "segments": [
    "CCG",
@@ -17,6 +18,18 @@
    "operating_income"
   ],
   "coherence": "segments.revenue + optional residual (all_other/eliminations) should reconcile to income_statement.revenue when the residual facts exist"
+ },
+ "aliases": {
+  "ccpg": "CCG",
+  "client computing group": "CCG",
+  "client computing and process engineering group": "CCG",
+  "data center and ai": "DCAI",
+  "data center and artificial intelligence": "DCAI",
+  "data center group": "DCAI",
+  "network and edge": "NEX",
+  "intel foundry": "Foundry",
+  "programmable solutions": "Altera",
+  "client computing and physical ai group": "CCG"
  },
  "source_documents": {
   "FY2024": "intc-10k-fy2024 (10-K filed 2025-01-31)",

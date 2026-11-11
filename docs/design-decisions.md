@@ -255,3 +255,7 @@ Plus unit + regression test suite, all runnable offline on the replay backend.
 - Cut order if slipping: (1) UI extras beyond core; (2) LaTeX → HTML-only;
   (3) AMD held-out bundle (last resort). Never cut: controller, gates, evidence runs,
   recovery, docs, Git history.
+
+## Valuation engine 2.0
+
+The Gordon terminal value is built on a normalised steady-state cash flow, not on the last forecast year's free cash flow: `NOPAT_H x (1+g) - nwc_pct x revenue_H x g`, with capex equal to depreciation in perpetuity. A build-out horizon (capex above D&A) leaves the final-year free cash flow depressed or negative, and a perpetuity on it would be meaningless. Two thresholds then govern the gap between the exit-multiple and Gordon terminal values. `terminal_tolerance` (35%) only decides how the target is formed: the mean of both methods when they agree within it, Gordon alone when they do not. The hard gate `terminal_reconciliation` is much looser, `terminal_gate_ratio_max` (3x, applied as the band 1/3 to 3), and also fails when the Gordon value is not positive. The exit multiple is a human mandate input, so a tight hard gate would block cases no agent can repair; the gate is kept for candidates whose terminal values are so far apart that the model is broken, not merely debatable.

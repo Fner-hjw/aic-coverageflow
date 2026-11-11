@@ -71,7 +71,7 @@ def make_mini_case(root: Path) -> Path:
             "segments.ccg.operating_income": {"2026-Q3": 1500.0},
         }})
     _write(gen / "valuation.json", {
-        "artifact": "valuation", "engine": "valuation_engine@1.0",
+        "artifact": "valuation", "engine": "valuation_engine@2.0",
         "candidate_id": "cand-0123456789abcd", "cutoff": "2026-10-30",
         "assumptions": {"wacc": 0.104, "terminal_growth": 0.025},
         "dcf": {"base": {"period": "FY2025", "revenue": 52000.0, "fcf": 1200.0},
