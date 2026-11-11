@@ -723,7 +723,8 @@ def build_parser() -> argparse.ArgumentParser:
     approve = add("approve", cmd_approve)
     approve.add_argument("--case", required=True)
     approve.add_argument("--decision", required=True,
-                         choices=["APPROVED", "REJECTED"])
+                         choices=["APPROVED", "REJECTED",
+                                  "PUBLISHED_WITH_EXCEPTIONS"])
     approve.add_argument("--by", required=True)
     approve.add_argument("--reason", default="")
     approve.add_argument("--acknowledge", nargs="*", default=None,

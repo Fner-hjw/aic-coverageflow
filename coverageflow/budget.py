@@ -30,6 +30,9 @@ DEFAULT_LIMITS = {
     # budget it sits next to, or it is not a runaway guard, it is a trap.
     "role_tokens_max": 250000,
     "approval_hours": 48,
+    # stop after this many consecutive reviewed rounds in which the set of
+    # open blocking findings did not shrink
+    "stall_rounds": 2,
 }
 
 # Per-role wall-clock ceilings for one backend invocation, in seconds.
@@ -65,6 +68,7 @@ class Limits:
     case_minutes: float = 45.0
     role_tokens_max: int = 60000
     approval_hours: float = 48.0
+    stall_rounds: int = 2
     # USD caps; None = unlimited. Per-call cap travels in RoleCall.budget
     # ["cost_usd_max"]; per-case cap is checked against used["cost_usd"].
     call_cost_usd_max: float | None = None
@@ -84,7 +88,9 @@ class Limits:
             case_minutes=float(d.get("case_minutes", DEFAULT_LIMITS["case_minutes"])),
             role_tokens_max=int(d.get("role_tokens_max", DEFAULT_LIMITS["role_tokens_max"])),
             approval_hours=float(d.get("approval_hours", DEFAULT_LIMITS["approval_hours"])),
-            call_cost_usd_max=_opt_float(d.get("call_cost_usd_max")),
+            stall_rounds=int(d.get("stall_rounds", DEFAULT_LIMITS["stall_rounds"])),
+            call_cost_usd_max=_opt_float(
+                d.get("call_cost_usd_max", d.get("cost_usd_max"))),
             case_cost_usd_max=_opt_float(d.get("case_cost_usd_max")),
             role_timeouts=timeouts,
         )
@@ -187,6 +193,7 @@ class BudgetTracker:
             "case_minutes": self.limits.case_minutes,
             "role_tokens_max": self.limits.role_tokens_max,
             "approval_hours": self.limits.approval_hours,
+            "stall_rounds": self.limits.stall_rounds,
             "role_timeouts": dict(self.limits.role_timeouts),
             "call_cost_usd_max": self.limits.call_cost_usd_max,
             "case_cost_usd_max": self.limits.case_cost_usd_max,

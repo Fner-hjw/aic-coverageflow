@@ -2159,14 +2159,17 @@ def record_approval(case_id: str, decision: str, by: str,
         _blocked_reapprove = (state["status"] == "BLOCKED"
                               and (state.get("reason") or {}).get("code")
                               == "APPROVAL_EXPIRED" and decision == "APPROVED")
-        if state["status"] != "PENDING_APPROVAL" and not _blocked_reapprove:
+        if state["status"] not in ("PENDING_APPROVAL", "ESCALATED") \
+                and not _blocked_reapprove:
             raise ConflictError(
                 f"case {case_id} is {state['status']}, not "
-                "PENDING_APPROVAL; approval is only recorded at the "
-                "human gate")
-        if decision not in ("APPROVED", "REJECTED"):
+                "PENDING_APPROVAL or ESCALATED; approval is only recorded "
+                "at the human gate")
+        if decision not in ("APPROVED", "REJECTED",
+                            "PUBLISHED_WITH_EXCEPTIONS"):
             raise ValidationError(
-                f"decision must be APPROVED or REJECTED, got: {decision}")
+                "decision must be APPROVED, REJECTED or "
+                f"PUBLISHED_WITH_EXCEPTIONS, got: {decision}")
         if not (by or "").strip():
             raise ValidationError("'by' (approver name) is required")
         dispatch, _bn = _rdispatch_for(case_id,
