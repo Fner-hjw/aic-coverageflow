@@ -314,3 +314,12 @@ class TestBudgetEnforcement:
         result, trace = disp.dispatch_role(build_call(), backend, root=str(tree))
         assert result.ok is False
         assert trace["detail"]["ok"] is False
+
+
+def test_mandate_approval_edits_are_not_file_references(tmp_path):
+    from coverageflow.dispatch import missing_payload_inputs
+    payload = {"mandate": {"approval": {"by": "Analyst", "edits": [
+        {"path": "assumptions.exit_multiple_ebitda", "proposed": 20.1, "final": 15.5}]},
+        "provenance": {"assumptions.wacc": {"path": "assumptions.wacc"}}},
+        "inputs": [{"path": "inputs/missing.htm"}]}
+    assert missing_payload_inputs(payload, tmp_path) == ["inputs/missing.htm (absent)"]

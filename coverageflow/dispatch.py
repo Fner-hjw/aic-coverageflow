@@ -234,7 +234,10 @@ def check_token_cap(call: RoleCall, result: AgentResult) -> str | None:
 # *produce*, not inputs the role must read. Ingest is handed the slicer's
 # anchor candidates before the slices exist, so checking them would block
 # every case at its first stage.
-_NON_REFERENCE_KEYS = frozenset({"anchor_candidates"})
+# Subtrees whose "path" fields are not files: the mandate's approval record
+# lists edited JSON paths ({"path": "assumptions.wacc", ...}) and its
+# provenance map is keyed by JSON path.
+_NON_REFERENCE_KEYS = frozenset({"anchor_candidates", "approval", "provenance"})
 
 
 def _iter_file_refs(node: Any):
