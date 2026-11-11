@@ -2727,13 +2727,13 @@ function bundleLibrary(list, actionsFor) {
     const filed = docs.map(d => d.filed).filter(Boolean).sort();
     const latest = [...docs].sort((x, y) => String(y.filed).localeCompare(String(x.filed)))[0];
     const latestText = latest ? `Latest ${latest.form}${latest.period ? `, period ${latest.period}` : ""}` : "";
-    const origin = b.parent_bundle ? `Updated from ${b.parent_bundle}` : !b.editable ? "Built-in sample" : "";
+    const subline = [latestText, b.parent_bundle ? `updated from ${b.parent_bundle}` : ""].filter(Boolean).join(" · ");
     return h("div", { class: "bundle-row" },
       h("div", { class: "case-identity" },
         h("span", { class: "ticker-tile" }, ticker.slice(0, 4)),
         h("div", null,
-          h("strong", null, b.bundle_id, origin ? h("em", { class: "bundle-origin" }, origin) : null),
-          h("span", { class: "case-id" }, latestText))),
+          h("strong", null, b.bundle_id),
+          h("span", { class: "case-id" }, subline))),
       h("div", { class: "bundle-cell" },
         h("strong", null, `${docs.length} documents`), h("span", null, mix || "No documents")),
       h("div", { class: "bundle-cell" },
@@ -2742,7 +2742,7 @@ function bundleLibrary(list, actionsFor) {
       h("div", { class: "bundle-cell" },
         h("span", { class: "bundle-hash", title: b.bundle_sha256 }, (b.bundle_sha256 || "").slice(0, 16) + "…"),
         h("span", null, "SHA-256")),
-      b.editable ? actionsFor(b) : h("span", { class: "bundle-readonly" }, "Read-only"));
+      b.editable ? actionsFor(b) : h("div", { class: "bundle-readonly" }, h("strong", null, "Built-in sample"), h("span", null, "Read-only")));
   })));
   return panel;
 }

@@ -2394,7 +2394,8 @@ button.btn:disabled[aria-busy="true"] { opacity: .8; cursor: progress; }
 .bundle-cell strong { font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; }
 .bundle-cell span { color: var(--ink-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bundle-cell .bundle-hash { color: var(--ink); font: 12px var(--mono); }
-.bundle-readonly { justify-self: end; color: var(--ink-3); font-size: 11px; }
+.bundle-readonly { justify-self: end; display: grid; gap: 2px; text-align: right; color: var(--ink-3); font-size: 11px; }
+.bundle-readonly strong { color: var(--ink-2); font-size: 12px; font-weight: 620; }
 .bundle-row .bundle-actions { justify-content: flex-end; flex-wrap: nowrap; }
 .bundle-row .bundle-actions input { width: 130px; }
 @media (max-width: 1180px) {
@@ -2406,5 +2407,3 @@ button.btn:disabled[aria-busy="true"] { opacity: .8; cursor: progress; }
 /* form inputs: shadow text is clearly lighter than entered text */
 input::placeholder, textarea::placeholder { color: var(--ink-3); opacity: .8; }
 input.invalid { border-color: var(--major); background: var(--major-wash); }
-.bundle-origin { margin-left: 8px; padding: 1px 7px; font: 620 10px var(--sans); font-style: normal;
-                 color: var(--ink-3); border: 1px solid var(--hairline-2); border-radius: 999px; white-space: nowrap; }
