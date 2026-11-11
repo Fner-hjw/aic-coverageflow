@@ -2628,14 +2628,19 @@ Views.bundles = async function bundles(view) {
     const t = tickerIn.value.trim().toUpperCase();
     if (!t) return;
     const d = new Date();
-    nameIn.value = `${t}-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const stem = `${t}-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const taken = new Set(((list.ok && list.data.bundles) || []).map(b => b.bundle_id.toLowerCase()));
+    let name = stem, n = 2;
+    while (taken.has(name.toLowerCase())) name = `${stem}-v${n++}`;   // e.g. NVDA-2026-11-v2
+    nameIn.value = name;
   }
   const results = h("div", { class: "mt2" });
   const note = h("div");
   const chosen = new Map();   // doc_id -> row
   let cikVal = null;
   const chosenBox = h("div", { class: "panel inset mt2" });
-  let filings = [], filingGroup = "all", filingPage = 0;
+  let filings = [], filingGroup = "all", filingYear = "all", filingPage = 0;
+  let baseBundle = null;   // set while updating an existing bundle with new filings
   const pageSize = 8;
   const groups = [
     ["all", "All filings"], ["reports", "Annual and quarterly"],
@@ -2662,13 +2667,23 @@ Views.bundles = async function bundles(view) {
       results.replaceChildren(emptyState(`No filings found for ${tickerIn.value}`, "Check the ticker, forms, and filed window."));
       return;
     }
-    const matching = filingGroup === "all" ? filings : filings.filter(d => groupFor(d.form) === filingGroup);
+    const yearOf = d => String(d.filed || "").slice(0, 4);
+    const years = [...new Set(filings.map(yearOf).filter(Boolean))].sort().reverse();
+    if (filingYear !== "all" && !years.includes(filingYear)) filingYear = "all";
+    const inYear = filingYear === "all" ? filings : filings.filter(d => yearOf(d) === filingYear);
+    const matching = filingGroup === "all" ? inYear : inYear.filter(d => groupFor(d.form) === filingGroup);
     const pages = Math.max(1, Math.ceil(matching.length / pageSize));
     filingPage = Math.min(filingPage, pages - 1);
     const start = filingPage * pageSize;
+    const yearFilters = h("div", { class: "filing-filters filing-years", role: "group", "aria-label": "Filter filings by year filed" },
+      ...[["all", "All years", filings.length], ...years.map(y => [y, y, filings.filter(d => yearOf(d) === y).length])]
+        .map(([key, label, count]) => h("button", { type: "button", class: "filing-filter" + (filingYear === key ? " active" : ""),
+          "aria-pressed": filingYear === key ? "true" : "false", onclick: () => {
+            filingYear = key; filingPage = 0; paintFilings();
+          } }, label, h("span", null, String(count)))));
     const filters = h("div", { class: "filing-filters", role: "group", "aria-label": "Filter filings by type" },
       ...groups.map(([key, label]) => {
-        const count = key === "all" ? filings.length : filings.filter(d => groupFor(d.form) === key).length;
+        const count = key === "all" ? inYear.length : inYear.filter(d => groupFor(d.form) === key).length;
         return h("button", { type: "button", class: "filing-filter" + (filingGroup === key ? " active" : ""),
           "aria-pressed": filingGroup === key ? "true" : "false", onclick: () => {
             filingGroup = key; filingPage = 0; paintFilings();
@@ -2676,6 +2691,7 @@ Views.bundles = async function bundles(view) {
       }));
     const rows = matching.slice(start, start + pageSize).map(d => {
       const selected = chosen.has(d.doc_id);
+      const inBase = !!baseBundle && baseBundle.documents.some(x => x.doc_id === d.doc_id);
       const meta = [`Filed ${d.filed || "Not available"}`];
       if (d.period) meta.push(`Period ended ${d.period}`);
       if (typeof d.bytes === "number") meta.push(fmt.mb(d.bytes));
@@ -2686,6 +2702,7 @@ Views.bundles = async function bundles(view) {
             h("strong", null, filingName(d.form))),
           h("div", { class: "filing-result-meta" }, ...meta.map(text => h("span", null, text))),
           d.source_url ? h("a", { class: "filing-result-link", href: d.source_url, target: "_blank", rel: "noopener noreferrer" }, "View filing ↗") : null),
+        inBase ? h("span", { class: "filing-in-bundle", title: `Already in ${baseBundle.bundle_id}` }, "In bundle") :
         h("button", { type: "button", class: "btn small filing-select" + (selected ? " selected" : ""),
           "aria-label": `${selected ? "Remove" : "Select"} ${d.form || "filing"} filed ${d.filed || "date unavailable"}`,
           "aria-pressed": selected ? "true" : "false", onclick: () => {
@@ -2704,7 +2721,7 @@ Views.bundles = async function bundles(view) {
       h("p", { class: "hint" }, "No filings in this category.");
     results.replaceChildren(h("div", { class: "filing-results-header" },
       h("div", null, h("strong", null, "Search results"), h("span", null, "Most recent first"))),
-      filters, h("div", { class: "filing-result-list" }, ...rows), paging);
+      yearFilters, filters, h("div", { class: "filing-result-list" }, ...rows), paging);
   }
 
   function paintChosen() {
@@ -2718,7 +2735,27 @@ Views.bundles = async function bundles(view) {
             h("td", { class: "num filing-date-text", "data-label": "Filed" }, d.filed),
             h("td", { class: "bundle-table-action" }, h("button", { class: "btn small danger selected-filing-remove", "aria-label": `Remove ${docId}`,
               onclick: () => { chosen.delete(docId); paintChosen(); paintFilings(); } }, "✕"))))))
-        : emptyState("No documents selected", "Search a ticker and add filings to the snapshot."));
+        : emptyState("No documents selected", baseBundle
+            ? "Select the newly filed documents to add on top of the existing ones."
+            : "Search a ticker and add filings to the snapshot."));
+  }
+
+  const updateBanner = h("div", { class: "update-banner", hidden: "" });
+  function paintBanner() {
+    if (!baseBundle) { updateBanner.hidden = true; updateBanner.replaceChildren(); freezeBtn.textContent = "Freeze bundle →"; return; }
+    updateBanner.hidden = false;
+    updateBanner.replaceChildren(
+      h("span", null, h("strong", null, `Updating ${baseBundle.bundle_id}`),
+        ` · ${baseBundle.documents.length} existing documents are carried over unchanged. Pick the new filings to add.`),
+      h("button", { type: "button", class: "btn small", onclick: () => { baseBundle = null; paintBanner(); paintChosen(); if (filings.length) paintFilings(); } }, "Cancel update"));
+    freezeBtn.textContent = "Create updated bundle →";
+  }
+  function startUpdate(b) {
+    baseBundle = b; nameTouched = false; nameIn.value = "";
+    tickerIn.value = String((b.documents[0] || {}).doc_id || b.bundle_id).split("-")[0].toUpperCase();
+    paintBanner(); paintChosen();
+    tickerIn.scrollIntoView({ behavior: "smooth", block: "center" });
+    return search();
   }
 
   async function search() {
@@ -2743,7 +2780,7 @@ Views.bundles = async function bundles(view) {
       ? "Showing recent filings from the SEC." : r.data.note;
     note.replaceChildren(sourceNote ? h("p", { class: "hint" }, sourceNote) : null);
     filings = [...r.data.filings].sort((a, b) => String(b.filed || "").localeCompare(String(a.filed || "")));
-    filingGroup = "all"; filingPage = 0;
+    filingGroup = "all"; filingYear = "all"; filingPage = 0;
     paintFilings();
   }
 
@@ -2755,6 +2792,7 @@ Views.bundles = async function bundles(view) {
     if (!b.editable) return h("span", { class: "muted", title: "Built-in bundles are read-only" }, "Built-in");
     const cell = h("div", { class: "bundle-actions" });
     const idle = () => cell.replaceChildren(
+      h("button", { class: "btn small", "aria-label": `Update ${b.bundle_id} with new filings`, onclick: () => startUpdate(b) }, "Update"),
       h("button", { class: "btn small", "aria-label": `Rename ${b.bundle_id}`, onclick: askRename }, "Rename"),
       h("button", { class: "btn small danger", "aria-label": `Delete ${b.bundle_id}`, onclick: askDelete }, "Delete"));
     function askDelete() {
@@ -2799,17 +2837,21 @@ Views.bundles = async function bundles(view) {
     freezeBtn.replaceChildren(h("span", { class: "spinner btn-spinner" }), " Freezing…");
     const progress = h("div", { class: "freeze-progress", role: "status" },
       h("div", { class: "freeze-bar" }, h("div", { class: "freeze-bar-fill" })),
-      h("span", { class: "hint" }, `Hashing ${chosen.size} document${chosen.size === 1 ? "" : "s"} and writing the snapshot. This can take a minute.`));
+      h("span", { class: "hint" }, baseBundle
+        ? `Downloading ${chosen.size} new filing${chosen.size === 1 ? "" : "s"} and re-checking ${baseBundle.documents.length} existing documents. This can take a minute.`
+        : `Downloading and hashing ${chosen.size} document${chosen.size === 1 ? "" : "s"}. This can take a minute.`));
     freezeBtn.parentElement.after(progress);
     const restore = () => {
       progress.remove();
       freezeBtn.disabled = false;
       freezeBtn.removeAttribute("aria-busy");
-      freezeBtn.replaceChildren("Freeze bundle →");
+      freezeBtn.replaceChildren(baseBundle ? "Create updated bundle →" : "Freeze bundle →");
     };
-    const r = await guard(() => Api.post("/api/bundles", {
-      cik: cikIn.value, docs: [...chosen.values()].map(d => d.accession ? d : d.doc_id), name: nameIn.value || undefined,
-    }), "snapshot failed");
+    const docs = [...chosen.values()].map(d => d.accession ? d : d.doc_id);
+    const r = await guard(() => baseBundle
+      ? Api.post(`/api/bundles/${encodeURIComponent(baseBundle.bundle_id)}/extend`, { docs, name: nameIn.value || undefined })
+      : Api.post("/api/bundles", { cik: cikIn.value, docs, name: nameIn.value || undefined }),
+      baseBundle ? "Could not update bundle" : "snapshot failed");
     if (!r.ok) { restore(); return; }
     toast("Bundle frozen", `${r.data.bundle_id}, ${r.data.documents.length} documents, ${r.data.bundle_sha256.slice(0, 18)}…`);
     chosen.clear(); paintChosen();
@@ -2831,6 +2873,7 @@ Views.bundles = async function bundles(view) {
             h("button", { class: "btn primary", onclick: search }, "Search filings")),
           note, results),
         labeledPanel("2. Snapshot selection",
+          updateBanner,
           chosenBox,
           h("div", { class: "form-grid mt2" },
             h("label", { class: "f" }, h("span", null, "CIK"), cikIn),
