@@ -1,0 +1,644 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coverageflow.local/schemas/mandate-schema.json",
+  "title": "CoverageFlow mandate.json",
+  "description": "Authoritative definition of mandate.json (human-owned, dated, immutable once a case is created). Custom keyword x-live-required marks fields a live (non-stub) backend needs; x-human-owned marks values that only a human may set or accept. A mandate with status 'proposed' (automatic prefill, not yet accepted) may carry nulls where market data was unavailable; every other mandate must carry real numbers for the core valuation assumptions. Validated by coverageflow/mandate_check.py (stdlib subset of draft 2020-12).",
+  "type": "object",
+  "required": [
+    "mandate_id",
+    "case_id",
+    "ticker",
+    "cutoff_date",
+    "report_policy",
+    "assumptions",
+    "limits",
+    "schema_version"
+  ],
+  "properties": {
+    "mandate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ticker": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$"
+    },
+    "cik": {
+      "type": "string",
+      "pattern": "^(\\d{1,10}|unknown)$",
+      "description": "10-digit zero-padded SEC CIK; the UI may send 'unknown'"
+    },
+    "cutoff_date": {
+      "$ref": "#/$defs/date"
+    },
+    "trigger_document": {
+      "type": "string",
+      "minLength": 1,
+      "description": "doc_id of the filing that triggered the update; set at case creation"
+    },
+    "report_policy": {
+      "type": "object",
+      "required": [
+        "length_words",
+        "sections"
+      ],
+      "properties": {
+        "note_type": {
+          "type": "string"
+        },
+        "length_words": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "number",
+              "minimum": 0
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "assumptions": {
+      "$ref": "#/$defs/assumptions"
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "accepted"
+      ],
+      "description": "absent = legacy hand-written mandate (treated as accepted). 'proposed' = automatic prefill awaiting human review: nothing may run on it."
+    },
+    "proposed_at": {
+      "type": "string"
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "json-paths the prefill could not fetch; enter manually"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/provenance_entry"
+      },
+      "description": "json-path (dotted, list indices as numbers) -> where the value came from"
+    },
+    "approval": {
+      "$ref": "#/$defs/approval"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "proposed"
+          }
+        }
+      },
+      "then": {},
+      "else": {
+        "properties": {
+          "assumptions": {
+            "required": [
+              "wacc",
+              "terminal_growth",
+              "exit_multiple_ebitda",
+              "tax_rate"
+            ],
+            "properties": {
+              "wacc": {
+                "type": "number"
+              },
+              "terminal_growth": {
+                "type": "number"
+              },
+              "exit_multiple_ebitda": {
+                "type": "number"
+              },
+              "tax_rate": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "accepted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "approval"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "bounds_pair": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max]"
+    },
+    "multiples_pair": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[lo, hi]"
+    },
+    "assumptions": {
+      "type": "object",
+      "required": [
+        "as_of",
+        "wacc",
+        "terminal_growth",
+        "exit_multiple_ebitda",
+        "tax_rate"
+      ],
+      "properties": {
+        "as_of": {
+          "$ref": "#/$defs/date"
+        },
+        "wacc": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "x-human-owned": true,
+          "description": "discount rate, fraction (0.104 = 10.4%); wizard plausible band [0.01, 0.30]"
+        },
+        "terminal_growth": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "x-human-owned": true,
+          "description": "must be below wacc"
+        },
+        "exit_multiple_ebitda": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "x-human-owned": true,
+          "description": "positive EV/EBITDA exit multiple"
+        },
+        "discount_convention": {
+          "type": "string",
+          "enum": [
+            "year_end",
+            "mid_year"
+          ],
+          "default": "year_end"
+        },
+        "tax_rate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "x-human-owned": true,
+          "description": "required by the valuation engine (unlevered FCF)"
+        },
+        "forecast_bounds": {
+          "type": "object",
+          "properties": {
+            "segments": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/bounds_pair"
+              },
+              "description": "segment -> [min, max] annual growth"
+            },
+            "margin_floor_gross": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "margin_ceiling_gross": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "operating_margin_floor": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "optional; bounds an operating_margin_path if the forecast has one"
+            },
+            "operating_margin_ceiling": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "capex_pct_bounds": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "[lo, hi] capex as fraction of revenue"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "peer_block": {
+          "type": "object",
+          "x-live-required": true,
+          "properties": {
+            "as_of": {
+              "$ref": "#/$defs/date"
+            },
+            "peers": {
+              "type": "array",
+              "x-live-required": "at least one peer with ev_ebitda, p_e_ttm or p_s",
+              "items": {
+                "$ref": "#/$defs/peer"
+              }
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        "dcf_comps_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 0.25
+        },
+        "terminal_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 0.35,
+          "description": "band within which both terminal values are averaged"
+        },
+        "terminal_gate_ratio_max": {
+          "type": "number",
+          "exclusiveMinimum": 1,
+          "default": 3.0,
+          "description": "gate blocks if the two terminal values differ by more than this ratio"
+        },
+        "nwc_pct_incremental": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": 0.0
+        },
+        "rating_bands": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "buy": {
+              "type": "number"
+            },
+            "sell": {
+              "type": "number"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "description": "upside above buy = Buy, below sell = Sell, else Hold (defaults +0.15 / -0.10)"
+        },
+        "market": {
+          "type": "object",
+          "x-live-required": true,
+          "x-human-owned": true,
+          "properties": {
+            "as_of": {
+              "$ref": "#/$defs/date"
+            },
+            "price": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "exclusiveMinimum": 0,
+              "x-live-required": "positive USD price per share with as_of <= cutoff"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        "own_band": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "as_of": {
+              "$ref": "#/$defs/date"
+            },
+            "ev_ebitda": {
+              "$ref": "#/$defs/multiples_pair"
+            },
+            "p_e": {
+              "$ref": "#/$defs/multiples_pair"
+            },
+            "p_s": {
+              "$ref": "#/$defs/multiples_pair"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        "sensitivity": {
+          "type": "object",
+          "properties": {
+            "wacc_points": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 1
+            },
+            "terminal_growth_points": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 1
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "peer": {
+      "type": "object",
+      "required": [
+        "ticker"
+      ],
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ev_ebitda": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p_e_ttm": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rev_growth_yoy": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "notional_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "role_tokens_max": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 250000
+        },
+        "case_minutes": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 45
+        },
+        "rounds_max": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4
+        },
+        "retries_max": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3
+        },
+        "approval_hours": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 48
+        },
+        "stall_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "case_cost_usd_max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "call_cost_usd_max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cost_usd_max": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "legacy alias of call_cost_usd_max"
+        },
+        "role_timeouts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "description": "seconds per role (default, ingest, extractor, model, writer, critic)"
+        }
+      }
+    },
+    "provenance_entry": {
+      "type": "object",
+      "required": [
+        "source",
+        "basis"
+      ],
+      "properties": {
+        "value": {},
+        "source": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "as_of": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "basis": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "description": "derived values: every input with its own source/url/as_of/sha256"
+        },
+        "edited": {
+          "type": "boolean"
+        },
+        "final": {}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "required": [
+        "by",
+        "at",
+        "edits"
+      ],
+      "properties": {
+        "by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string"
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "proposed",
+              "final"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "proposed": {},
+              "final": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

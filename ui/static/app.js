@@ -1847,6 +1847,8 @@ Views.newCase = async function newCase(view, fromId) {
     tax: h("input", { type: "number", step: "0.01", value: "0.15", class: "num" }),
     mfloor: h("input", { type: "number", step: "0.01", value: "0.30", class: "num" }),
     mceil: h("input", { type: "number", step: "0.01", value: "0.55", class: "num" }),
+    price: h("input", { type: "number", step: "0.01", value: "", class: "num", placeholder: "USD" }),
+    pfPeers: h("input", { type: "text", value: "", placeholder: "Peers, optional (AMD, NVDA)" }),
     idWarn: h("div", { class: "hint" }),
   };
   const SECTIONS = ["Summary", "Results", "Segment detail", "Outlook", "Valuation", "Risks"];
@@ -1854,6 +1856,93 @@ Views.newCase = async function newCase(view, fromId) {
   if (src) {
     /* a restart must never collide with its source case id */
     W.period.value = (fromId.split("-")[1] || "fy2027q1") + "-r2";
+  }
+
+  /* ---- market-data prefill ------------------------------------------------
+   * The server proposes (price, peers, WACC inputs) with provenance; the human
+   * reviews and edits. Each field shows its source and as-of date, a changed
+   * field is marked "edited", and submitting the form is the acceptance. */
+  let PREFILL = null;
+  const PF_FIELDS = {
+    wacc: ["assumptions.wacc", "wacc"], tg: ["assumptions.terminal_growth", "tg"],
+    exit: ["assumptions.exit_multiple_ebitda", "exit"], tax: ["assumptions.tax_rate", "tax"],
+    mfloor: ["assumptions.forecast_bounds.margin_floor_gross", "mfloor"],
+    mceil: ["assumptions.forecast_bounds.margin_ceiling_gross", "mceil"],
+    price: ["assumptions.market.price", "price"],
+  };
+  const pfCaps = {};
+  for (const k of Object.keys(PF_FIELDS))
+    pfCaps[k] = h("small", { class: "hint pf-caption", "data-pf": k });
+  const pfStatus = h("div", { class: "pf-status", role: "status" });
+  const pfSummary = h("div", { class: "hint pf-summary" });
+
+  function pfGet(path) {
+    let node = PREFILL;
+    for (const part of path.split(".")) {
+      if (node == null) return undefined;
+      node = node[part];
+    }
+    return node;
+  }
+
+  function pfMark() {
+    if (!PREFILL) return;
+    for (const [k, [path]] of Object.entries(PF_FIELDS)) {
+      const e = (PREFILL.provenance || {})[path];
+      const cap = pfCaps[k];
+      cap.replaceChildren();
+      if (!e) continue;
+      const proposed = e.value;
+      const cur = num(W[k].value);
+      const edited = proposed == null ? cur != null : cur !== proposed;
+      if (proposed == null)
+        cap.append("Not available. Enter manually. ");
+      else
+        cap.append(`${e.source}${e.as_of ? ", as of " + e.as_of : ""}. ${e.basis}. `);
+      if (edited) cap.append(h("span", { class: "chip minor" }, "edited"));
+    }
+  }
+
+  async function runPrefill() {
+    pfStatus.replaceChildren(h("span", { class: "hint" }, "Fetching market data..."));
+    const body = { ticker: W.ticker.value, cutoff_date: W.cutoff.value,
+                   peers: W.pfPeers.value };
+    if (!body.ticker) {
+      pfStatus.replaceChildren(h("div", { class: "err-box" },
+        "Choose a bundle with a ticker first."));
+      return;
+    }
+    const r = await guard(() => Api.post("/api/mandate/prefill", body), "prefill failed");
+    if (!r.ok) {
+      const d = r.err && r.err.detail;
+      pfStatus.replaceChildren(h("div", { class: "err-box" },
+        (d && (d.error || d.message)) || "Prefill failed. Enter the values by hand."));
+      return;
+    }
+    PREFILL = r.data;
+    applyMandate({ mandate: PREFILL });
+    if (PREFILL.assumptions.market && PREFILL.assumptions.market.price != null)
+      W.price.value = String(PREFILL.assumptions.market.price);
+    else W.price.value = "";
+    for (const k of ["wacc", "tg", "exit"]) {
+      const v = pfGet(PF_FIELDS[k][0]);
+      if (v == null) W[k].value = "";
+    }
+    const miss = PREFILL.missing || [];
+    pfStatus.replaceChildren(
+      h("div", { class: "ok-box" },
+        h("b", null, "Proposal loaded. Nothing is saved yet."),
+        h("p", { class: "mb0" }, "Review every value and its source, edit what you disagree with, then create the case. Creating the case accepts the form as you leave it and records your edits.")),
+      miss.length ? h("div", { class: "err-box" }, h("b", null, "Not available, enter manually"),
+        h("ul", null, ...miss.map(m => h("li", null, m)))) : null,
+      (PREFILL.warnings || []).length ? h("details", null, h("summary", null, "Warnings"),
+        h("ul", null, ...PREFILL.warnings.map(w => h("li", null, w)))) : null);
+    const peerSrc = (PREFILL.provenance || {})["assumptions.peer_block.peers"];
+    pfSummary.replaceChildren(
+      peerSrc ? `Peers: ${peerSrc.source}. ${peerSrc.basis}. ` : "Peers: none found. ",
+      "Peer multiples, own band, and the sensitivity grid come from the proposal; hover a field in the JSON preview for the stored values.");
+    pfMark();
+    sync();
   }
 
   const rawBox = h("textarea", { class: "code", rows: "22", readonly: "readonly" });
@@ -1890,7 +1979,7 @@ Views.newCase = async function newCase(view, fromId) {
     const cells = {};
     const labels = { ticker: "Ticker", pe: "P/E TTM", evebitda: "EV/EBITDA", ps: "P/S", growth: "Revenue growth YoY" };
     for (const key of ["ticker", "pe", "evebitda", "ps", "growth"]) {
-      cells[key] = h("input", { type: "text", value: String(v[key === "pe" ? "pe" : key] || ""),
+      cells[key] = h("input", { type: "text", value: String(v[key] ?? ""),
         class: key === "ticker" ? "" : "num", "aria-label": labels[key] });
       cells[key].addEventListener("input", sync);
     }
@@ -1900,6 +1989,7 @@ Views.newCase = async function newCase(view, fromId) {
       h("td", { class: "editor-remove" }, del));
     tr.dataset.cells = "1";
     tr._cells = cells;
+    tr._note = v.note;
     peersRows.append(tr);
   }
 
@@ -1957,7 +2047,7 @@ Views.newCase = async function newCase(view, fromId) {
       segAdd({ name, min, max });
     for (const p of ((A.peer_block || {}).peers) || []) peerAdd({
       ticker: p.ticker, pe: p.p_e_ttm, evebitda: p.ev_ebitda,
-      ps: p.p_s, growth: p.rev_growth_yoy });
+      ps: p.p_s, growth: p.rev_growth_yoy, note: p.notional_note });
     for (const chip of $$("[data-secchip]"))
       chip.classList.toggle("accent", sectionState.get(chip.dataset.secchip));
     sync();
@@ -2040,6 +2130,14 @@ Views.newCase = async function newCase(view, fromId) {
 
   function num(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
 
+  function pfPayload() {
+    if (!PREFILL) return {};
+    const A = PREFILL.assumptions || {};
+    const market = { ...(A.market || {}), price: num(W.price.value) };
+    if (num(W.price.value) !== (A.market || {}).price) market.as_of = W.cutoff.value;
+    return { market, own_band: A.own_band, sensitivity: A.sensitivity };
+  }
+
   function payload() {
     const segs = {};
     for (const tr of segRows.children) {
@@ -2051,7 +2149,7 @@ Views.newCase = async function newCase(view, fromId) {
       return { ticker: c.ticker.value.trim() || null, p_e_ttm: num(c.pe.value),
         ev_ebitda: num(c.evebitda.value), p_s: num(c.ps.value),
         rev_growth_yoy: num(c.growth.value),
-        notional_note: "filled at mandate creation" };
+        notional_note: tr._note || "filled at mandate creation" };
     }).filter(p => p.ticker);
     return {
       ticker: W.ticker.value, cik: W.cik.value, period: W.period.value,
@@ -2071,11 +2169,14 @@ Views.newCase = async function newCase(view, fromId) {
           margin_ceiling_gross: num(W.mceil.value) },
         peer_block: { as_of: W.cutoff.value, peers },
         dcf_comps_tolerance: DCT,
+        ...pfPayload(),
       },
+      ...(PREFILL ? { prefill: { proposal: PREFILL } } : {}),
     };
   }
 
   function sync() {
+    pfMark();
     rawBox.value = JSON.stringify(payload(), null, 2);
     tickerDisplay.textContent = W.ticker.value || "Not available";
     cikDisplay.textContent = W.cik.value || (identityLoading ? "Looking up CIK..." : "Not available");
@@ -2127,7 +2228,7 @@ Views.newCase = async function newCase(view, fromId) {
   W.bundle.addEventListener("change", () => { void deriveIdent({ bundleChanged: true }); });
   W.cutoff.addEventListener("change", paintDocs);
   for (const el of [W.period, W.noteType, W.wordsMin, W.wordsMax,
-    W.wacc, W.tg, W.exit, W.tax, W.mfloor, W.mceil])
+    W.wacc, W.tg, W.exit, W.tax, W.mfloor, W.mceil, W.price])
     el.addEventListener("input", sync);
 
   async function submit() {
@@ -2197,15 +2298,23 @@ Views.newCase = async function newCase(view, fromId) {
         label("min words", W.wordsMin), label("max words", W.wordsMax)),
       h("label", { class: "label mt2" }, "Sections. Click to toggle."), secChips),
     h("fieldset", null, h("legend", null, "Valuation assumptions"),
+      h("div", { class: "row wrap pf-bar" },
+        h("button", { class: "btn", type: "button", onclick: () => { void runPrefill(); } },
+          "Prefill from market data"),
+        W.pfPeers,
+        h("span", { class: "hint" }, "Fetches price, peers, beta, and the risk-free rate with sources. You still review and accept.")),
+      pfStatus,
       h("p", { class: "hint mb2" },
         "These are constraints, not forecasts. The model engine keeps projected figures inside the segment bounds and margin range. ",
         "The DCF is checked against the peer block, and the critic verifies every figure against the filings. ",
         "Start from the desk profile above or neutral defaults. Change only the assumptions you can support. ",
         "Acceptance depends on the gates and two clean critic reviews, not on these inputs being treated as correct."),
       h("div", { class: "form-grid" },
-        label("WACC", W.wacc), label("terminal growth", W.tg),
-        label("exit multiple (EBITDA)", W.exit), label("tax rate", W.tax),
-        label("gross margin floor", W.mfloor), label("gross margin ceiling", W.mceil)),
+        label("WACC", W.wacc, "wacc"), label("terminal growth", W.tg, "tg"),
+        label("exit multiple (EBITDA)", W.exit, "exit"), label("tax rate", W.tax, "tax"),
+        label("gross margin floor", W.mfloor, "mfloor"), label("gross margin ceiling", W.mceil, "mceil"),
+        label("share price at cutoff (USD)", W.price, "price")),
+      pfSummary,
       h("label", { class: "label mt3" }, "Forecast bounds per segment (growth min–max)"),
       h("table", { class: "grid editor segment-editor" },
         h("thead", null, h("tr", null, h("th", null, "Segment"),
@@ -2240,9 +2349,10 @@ Views.newCase = async function newCase(view, fromId) {
     W.trigger.value = M.trigger_document;
   sync();
 
-  function label(text, el) {
+  function label(text, el, pfKey) {
     const caption = text ? text[0].toUpperCase() + text.slice(1) : text;
-    return h("label", { class: "f" }, h("span", null, caption), el);
+    return h("label", { class: "f" }, h("span", null, caption), el,
+      pfKey ? pfCaps[pfKey] : null);
   }
 };
 

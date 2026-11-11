@@ -20,7 +20,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import gates, statestore
+from . import gates, mandate_check, mandate_prefill, statestore
 from . import bundle as bundle_mod
 from . import registry as registry_mod
 from .orchestrator import (Orchestrator, missing_input_documents,
@@ -242,6 +242,14 @@ def cmd_case_new(args, ws: Path) -> int:
     mandate = default_mandate(case_id, args.ticker, args.cutoff)
     if args.mandate:
         mandate = statestore.read_json(Path(args.mandate))
+        _require_usable_mandate(mandate, "create a case from it")
+        if mandate.get("status") == "accepted":
+            # an accepted prefill is drafted before the case id is known
+            mandate["case_id"] = case_id
+            mandate["mandate_id"] = f"man-{case_id}"
+            mandate.setdefault("trigger_document", args.trigger_doc)
+    else:
+        _require_usable_mandate(mandate, "create a case from it")
     # The backend is pinned at creation. An unspecified backend means the
     # offline stub, and the case then says so for good: a later run cannot
     # swap it without --override-backend.
@@ -274,6 +282,28 @@ def cmd_case_new(args, ws: Path) -> int:
             "note": "the bundle's filings are copied into the case inputs; "
                     "overrides: --manifest / --mandate / --bundle"})
     return 0
+
+
+def _require_usable_mandate(mandate: dict, what: str) -> None:
+    """Refuse a proposed prefill and any mandate the shared schema rejects."""
+    try:
+        mandate_check.refuse_unaccepted(mandate, what)
+    except mandate_check.UnacceptedMandateError as exc:
+        raise SystemExit(str(exc))
+    problems = mandate_check.schema_errors(mandate)
+    if problems:
+        raise SystemExit("mandate does not match references/mandate-schema.json:\n  - "
+                         + "\n  - ".join(problems))
+
+
+def _require_accepted_case_mandate(case_dir: Path) -> None:
+    path = case_dir / "mandate.json"
+    if path.is_file():
+        try:
+            mandate_check.refuse_unaccepted(
+                statestore.read_json(path), f"run case {case_dir.name}")
+        except mandate_check.UnacceptedMandateError as exc:
+            raise SystemExit(str(exc))
 
 
 LIVE_MANDATE_EXAMPLE = """\
@@ -396,6 +426,56 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
     }
 
 
+def cmd_case_prefill(args, ws: Path) -> int:
+    """case prefill TICKER --cutoff D [--peers A,B] [--erp X]: write a proposal."""
+    peers = [p for p in (args.peers or "").split(",") if p.strip()] or None
+    try:
+        proposal = mandate_prefill.propose_mandate(
+            args.ticker, args.cutoff, peers=peers, erp=args.erp,
+            debt_spread=args.spread, period=args.period)
+    except mandate_prefill.PrefillError as exc:
+        raise SystemExit(f"case prefill failed: {exc}")
+    dest = mandate_prefill.draft_location(ws, args.ticker, args.cutoff, args.period)
+    path = mandate_prefill.write_json(dest / "mandate.proposed.json", proposal)
+    print(mandate_prefill.review_table(proposal))
+    print(f"\nwrote {path}\nnext: review it (case review {path.parent}), then "
+          f"`case accept {path.parent} [--set path=value ...]`. Nothing runs on a "
+          "proposed mandate.")
+    return 0
+
+
+def _load_draft(ws: Path, ref: str) -> tuple[Path, dict]:
+    try:
+        path = mandate_prefill.resolve_draft(ws, ref)
+    except mandate_prefill.PrefillError as exc:
+        raise SystemExit(str(exc))
+    return path, statestore.read_json(path)
+
+
+def cmd_case_review(args, ws: Path) -> int:
+    path, proposal = _load_draft(ws, args.draft)
+    print(f"# {path}")
+    print(mandate_prefill.review_table(proposal))
+    return 0
+
+
+def cmd_case_accept(args, ws: Path) -> int:
+    """case accept DRAFT [--set path=value ...]: validate and write mandate.json."""
+    path, proposal = _load_draft(ws, args.draft)
+    try:
+        final = mandate_prefill.accept_mandate(
+            proposal, args.set or [], by=args.by or "human")
+    except mandate_prefill.PrefillError as exc:
+        raise SystemExit(f"case accept refused: {exc}")
+    out = mandate_prefill.write_json(mandate_prefill.accepted_path(path), final)
+    edits = final["approval"]["edits"]
+    _print({"accepted": str(out), "by": final["approval"]["by"],
+            "at": final["approval"]["at"], "edits": edits,
+            "next": f"case new --ticker {final['ticker']} --trigger-doc <doc-id> "
+                    f"--cutoff {final['cutoff_date']} --mandate {out}"})
+    return 0
+
+
 def cmd_case_list(args, ws: Path) -> int:
     cases_root = ws / "cases"
     rows = []
@@ -499,6 +579,7 @@ def _name_to_arg(recorded: str) -> str:
 
 def cmd_run(args, ws: Path) -> int:
     case_dir = _find_case(ws, args.case)
+    _require_accepted_case_mandate(case_dir)
     dispatch, backend_name = _backend_for_existing_case(args, ws, case_dir)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
@@ -541,6 +622,7 @@ def cmd_resume(args, ws: Path) -> int:
     fixture numbers and nothing flagged it, because a stub is a valid backend.
     """
     case_dir = _find_case(ws, args.case)
+    _require_accepted_case_mandate(case_dir)
     dispatch, backend_name = _backend_for_existing_case(args, ws, case_dir)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
@@ -757,6 +839,27 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--stub-engines", action="store_true",
                      help="force offline engine double")
     new.set_defaults(handler=cmd_case_new)
+    prefill = case_sub.add_parser(
+        "prefill", help="propose a mandate from market data (human reviews and accepts)")
+    prefill.add_argument("ticker")
+    prefill.add_argument("--cutoff", required=True, help="YYYY-MM-DD")
+    prefill.add_argument("--peers", default=None, help="comma-separated peer tickers")
+    prefill.add_argument("--erp", type=float, default=mandate_prefill.DEFAULT_ERP,
+                         help="equity risk premium (default 0.05)")
+    prefill.add_argument("--spread", type=float, default=mandate_prefill.DEFAULT_DEBT_SPREAD,
+                         help="pre-tax cost of debt over the risk-free rate (default 0.015)")
+    prefill.add_argument("--period", default="fy2026q3")
+    prefill.set_defaults(handler=cmd_case_prefill)
+    review = case_sub.add_parser("review", help="re-print a proposal's review table")
+    review.add_argument("draft", help="draft dir, mandate.proposed.json, or draft name")
+    review.set_defaults(handler=cmd_case_review)
+    accept = case_sub.add_parser(
+        "accept", help="validate a reviewed proposal and write the final mandate.json")
+    accept.add_argument("draft")
+    accept.add_argument("--set", action="append", metavar="PATH=VALUE",
+                        help="edit a field before accepting (JSON value); repeatable")
+    accept.add_argument("--by", default=None, help="approver label (default: human)")
+    accept.set_defaults(handler=cmd_case_accept)
     listing = case_sub.add_parser("list")
     listing.set_defaults(handler=cmd_case_list)
 

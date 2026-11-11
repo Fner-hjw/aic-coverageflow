@@ -1,0 +1,5 @@
+{
+  "_note": "Per-ticker peer lists used by the mandate prefill when no --peers is given. Human-curated; edit freely. Tickers not listed fall back to a same-SIC suggestion from EDGAR (see docs).",
+  "INTC": ["AMD", "NVDA", "TXN", "QCOM", "MU"],
+  "AMD": ["INTC", "NVDA", "QCOM", "AVGO"]
+}
