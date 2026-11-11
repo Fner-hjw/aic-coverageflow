@@ -93,11 +93,13 @@ function requestErrorText(error) {
 
 function errorNotice(error, ...children) {
   if (error && error.network) {
-    return h("div", { class: "offline-notice", role: "status" },
-      h("span", { class: "offline-dot", "aria-hidden": "true" }),
-      h("div", { class: "offline-copy" },
-        h("strong", null, "Server unavailable"),
-        h("span", null, "Reconnect to CoverageFlow and retry your request.")),
+    return h("div", { class: "offline-notice", role: "status",
+      style: "display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:14px 16px;border:1px solid #e3e8ec;border-radius:10px;background:#fff;color:#51606f;font:13px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" },
+      h("span", { class: "offline-dot", "aria-hidden": "true",
+        style: "width:8px;height:8px;flex:none;border-radius:50%;background:#9a6c14;box-shadow:0 0 0 3px #f7eed8" }),
+      h("div", { class: "offline-copy", style: "display:grid;gap:2px" },
+        h("strong", { style: "color:#1c2733;font-weight:600" }, "Server unavailable"),
+        h("span", { style: "color:#51606f" }, "Reconnect to CoverageFlow and retry your request.")),
       ...children);
   }
   return h("div", { class: "err-box", role: "alert" }, requestErrorText(error), ...children);
@@ -1863,9 +1865,9 @@ Views.newCase = async function newCase(view, fromId) {
 
   const W = {
     ticker: h("input", { type: "hidden", value: "" }),
-    period: h("input", { type: "text", placeholder: "FY2027Q1", value: "fy2027q1" }),
+    period: h("input", { type: "text", placeholder: "Set by the trigger document", value: "" }),
     cik: h("input", { type: "hidden", value: "" }),
-    cutoff: filingDatePicker("Cutoff date", "2026-10-30").root,
+    cutoff: filingDatePicker("Cutoff date", "").root,
     bundle: h("select"),
     trigger: h("select"),
     docsBox: h("div"),
@@ -1886,7 +1888,7 @@ Views.newCase = async function newCase(view, fromId) {
   const sectionState = new Map(SECTIONS.map(s => [s, true]));
   if (src) {
     /* a restart must never collide with its source case id */
-    W.period.value = (fromId.split("-")[1] || "fy2027q1") + "-r2";
+    W.period.value = (fromId.split("-")[1] || "") + "-r2";
   }
 
   /* ---- market-data prefill ------------------------------------------------
@@ -2063,6 +2065,8 @@ Views.newCase = async function newCase(view, fromId) {
   const errorsBox = h("div");
   const okBox = h("div");
 
+  /* start blank: the analyst picks the company's bundle deliberately */
+  W.bundle.append(h("option", { value: "", disabled: "", selected: "" }, "Choose a bundle"));
   if (bundles.ok) {
     for (const b of bundles.data.bundles)
       W.bundle.append(h("option", { value: b.bundle_id },
@@ -2120,9 +2124,42 @@ Views.newCase = async function newCase(view, fromId) {
    * for the same ticker ("desk profile"), and every assumption stays
    * editable with an explainer for what it constrains. */
   const deskBox = h("div");
-  let userTrigger = false, autoTicker = "", autoCutoff = "";
+  let userTrigger = false, autoTicker = "", autoCutoff = "", autoPeriod = "";
   let identityRequest = 0;
-  W.trigger.addEventListener("change", () => { userTrigger = true; sync(); });
+  let existingIds = new Set();
+  void guard(() => Api.get("/api/cases"), null).then(r => {
+    if (r && r.ok) existingIds = new Set((r.data.cases || []).map(c => c.case_id));
+    sync();
+  });
+  W.trigger.addEventListener("change", () => { userTrigger = true; derivePeriod(); sync(); });
+
+  /* The period label names the case, so it follows the trigger filing:
+   * intc-10q-2026q3 -> fy2026q3, intc-10k-fy2025 -> fy2025. Without a
+   * period in the document id, the period end date decides. A label the
+   * analyst typed is kept. */
+  function periodFromDoc(d) {
+    if (!d) return "";
+    const id = String(d.doc_id || "").toLowerCase();
+    const isQ = /10-?q/i.test(d.form || "");
+    let m = id.match(/(20\d{2})q([1-4])/);
+    if (m && isQ) return `fy${m[1]}q${m[2]}`;
+    m = id.match(/fy(20\d{2})/);
+    if (m && !isQ) return `fy${m[1]}`;
+    const end = String(d.period || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!end) return "";
+    const dt = new Date(Date.UTC(+end[1], +end[2] - 1, +end[3]) - 15 * 864e5);
+    return isQ ? `fy${dt.getUTCFullYear()}q${Math.floor(dt.getUTCMonth() / 3) + 1}`
+               : `fy${dt.getUTCFullYear()}`;
+  }
+
+  function derivePeriod() {
+    if (src) return;                      // a restart keeps its -r2 label
+    const b = (bundles.ok ? bundles.data.bundles : [])
+      .find(x => x.bundle_id === W.bundle.value);
+    const d = b && b.documents.find(x => x.doc_id === W.trigger.value);
+    const next = periodFromDoc(d);
+    if (!W.period.value || W.period.value === autoPeriod) W.period.value = autoPeriod = next;
+  }
 
   function applyMandate(data, opts = {}) {
     const m = data.mandate || {}, A = m.assumptions || {},
@@ -2295,13 +2332,18 @@ Views.newCase = async function newCase(view, fromId) {
       identityStatus.append("CIK could not be found. ",
         h("button", { type: "button", class: "linkish", onclick: () => { void deriveIdent(); } }, "Retry lookup"));
     }
-    if (src) {
+    if (!W.ticker.value || !W.period.value.trim() || !W.cutoff.value) {
+      W.idWarn.replaceChildren("Case ID appears once a bundle, trigger and cutoff are set.");
+    } else {
       const id = `${W.ticker.value.trim().toLowerCase()}-${W.period.value.trim()}-${W.cutoff.value.replace(/-/g, "")}`;
-      if (id === fromId)
+      if (src && id === fromId)
         W.idWarn.replaceChildren(h("span", { class: "chip major" },
-          "Collides with the source case ID"), ". Change the period label or cutoff. The source case stays on disk as evidence.");
+          "Collides with the source case"), ` ${id}. Change the period label or cutoff. The source case stays on disk as evidence.`);
+      else if (existingIds.has(id))
+        W.idWarn.replaceChildren(h("span", { class: "chip major" },
+          "Already used"), ` ${id}. A case with this ID exists. Change the period label or cutoff.`);
       else W.idWarn.replaceChildren(h("span", { class: "chip ok" },
-        "new case id"), ` ${id}`);
+        "New case ID"), ` ${id}`);
     }
   }
 
@@ -2322,16 +2364,15 @@ Views.newCase = async function newCase(view, fromId) {
     const trig = W.trigger;
     trig.replaceChildren(...b.documents.filter(d => d.filed <= cutoff)
       .map(d => h("option", { value: d.doc_id }, `${d.form}: ${d.doc_id}`)));
-    /* auto-suggest the trigger: latest 10-Q, else latest 10-K, else the
-     * most recent filing visible at the cutoff. The human almost never
-     * needs to pick this by hand */
+    /* default trigger: the company's latest periodic report (10-Q or 10-K)
+     * visible at the cutoff, else its latest filing. The analyst can change it. */
     if (!userTrigger && trig.options.length) {
       const vis = b.documents.filter(d => d.filed <= cutoff)
         .sort((a, c) => String(c.filed).localeCompare(String(a.filed)));
-      const best = vis.find(d => /10-?Q/i.test(d.form))
-        || vis.find(d => /10-?K/i.test(d.form)) || vis[vis.length - 1];
+      const best = vis.find(d => /10-?[QK]/i.test(d.form)) || vis[0];
       if (best) trig.value = best.doc_id;
     }
+    derivePeriod();
     sync();
   }
 
@@ -2347,6 +2388,11 @@ Views.newCase = async function newCase(view, fromId) {
     if (!W.ticker.value || !W.cik.value) {
       errorsBox.replaceChildren(h("div", { class: "err-box" },
         identityLoading ? "Wait for the CIK lookup to finish." : "Choose a bundle with a valid ticker and CIK before creating a case."));
+      return;
+    }
+    if (!W.period.value.trim()) {
+      errorsBox.replaceChildren(h("div", { class: "err-box" },
+        "Set a period label. Choosing the trigger document normally fills it in."));
       return;
     }
     const body = payload();
@@ -2395,10 +2441,10 @@ Views.newCase = async function newCase(view, fromId) {
         h("div", null, h("dt", null, "CIK"), cikDisplay)),
       identityStatus,
       h("div", { class: "form-grid" },
-        label("period label", W.period),
+        label("trigger document", W.trigger),
         h("div", { class: "f filing-date-label" }, h("span", null, "Cutoff date"), W.cutoff),
-        label("trigger document", W.trigger)),
-      src ? W.idWarn : null,
+        label("period label", W.period)),
+      W.idWarn,
       h("details", { class: "bundle-documents" },
         h("summary", null, "Review bundle documents"), W.docsBox)),
     !src ? deskBox : null,
@@ -2451,8 +2497,7 @@ Views.newCase = async function newCase(view, fromId) {
     h("div", { class: "wizard coverage-wizard" }, formPane));
 
   paintDocs();
-  if (!src) void deriveIdent();       /* from scratch: derive ident from the
-                                         already-defaulted first bundle */
+  if (!src) void deriveIdent();       /* from scratch: no-op until a bundle is chosen */
   if (src && M.trigger_document &&
       [...W.trigger.options].some(o => o.value === M.trigger_document))
     W.trigger.value = M.trigger_document;

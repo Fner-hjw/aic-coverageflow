@@ -1772,7 +1772,11 @@ def create_case(payload: dict) -> dict:
     ticker = str(payload["ticker"]).strip().upper()
     cutoff = str(payload["cutoff_date"])
     ts = _now_iso()
-    period = payload.get("period") or "fy2026q4"
+    period = str(payload.get("period") or "").strip()
+    if not period and not payload.get("case_id"):
+        raise ValidationError("mandate validation failed", errors=[
+            "period: set a period label (the trigger document normally sets it, "
+            "for example fy2026q3)"])
     case_id = (payload.get("case_id") or
                f"{ticker.lower()}-{period}-{cutoff.replace('-', '')}")
     if _using_real():
