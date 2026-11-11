@@ -2641,9 +2641,12 @@ class Orchestrator:
         cand8 = (cand["candidate_id"] or "unknown")[:8]
         reports_dir = self.case_dir / "report"
         reports_dir.mkdir(parents=True, exist_ok=True)
-        version = len(list(reports_dir.glob("v*.md")))
+        version = self._published_versions(reports_dir)
         out_rel = f"report/v{version + 1}-{cand8}.md"
         shutil.copyfile(self.case_dir / report_rel, self.case_dir / out_rel)
+        self._write_clean_note(state, out_rel,
+                               (self.case_dir / report_rel).read_text(
+                                   encoding="utf-8"))
         state["status"] = "APPROVED"
         state["reason"] = {"code": "APPROVED", "message": "human approved",
                            "detail": {"by": by}}
@@ -2668,6 +2671,27 @@ class Orchestrator:
                     detail={"terminal": "APPROVED"})
         return {"status": "CLOSED", "terminal": "APPROVED",
                 "report_version": f"v{version + 1}-{cand8}", "result": result}
+
+    @staticmethod
+    def _published_versions(reports_dir: Path) -> int:
+        """Published notes so far; the ``.clean.md`` companions are not versions."""
+        return len([p for p in reports_dir.glob("v*.md")
+                    if not p.name.endswith(".clean.md")])
+
+    def _write_clean_note(self, state: dict, out_rel: str, text: str) -> str:
+        """Write ``<same name>.clean.md`` beside a published note.
+
+        The marked note stays the verified record; the clean one is the
+        reader-facing rendering (footnotes, no process text). The evidence
+        index comes from the approved candidate's own round artifacts.
+        """
+        from . import render_note
+        arts = Arts(round=int(state["candidate"]["built_round"]))
+        clean_rel = out_rel[:-3] + ".clean.md"
+        statestore.atomic_write_text(
+            self.case_dir / clean_rel,
+            render_note.render_clean(text, self._evidence_index(arts)))
+        return clean_rel
 
     def _finish_published_with_exceptions(
             self, state: dict, by: str, reasoning: str,
@@ -2706,7 +2730,7 @@ class Orchestrator:
         cand8 = (cand["candidate_id"] or "unknown")[:8]
         reports_dir = self.case_dir / "report"
         reports_dir.mkdir(parents=True, exist_ok=True)
-        version = len(list(reports_dir.glob("v*.md")))
+        version = self._published_versions(reports_dir)
         out_rel = f"report/v{version + 1}-{cand8}.md"
         notice = ("> **PUBLISHED WITH EXCEPTIONS.** Not accepted by the review "
                   f"process; {len(exceptions)} blocking finding(s) were open: "
@@ -2714,6 +2738,7 @@ class Orchestrator:
                               for e in exceptions) + "\n\n")
         body = (self.case_dir / report_rel).read_text(encoding="utf-8")
         statestore.atomic_write_text(self.case_dir / out_rel, notice + body)
+        self._write_clean_note(state, out_rel, notice + body)
         message = (f"published with exceptions by {by}; "
                    f"{len(exceptions)} open blocking finding(s) recorded")
         state["status"] = "PUBLISHED_WITH_EXCEPTIONS"

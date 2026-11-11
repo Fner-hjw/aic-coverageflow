@@ -221,7 +221,8 @@ def _rreport_versions(cd: Path) -> list[str]:
     rep = cd / "report"
     if not rep.is_dir():
         return []
-    return sorted((p.name[:-3] for p in rep.glob("v*.md")), key=_vrkey)
+    return sorted((p.name[:-3] for p in rep.glob("v*.md")
+                   if not p.name.endswith(".clean.md")), key=_vrkey)
 
 
 def _rdraft_report(cd: Path) -> tuple[int, str] | None:

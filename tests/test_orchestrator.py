@@ -363,7 +363,8 @@ class TestHappyPath:
         apr = statestore.read_json(apr_files[0])
         assert apr["decision"] == "APPROVED" and apr["by"] == "Supervisor"
         # versioned report written
-        reports = list((case_dir / "report").glob("v*.md"))
+        reports = [p for p in (case_dir / "report").glob("v*.md")
+                   if not p.name.endswith(".clean.md")]
         assert len(reports) == 1
         # trace contains the terminal pair of events
         events = [e["event"] for e in statestore.read_trace(case_dir)]
