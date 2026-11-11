@@ -24,6 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import service
 from .ws import ws_router, _startup, _shutdown
 
+MAX_BODY_BYTES = 1_000_000
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
@@ -78,6 +79,17 @@ def create_app() -> FastAPI:
     async def _req_handler(_req: Request, exc: RequestValidationError):
         return _err(422, {"error": "request validation failed",
                           "errors": exc.errors()})
+
+    @app.middleware("http")
+    async def _limit_body(request: Request, call_next):
+        """Refuse oversized request bodies before any parsing (input hygiene)."""
+        try:
+            size = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            size = MAX_BODY_BYTES + 1
+        if size > MAX_BODY_BYTES:
+            return _err(413, {"error": f"request body too large (max {MAX_BODY_BYTES} bytes)"})
+        return await call_next(request)
 
     # ---- health & backends ------------------------------------------------
     @app.get("/api/health")

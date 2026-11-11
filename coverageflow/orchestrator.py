@@ -58,6 +58,8 @@ from typing import Any, Callable
 from . import budget as budget_mod
 from . import bundle as bundle_mod
 from . import gates, ledger as ledger_mod
+from . import mandate_sanitize
+from . import sanitize as san
 from . import resume as resume_mod
 from . import statestore
 from ._dispatch_test_stub import RoleCall  # contract envelope (mirrors A3's)
@@ -419,6 +421,13 @@ class Orchestrator:
         state, budget and trace while leaving the old artifacts on disk.
         Pass ``overwrite=True`` to deliberately start over.
         """
+        try:
+            case_id = san.identifier("case_id", case_id)
+        except san.InputError as exc:
+            raise ValueError(str(exc)) from exc
+        mandate, bad = mandate_sanitize.sanitize_mandate(mandate, validate=False, cross=False)
+        if bad:
+            raise ValueError("mandate rejected:\n  - " + "\n  - ".join(bad))
         case_dir = Path(workspace) / "cases" / case_id
         if (case_dir / "state.json").exists() and not overwrite:
             raise FileExistsError(
@@ -457,7 +466,17 @@ class Orchestrator:
         return state
 
     def mandate(self) -> dict:
-        return statestore.read_json(self.case_dir / "mandate.json")
+        """The frozen mandate, cleaned before any prompt can embed it.
+
+        Legacy ranges are not re-checked (cross=False); normalisation and the
+        prompt-injection screen are always applied."""
+        clean, errors = mandate_sanitize.sanitize_mandate(
+            statestore.read_json(self.case_dir / "mandate.json"),
+            validate=False, cross=False)
+        if errors:
+            raise ValueError("mandate rejected before prompt assembly:\n  - "
+                             + "\n  - ".join(errors))
+        return clean
 
     def input_manifest(self) -> dict:
         return statestore.read_json(self.case_dir / "inputs" / "manifest.json")

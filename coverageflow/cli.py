@@ -20,7 +20,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import gates, mandate_check, mandate_prefill, statestore
+from . import gates, mandate_check, mandate_prefill, mandate_sanitize, sanitize as san, statestore
 from . import bundle as bundle_mod
 from . import registry as registry_mod
 from .orchestrator import (Orchestrator, missing_input_documents,
@@ -290,7 +290,7 @@ def _require_usable_mandate(mandate: dict, what: str) -> None:
         mandate_check.refuse_unaccepted(mandate, what)
     except mandate_check.UnacceptedMandateError as exc:
         raise SystemExit(str(exc))
-    problems = mandate_check.schema_errors(mandate)
+    _, problems = mandate_sanitize.sanitize_mandate(mandate)
     if problems:
         raise SystemExit("mandate does not match references/mandate-schema.json:\n  - "
                          + "\n  - ".join(problems))
@@ -377,7 +377,7 @@ def _mandate_assumption_extras(wacc: float, terminal_growth: float,
                                  "null without a market price"},
         "market": {"as_of": as_of, "price": None,
                    "note": "REQUIRED for a live backend: human-owned market "
-                           "data, USD per share, as-of <= cutoff"},
+                           "data, USD per share, as-of on or before cutoff"},
         "own_band": {"as_of": as_of,
                      "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0],
                      "p_s": [2.5, 7.5],
@@ -416,7 +416,7 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
             },
 "peer_block": {"as_of": cutoff,
                            "peers": [], "note": "REQUIRED for a live backend: list of "
-                           "{ticker, ev_ebitda, p_e_ttm, p_s}"},
+                           "peers with ticker, ev_ebitda, p_e_ttm and p_s"},
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff),
         },
@@ -742,7 +742,10 @@ def cmd_evolve(args, ws: Path) -> int:
     if args.evolve_cmd == "propose":
         if not args.spec:
             raise SystemExit("evolve propose requires --spec <json-file>")
-        entry = statestore.read_json(Path(args.spec))
+        try:
+            entry = san.clean_json(statestore.read_json(Path(args.spec)))
+        except san.InputError as exc:
+            raise SystemExit(f"invalid input: --spec {exc}")
         record = rg.register(entry)
         _print({"registered": record["version"], "active": rg.active()})
         return 0
@@ -941,10 +944,72 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def clean_args(args, ws: Path) -> None:
+    """Sanitise every parsed command-line value in place (authoritative).
+
+    Raises SystemExit with a field-specific message. Identifiers and tickers
+    are normalised; file arguments are user-chosen inputs (read-only) so they
+    are only checked for control characters, while ids that become a path
+    component inside the workspace can never contain separators or '..'.
+    """
+    def run(fn, field, value, **kw):
+        try:
+            return fn(field, value, **kw)
+        except san.InputError as exc:
+            raise SystemExit(f"invalid input: {exc}")
+    g = lambda n: getattr(args, n, None)  # noqa: E731
+    if g("ticker") is not None:
+        args.ticker = run(san.ticker, "--ticker", args.ticker, letters_only=True)
+    if g("cutoff") is not None:
+        args.cutoff = run(san.iso_date, "--cutoff", args.cutoff)
+    if g("period"):
+        args.period = run(san.identifier, "--period", args.period)
+    if g("trigger_doc") is not None:
+        args.trigger_doc = run(san.identifier, "--trigger-doc", args.trigger_doc)
+    if g("case"):
+        args.case = run(san.identifier, "--case", args.case)
+    if g("peers"):
+        args.peers = ",".join(run(san.tickers, "--peers", args.peers, letters_only=True))
+    for flag in ("by", "author"):
+        if g(flag) is not None:
+            setattr(args, flag, run(san.person_name, "--" + flag, g(flag), required=False) or None)
+    for flag in ("reason",):
+        if g(flag) is not None:
+            setattr(args, flag, run(san.note, "--" + flag, g(flag)))
+    if g("scope") is not None:
+        args.scope = run(san.text, "--scope", args.scope, max_len=100,
+                         charset=r"[A-Za-z0-9 ._/&()-]")
+    if g("version"):
+        args.version = run(san.identifier, "--version", args.version)
+    if g("stage"):
+        args.stage = run(san.identifier, "--stage", args.stage)
+    if g("decision"):
+        args.decision = run(san.text, "--decision", args.decision, max_len=40,
+                            charset=r"[A-Za-z_]", injection=False)
+    if g("acknowledge"):
+        args.acknowledge = [run(san.identifier, "--acknowledge", a) for a in args.acknowledge]
+    if g("backend"):
+        args.backend = run(san.identifier, "--backend", args.backend)
+    if g("bundle"):
+        args.bundle = run(san.text, "--bundle", args.bundle, max_len=400, injection=False)
+    for flag in ("manifest", "mandate", "spec", "results", "draft"):
+        if g(flag):
+            run(san.text, "--" + flag.replace("_", "-"), g(flag), max_len=1024,
+                injection=False)
+            if any(ord(c) < 32 for c in str(g(flag))):
+                raise SystemExit(f"invalid input: --{flag}: control characters in path")
+    for spec in g("set") or []:
+        if "=" not in spec:
+            continue  # reported by parse_set with its usual message
+        run(san.text, "--set path", spec.split("=", 1)[0], max_len=120,
+            charset=r"[A-Za-z0-9_.\[\]-]", injection=False)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     ws = Path(args.workspace) if args.workspace else DEFAULT_WORKSPACE
+    clean_args(args, ws)
     if getattr(args, "replay", False) or getattr(args, "record", False):
         print("note: --replay uses the offline ReplayBackend over the "
               "case's replay/ recordings (missing recordings are hard "

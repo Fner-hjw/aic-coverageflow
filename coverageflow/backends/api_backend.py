@@ -33,6 +33,24 @@ _MAX_ATTEMPTS = 3  # total attempts: 1 + 2 retries on 5xx/timeout
 _INITIAL_BACKOFF_SECONDS = 0.5
 
 
+def _clean_config(cfg: dict) -> dict:
+    """Saved/env configuration is untrusted input: an invalid value is dropped
+    (the backend then reports itself unconfigured) rather than used."""
+    from .. import sanitize as san
+    out = dict(cfg)
+    for key, fn, kw in (("base_url", san.api_url, {}),
+                        ("model", san.text, {"max_len": 100, "injection": False,
+                                              "charset": r"[A-Za-z0-9._:/@+-]"}),
+                        ("api_key", san.secret, {})):
+        if out.get(key) is None:
+            continue
+        try:
+            out[key] = fn(key, str(out[key]), **kw) or None
+        except san.InputError:
+            out[key] = None
+    return out
+
+
 class ApiBackend:
     """`POST {base_url}/chat/completions`, one fresh call per role dispatch."""
 
@@ -87,7 +105,7 @@ class ApiBackend:
                     workspace_cfg = data["api"]
             except (OSError, json.JSONDecodeError):
                 pass
-        return {
+        return _clean_config({
             "base_url": self._explicit["base_url"]
             or workspace_cfg.get("base_url")
             or os.environ.get(ENV_BASE_URL)
@@ -100,7 +118,7 @@ class ApiBackend:
             or workspace_cfg.get("api_key")
             or os.environ.get(ENV_API_KEY)
             or cfg_file.get("api_key"),
-        }
+        })
 
     def _configured(self) -> bool:
         # api_key optional for local OpenAI-compatible servers

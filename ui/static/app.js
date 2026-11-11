@@ -1873,19 +1873,48 @@ Views.newCase = async function newCase(view, fromId) {
     bundle: h("select"),
     trigger: h("select"),
     docsBox: h("div"),
-    noteType: h("input", { type: "text", value: "quarterly_update" }),
-    wordsMin: h("input", { type: "number", value: "800", class: "num" }),
-    wordsMax: h("input", { type: "number", value: "1600", class: "num" }),
-    wacc: h("input", { type: "number", step: "0.001", value: "0.104", class: "num" }),
-    tg: h("input", { type: "number", step: "0.001", value: "0.025", class: "num" }),
-    exit: h("input", { type: "number", step: "0.1", value: "14.0", class: "num" }),
-    tax: h("input", { type: "number", step: "0.01", value: "0.15", class: "num" }),
-    mfloor: h("input", { type: "number", step: "0.01", value: "0.30", class: "num" }),
-    mceil: h("input", { type: "number", step: "0.01", value: "0.55", class: "num" }),
-    price: h("input", { type: "number", step: "0.01", value: "", class: "num", placeholder: "USD" }),
+    /* Every input below the filing fieldset starts empty; the placeholder shows
+     * the expected content and format. Numbers are parsed by CFNorm, so
+     * "9.5%", "0.095", "14x" and "1,234.5" all work (see normalise.js). */
+    noteType: h("input", { type: "text", value: "", placeholder: "e.g. quarterly_update", autocomplete: "off" }),
+    wordsMin: h("input", { type: "text", inputmode: "numeric", value: "", class: "num", placeholder: "e.g. 800" }),
+    wordsMax: h("input", { type: "text", inputmode: "numeric", value: "", class: "num", placeholder: "e.g. 1600" }),
+    wacc: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "e.g. 9.5% or 0.095" }),
+    tg: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "e.g. 2.5%" }),
+    exit: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "e.g. 14x" }),
+    tax: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "e.g. 21%" }),
+    mfloor: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "e.g. 30%" }),
+    mceil: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "e.g. 55%" }),
+    price: h("input", { type: "text", inputmode: "decimal", value: "", class: "num", placeholder: "USD, e.g. 24.10" }),
     pfPeers: h("input", { type: "text", value: "", placeholder: "Peers, optional (AMD, NVDA)" }),
     idWarn: h("div", { class: "hint" }),
   };
+  /* Field rules for CFNorm (mirrors the server schema ranges). */
+  const SPEC = {
+    wordsMin: { kind: "int", lo: 100, hi: 10000, label: "Min words" },
+    wordsMax: { kind: "int", lo: 100, hi: 10000, label: "Max words" },
+    wacc: { kind: "rate", lo: 0.01, hi: 0.30, label: "WACC" },
+    tg: { kind: "rate", lo: -0.02, hi: 0.06, label: "Terminal growth" },
+    exit: { kind: "multiple", lo: 0.1, hi: 200, label: "Exit multiple" },
+    tax: { kind: "rate", lo: 0, hi: 0.5, label: "Tax rate" },
+    mfloor: { kind: "rate", lo: 0, hi: 1, label: "Gross margin floor" },
+    mceil: { kind: "rate", lo: 0, hi: 1, label: "Gross margin ceiling" },
+    price: { kind: "plain", lo: 0.0001, hi: 1000000, label: "Share price", required: false },
+  };
+  for (const [k, sp] of Object.entries(SPEC)) W[k]._spec = sp;
+  W.noteType._norm = () => CFNorm.noteType(W.noteType.value);
+  const parseEl = el => el._norm ? el._norm() : CFNorm.number(el.value, el._spec);
+  /* Show what will be saved when the user leaves a field. */
+  function wireNorm(el, show) {
+    el.addEventListener("blur", () => {
+      const r = parseEl(el);
+      el.classList.toggle("invalid", !r.ok && String(el.value).trim() !== "");
+      el.title = r.ok ? "" : r.error;
+      if (r.ok && r.value != null && String(el.value).trim() !== "") el.value = show ? show(r.value) : String(r.value);
+      sync();
+    });
+  }
+  const fv = el => { const r = parseEl(el); return r.ok ? r.value : null; };
   const SECTIONS = ["Summary", "Results", "Segment detail", "Outlook", "Valuation", "Risks"];
   const sectionState = new Map(SECTIONS.map(s => [s, true]));
   if (src) {
@@ -1948,7 +1977,7 @@ Views.newCase = async function newCase(view, fromId) {
       setKids(cap);
       if (!e) continue;
       const proposed = e.value;
-      const cur = num(W[k].value);
+      const cur = fv(W[k]);
       const edited = proposed == null ? cur != null : cur !== proposed;
       if (proposed == null)
         cap.append("Not available. Enter manually. ");
@@ -1987,8 +2016,10 @@ Views.newCase = async function newCase(view, fromId) {
   }
 
   async function runPrefill() {
+    const pr = CFNorm.tickers(W.pfPeers.value);
+    if (!pr.ok) { pfShowError(pr.error); return; }
     const body = { ticker: W.ticker.value, cutoff_date: W.cutoff.value,
-                   peers: W.pfPeers.value };
+                   peers: pr.value.join(",") };
     if (!body.ticker) {
       pfShowError("Choose a bundle with a ticker first.");
       return;
@@ -2077,13 +2108,19 @@ Views.newCase = async function newCase(view, fromId) {
 
   const segRows = h("tbody");
   const peersRows = h("tbody");
-  const segModel = () => ({ name: "Segment", min: -0.05, max: 0.15 });
-  const peerModel = () => ({ ticker: "AMD", pe: "", evebitda: "", ps: "", growth: "" });
+  const segModel = () => ({ name: "", min: "", max: "" });
+  const peerModel = () => ({ ticker: "", pe: "", evebitda: "", ps: "", growth: "" });
+  const BOUND = { kind: "rate", lo: -0.5, hi: 1 };
+  const MULT = { kind: "multiple", lo: 0, hi: 1000, required: false };
 
   function segAdd(v = segModel()) {
-    const name = h("input", { type: "text", value: v.name, "aria-label": "Segment" });
-    const min = h("input", { type: "number", step: "0.01", value: String(v.min), class: "num", "aria-label": "Minimum growth" });
-    const max = h("input", { type: "number", step: "0.01", value: String(v.max), class: "num", "aria-label": "Maximum growth" });
+    const name = h("input", { type: "text", value: v.name, "aria-label": "Segment", placeholder: "e.g. Data Center" });
+    const min = h("input", { type: "text", inputmode: "decimal", value: String(v.min), class: "num", "aria-label": "Minimum growth", placeholder: "e.g. -5%" });
+    const max = h("input", { type: "text", inputmode: "decimal", value: String(v.max), class: "num", "aria-label": "Maximum growth", placeholder: "e.g. 20%" });
+    name._norm = () => CFNorm.name(name.value, "Segment name");
+    min._spec = { ...BOUND, label: "Segment minimum growth" };
+    max._spec = { ...BOUND, label: "Segment maximum growth" };
+    wireNorm(name); wireNorm(min); wireNorm(max);
     const del = h("button", { class: "btn small danger", type: "button", "aria-label": "Remove segment", onclick: () => { tr.remove(); sync(); } }, "✕");
     const tr = h("tr", null, h("td", { "data-label": "Segment" }, name), h("td", { "data-label": "Min" }, min),
       h("td", { "data-label": "Max" }, max), h("td", { class: "editor-remove" }, del));
@@ -2096,8 +2133,14 @@ Views.newCase = async function newCase(view, fromId) {
     const labels = { ticker: "Ticker", pe: "P/E TTM", evebitda: "EV/EBITDA", ps: "P/S", growth: "Revenue growth YoY" };
     for (const key of ["ticker", "pe", "evebitda", "ps", "growth"]) {
       cells[key] = h("input", { type: "text", value: String(v[key] ?? ""),
-        class: key === "ticker" ? "" : "num", "aria-label": labels[key] });
+        class: key === "ticker" ? "" : "num", "aria-label": labels[key],
+        placeholder: key === "ticker" ? "e.g. AMD" : key === "growth" ? "e.g. 22%" : "e.g. 18.5x" });
       cells[key].addEventListener("input", sync);
+      if (key === "ticker") { cells[key]._norm = () => CFNorm.ticker(cells[key].value, "Peer ticker"); }
+      else cells[key]._spec = key === "growth"
+        ? { kind: "rate", lo: -1, hi: 10, required: false, label: "Peer revenue growth" }
+        : { ...MULT, label: "Peer " + labels[key] };
+      wireNorm(cells[key]);
     }
     const del = h("button", { class: "btn small danger", type: "button", "aria-label": "Remove peer", onclick: () => { tr.remove(); sync(); } }, "✕");
     const tr = h("tr", null,
@@ -2269,53 +2312,81 @@ Views.newCase = async function newCase(view, fromId) {
 
   if (src) {
     applyMandate(src, { ident: true });
-  } else {
-    segAdd({ name: "CCG", min: -0.10, max: 0.12 });
-    segAdd({ name: "DCAI", min: -0.05, max: 0.25 });
-    segAdd({ name: "NEX", min: -0.05, max: 0.20 });
-    peerAdd({ ticker: "AMD", pe: "48.2", evebitda: "27.6", ps: "8.1", growth: "0.22" });
-    peerAdd({ ticker: "NVDA", pe: "52.4", evebitda: "33.1", ps: "24.4", growth: "0.55" });
   }
+  /* a new case starts with no segment or peer rows; use "Add" or the prefill */
 
-  function num(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
+  let VERR = [];   // field-specific problems found by the last payload() call
 
   function pfPayload() {
     if (!PREFILL) return {};
     const A = PREFILL.assumptions || {};
-    const market = { ...(A.market || {}), price: num(W.price.value) };
-    if (num(W.price.value) !== (A.market || {}).price) market.as_of = W.cutoff.value;
+    const market = { ...(A.market || {}), price: fv(W.price) };
+    if (fv(W.price) !== (A.market || {}).price) market.as_of = W.cutoff.value;
     return { market, own_band: A.own_band, sensitivity: A.sensitivity };
   }
 
   function payload() {
+    VERR = [];
+    const take = (el, label) => {
+      const r = parseEl(el);
+      if (!r.ok) { VERR.push(r.error); el.classList.toggle("invalid", el.value.trim() !== ""); return null; }
+      el.classList.remove("invalid");
+      return r.value;
+    };
     const segs = {};
-    for (const tr of segRows.children) {
+    [...segRows.children].forEach((tr, i) => {
       const [name, min, max] = tr.querySelectorAll("input");
-      if (name.value.trim()) segs[name.value.trim()] = [num(min.value), num(max.value)];
-    }
-    const peers = [...peersRows.children].map(tr => {
+      if (!name.value.trim() && !min.value.trim() && !max.value.trim()) return;
+      const n = CFNorm.name(name.value, `Segment ${i + 1} name`);
+      const lo = CFNorm.number(min.value, { ...BOUND, label: `Segment ${i + 1} minimum growth` });
+      const hi = CFNorm.number(max.value, { ...BOUND, label: `Segment ${i + 1} maximum growth` });
+      for (const r of [n, lo, hi]) if (!r.ok) VERR.push(r.error);
+      if (lo.ok && hi.ok && lo.value >= hi.value)
+        VERR.push(`Segment ${i + 1}: minimum growth must be below maximum growth`);
+      if (n.ok && lo.ok && hi.ok) segs[n.value] = [lo.value, hi.value];
+    });
+    if (!segRows.children.length || !Object.keys(segs).length)
+      if (!VERR.some(e => e.startsWith("Segment")))
+        VERR.push("Segment bounds: add at least one segment with a name, minimum and maximum growth");
+    const peers = [];
+    [...peersRows.children].forEach((tr, i) => {
       const c = tr._cells;
-      return { ticker: c.ticker.value.trim() || null, p_e_ttm: num(c.pe.value),
-        ev_ebitda: num(c.evebitda.value), p_s: num(c.ps.value),
-        rev_growth_yoy: num(c.growth.value),
-        notional_note: tr._note || "filled at mandate creation" };
-    }).filter(p => p.ticker);
+      if (!Object.values(c).some(el => el.value.trim())) return;
+      const t = CFNorm.ticker(c.ticker.value, `Peer ${i + 1} ticker`);
+      const m = k => CFNorm.number(c[k].value, { ...c[k]._spec, label: `Peer ${i + 1} ${c[k].getAttribute("aria-label")}` });
+      const pe = m("pe"), ev = m("evebitda"), ps = m("ps"), gr = m("growth");
+      for (const r of [t, pe, ev, ps, gr]) if (!r.ok) VERR.push(r.error);
+      if (t.ok && pe.ok && ev.ok && ps.ok && gr.ok)
+        peers.push({ ticker: t.value, p_e_ttm: pe.value, ev_ebitda: ev.value, p_s: ps.value,
+          rev_growth_yoy: gr.value, notional_note: tr._note || "filled at mandate creation" });
+    });
+    const period = CFNorm.ident(W.period.value, "Period label");
+    const words = [take(W.wordsMin), take(W.wordsMax)];
+    if (words[0] != null && words[1] != null && words[0] >= words[1])
+      VERR.push("Min words must be below max words");
+    const vals = {};
+    for (const k of ["wacc", "tg", "exit", "tax", "mfloor", "mceil"]) vals[k] = take(W[k]);
+    take(W.price);
+    if (vals.tg != null && vals.wacc != null && vals.tg >= vals.wacc)
+      VERR.push("Terminal growth must be below WACC");
+    if (vals.mfloor != null && vals.mceil != null && vals.mfloor >= vals.mceil)
+      VERR.push("Gross margin floor must be below the ceiling");
     return {
-      ticker: W.ticker.value, cik: W.cik.value, period: W.period.value,
+      ticker: W.ticker.value, cik: W.cik.value, period: period.ok ? period.value : W.period.value,
       bundle_id: W.bundle.value, cutoff_date: W.cutoff.value,
       trigger_document: W.trigger.value,
       report_policy: {
-        note_type: W.noteType.value,
-        length_words: [num(W.wordsMin.value), num(W.wordsMax.value)],
+        note_type: take(W.noteType),
+        length_words: words,
         sections: SECTIONS.filter(s => sectionState.get(s)),
       },
       assumptions: {
-        wacc: num(W.wacc.value), terminal_growth: num(W.tg.value),
-        exit_multiple_ebitda: num(W.exit.value), tax_rate: num(W.tax.value),
+        wacc: vals.wacc, terminal_growth: vals.tg,
+        exit_multiple_ebitda: vals.exit, tax_rate: vals.tax,
         forecast_bounds: {
           segments: segs,
-          margin_floor_gross: num(W.mfloor.value),
-          margin_ceiling_gross: num(W.mceil.value) },
+          margin_floor_gross: vals.mfloor,
+          margin_ceiling_gross: vals.mceil },
         peer_block: { as_of: W.cutoff.value, peers },
         dcf_comps_tolerance: DCT,
         ...pfPayload(),
@@ -2383,6 +2454,8 @@ Views.newCase = async function newCase(view, fromId) {
   for (const el of [W.period, W.noteType, W.wordsMin, W.wordsMax,
     W.wacc, W.tg, W.exit, W.tax, W.mfloor, W.mceil, W.price])
     el.addEventListener("input", sync);
+  for (const el of [W.noteType, W.wordsMin, W.wordsMax, W.wacc, W.tg, W.exit, W.tax,
+    W.mfloor, W.mceil, W.price]) wireNorm(el);
 
   async function submit() {
     errorsBox.replaceChildren();
@@ -2398,6 +2471,25 @@ Views.newCase = async function newCase(view, fromId) {
       return;
     }
     const body = payload();
+    /* empty or malformed fields: one message per field, nothing is sent */
+    const missing = [];
+    const need = (el, msg) => { if (!String(el.value).trim()) { missing.push(msg); el.classList.add("invalid"); } };
+    need(W.noteType, "Note type is required (e.g. quarterly_update)");
+    need(W.wordsMin, "Min words is required (e.g. 800)");
+    need(W.wordsMax, "Max words is required (e.g. 1600)");
+    need(W.wacc, "WACC is required (e.g. 9.5% or 0.095)");
+    need(W.tg, "Terminal growth is required (e.g. 2.5%)");
+    need(W.exit, "Exit multiple is required (e.g. 14x)");
+    need(W.tax, "Tax rate is required (e.g. 21%)");
+    need(W.mfloor, "Gross margin floor is required (e.g. 30%)");
+    need(W.mceil, "Gross margin ceiling is required (e.g. 55%)");
+    const problems = [...new Set([...missing, ...VERR.filter(e => !missing.some(m => m.split(" is required")[0] === e.split(":")[0]))])];
+    if (problems.length) {
+      errorsBox.replaceChildren(h("div", { class: "err-box" },
+        h("b", null, "Fix these fields before creating the case"),
+        h("ul", null, ...problems.map(e => h("li", null, e)))));
+      return;
+    }
     const r = await guard(() => Api.post("/api/cases", body), "case not created");
     if (!r.ok) {
       const errs = r.err.detail && r.err.detail.errors;
@@ -2464,7 +2556,7 @@ Views.newCase = async function newCase(view, fromId) {
       h("p", { class: "hint mb2" },
         "These are constraints, not forecasts. The model engine keeps projected figures inside the segment bounds and margin range. ",
         "The DCF is checked against the peer block, and the critic verifies every figure against the filings. ",
-        "Start from the desk profile above or neutral defaults. Change only the assumptions you can support. ",
+        "Start from the desk profile above or the market-data prefill. Rates accept 9.5% or 0.095, multiples accept 14x. Change only the assumptions you can support. ",
         "Acceptance depends on the gates and two clean critic reviews, not on these inputs being treated as correct."),
       h("div", { class: "form-grid" },
         label("WACC", W.wacc, "wacc"), label("terminal growth", W.tg, "tg"),
@@ -2633,12 +2725,15 @@ function bundleLibrary(list, actionsFor) {
     const mix = Object.entries(forms).sort((x, y) => y[1] - x[1]).slice(0, 4)
       .map(([f, n]) => `${n} × ${f}`).join(" · ");
     const filed = docs.map(d => d.filed).filter(Boolean).sort();
-    const origin = b.parent_bundle ? `Updated from ${b.parent_bundle}`
-      : b.editable ? "Frozen in this workspace" : "Built-in sample";
+    const latest = [...docs].sort((x, y) => String(y.filed).localeCompare(String(x.filed)))[0];
+    const latestText = latest ? `Latest ${latest.form}${latest.period ? `, period ${latest.period}` : ""}` : "";
+    const origin = b.parent_bundle ? `Updated from ${b.parent_bundle}` : !b.editable ? "Built-in sample" : "";
     return h("div", { class: "bundle-row" },
       h("div", { class: "case-identity" },
         h("span", { class: "ticker-tile" }, ticker.slice(0, 4)),
-        h("div", null, h("strong", null, b.bundle_id), h("span", { class: "case-id" }, origin))),
+        h("div", null,
+          h("strong", null, b.bundle_id, origin ? h("em", { class: "bundle-origin" }, origin) : null),
+          h("span", { class: "case-id" }, latestText))),
       h("div", { class: "bundle-cell" },
         h("strong", null, `${docs.length} documents`), h("span", null, mix || "No documents")),
       h("div", { class: "bundle-cell" },
