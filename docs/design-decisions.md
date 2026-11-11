@@ -75,14 +75,46 @@ Analyst mandate (company, cutoff, report policy, limits)
 
 | Role | Sees | Writes | Never |
 |---|---|---|---|
-| Generator lead | bound request | candidate manifest | update control state; approve |
+| Generator lead (controller code) | artifact hashes the orchestrator computed | candidate manifest | n/a: no agent, see below |
 | Data & Ingest | mandate, new doc, prior manifest | ingest-report + slices | network; alter inputs |
 | Extraction | slices only | facts.json (every fact cited) | invent facts; uncited numbers |
 | Model & Valuation | facts + mandate assumptions | model/valuation/forecast artifacts | LLM arithmetic (engines are code) |
 | Report Draft | facts, model, valuation, prior note, findings | report.md (evidence-linked) | numbers absent from ledger |
-| Critic lead | candidate evidence + fixed rubric | merged findings (conflicts kept) | unilaterally accept |
+| Critic lead (controller code) | the four critic reports | merged findings (conflicts kept) | n/a: no agent, see below |
 | C1–C4 | evidence + fixed criteria; fresh context every round | findings | edit candidate artifacts |
 | Orchestrator | everything (it is code) | state.json, trace, ledger | be persuaded; mandate is fixed |
+
+### Controller code, not lead agents (cost round)
+
+The generator lead and critic lead are no longer dispatched. Both did work the
+orchestrator already does or can do exactly, and each cost a call of 55,000 and
+11,000 estimated tokens per round. Their cards (`prompts/generator_lead.md`,
+`prompts/critic_lead.md`) and role registry entries were deleted rather than
+kept unused, so no dead card can drift or show up in `prompt_versions`.
+Decision rule: an agent decides, the controller executes.
+
+- **Candidate manifest** (`Orchestrator._build_candidate_manifest`): the lead
+  only echoed hashes the orchestrator computed, was checked against them, and
+  had its header overwritten. The manifest is now written directly from those
+  hashes and the harness header. `request_id` is a controller id `ctl-rNNN`
+  because no agent request exists. Same file, same gates.
+- **Critic merge** (`Orchestrator._merge_critic_reports`): union of all
+  findings, each unchanged apart from `source_critic` and the computed
+  `dedup_key` (`ledger.compute_dedup_key`). Same-key findings collapse into
+  the first (`duplicates` lists the rest). A disagreement stays explicit: if
+  one critic fails a check of an overlap group (`CHECK_OVERLAP`, currently
+  `numbers` = C1.2 and C2.1) on an artifact and another critic passes a check
+  of that group, the finding carries `conflict_group = "<group>:<artifact>"`
+  and `disagreeing_critics`. Nothing is dropped or accepted by the merge.
+  `clean`, `coverage_ok`, `reviewer_count` and the fresh-context proofs are
+  computed from the reports. The human, not the merge, resolves conflicts.
+
+Payload cost rules: prompts use compact JSON and one pipe-delimited row per
+fact (`field|period|value|unit|doc_id|slice_id|locator`); the model role gets
+income-statement, segment, capex, D&A and operating-cash facts for all periods;
+the writer gets the current period, its YTD, the prior-year comparables, the
+previous quarter and the last fiscal year. The ledger on disk and the evidence
+index are unchanged, so scoping affects only what a role reads.
 
 ### Agent assembly model
 

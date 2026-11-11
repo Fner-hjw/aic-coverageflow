@@ -262,19 +262,6 @@ def _default_writer(payload: dict) -> dict:
     }
 
 
-def _default_generator_lead(payload: dict) -> dict:
-    return {
-        "role": "generator_lead",
-        "candidate_id": payload["candidate_id"],
-        "round": payload.get("round"),
-        "reports": list(payload.get("artifacts", [])),
-        "evidence_index": dict(payload.get("evidence_index", {})),
-        "scope_statement": payload.get(
-            "scope_statement",
-            "full rebuild; carried findings addressed; no stages hash-identical"),
-    }
-
-
 def _default_critic(critic_role: str) -> Callable[[dict], dict]:
     def build(payload: dict) -> dict:
         # finding_id here is the LEDGER id (fnd-NNNN) the carried row exposes
@@ -348,35 +335,6 @@ def _resolve_evidence(finding: dict, artifacts: dict) -> dict:
     return {"artifact": affected, "sha256": "0" * 64}
 
 
-def _default_critic_lead(payload: dict) -> dict:
-    reports = payload.get("critic_reports", [])
-    all_findings = []
-    seen = set()
-    conflict_free = True
-    for rep in reports:
-        for f in rep.get("findings", []):
-            key = f.get("summary", "")
-            item = dict(f)
-            item["source_critic"] = rep.get("role")
-            item["dedup_key"] = f"critic:{key}"
-            if key in seen:
-                item["conflict_group"] = key
-                conflict_free = False
-            seen.add(key)
-            all_findings.append(item)
-    return {
-        "role": "critic_lead",
-        "round": payload.get("round"),
-        "candidate_id": payload.get("candidate_id"),
-        "findings": all_findings,
-        "clean": all(not rep.get("findings") for rep in reports),
-        "coverage_ok": len(reports) == 4,
-        "reviewer_count": len(reports),
-        "conflicts_kept": not conflict_free,
-        "fresh_context_proofs": [rep.get("request_id") for rep in reports],
-    }
-
-
 def _stable_sha(seed: str) -> str:
     import hashlib
 
@@ -394,7 +352,6 @@ DEFAULT_BUILDERS: dict[str, Callable[[dict], dict]] = {
     "extractor": _default_facts,
     "model": _default_forecast,
     "writer": _default_writer,
-    "generator_lead": _default_generator_lead,
 }
 
 
@@ -468,8 +425,6 @@ class StubDispatch:
             if builder is None:
                 if call.role.startswith("critic_c"):
                     builder = _default_critic(call.role)
-                elif call.role == "critic_lead":
-                    builder = _default_critic_lead
             if builder is None:
                 return AgentResult(ok=False, error=f"stub has no output for role {call.role!r}")
             parsed = builder(call.payload)

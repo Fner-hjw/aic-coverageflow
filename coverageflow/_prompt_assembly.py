@@ -139,6 +139,67 @@ def assembled_prompt_sha256(prompt: str) -> str:
     return sha256_bytes(_normalize(prompt).encode("utf-8"))
 
 
+# Facts are rendered one line per fact instead of one JSON object per fact.
+# Row format (also described in references/harness-preamble.md):
+#
+#     field|period|value|unit|doc_id|slice_id|locator
+#
+# The first element of the list is the header line naming the columns. The
+# citation fields a critic needs to verify evidence (doc_id, slice_id,
+# locator) are kept; the per-fact ``confidence`` and the free-text citation
+# ``anchor`` are not rendered, and a slice_id that starts with ``<doc_id>/`` is
+# shown without that prefix (``IS`` for ``intc-10q-2026q3/IS``). A literal "|" inside a cell is written as "/"
+# and line breaks as a space, so a row always splits into exactly 7 cells.
+FACT_COLUMNS = ("field", "period", "value", "unit", "doc_id", "slice_id", "locator")
+FACT_HEADER = "|".join(FACT_COLUMNS)
+
+
+def _cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return json.dumps(value)
+    text = str(value) if not isinstance(value, bool) else json.dumps(value)
+    return " ".join(text.replace("|", "/").split())
+
+
+def render_fact_row(fact: dict) -> str:
+    cite = fact.get("citation") if isinstance(fact.get("citation"), dict) else {}
+    doc_id, slice_id = cite.get("doc_id"), cite.get("slice_id")
+    if isinstance(doc_id, str) and isinstance(slice_id, str) \
+            and slice_id.startswith(doc_id + "/"):
+        slice_id = slice_id[len(doc_id) + 1:]    # "intc-10q/IS" -> "IS"
+    return "|".join(_cell(v) for v in (
+        fact.get("field"), fact.get("period"), fact.get("value"),
+        fact.get("unit"), doc_id, slice_id, cite.get("locator")))
+
+
+def _is_fact(obj) -> bool:
+    return (isinstance(obj, dict) and "field" in obj and "period" in obj
+            and "value" in obj)
+
+
+def render_facts(facts: list) -> list[str]:
+    """Header line followed by one pipe-delimited row per fact."""
+    return [FACT_HEADER] + [render_fact_row(f) for f in facts]
+
+
+def _compact_facts(obj):
+    """Replace every ``facts`` list of fact objects by its row rendering."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if (k == "facts" and isinstance(v, list) and v
+                    and all(_is_fact(f) for f in v)):
+                out[k] = render_facts(v)
+            else:
+                out[k] = _compact_facts(v)
+        return out
+    if isinstance(obj, list):
+        return [_compact_facts(v) for v in obj]
+    return obj
+
+
 def _canonical_request_json(request_block: dict) -> str:
     if not isinstance(request_block, dict):
         raise AssemblyError(
@@ -147,7 +208,8 @@ def _canonical_request_json(request_block: dict) -> str:
         )
     try:
         return json.dumps(
-            request_block, sort_keys=True, indent=2, ensure_ascii=False
+            _compact_facts(request_block), sort_keys=True,
+            separators=(",", ":"), ensure_ascii=False,
         )
     except (TypeError, ValueError) as exc:
         raise AssemblyError(f"bound request payload is not JSON-serializable: {exc}") from exc

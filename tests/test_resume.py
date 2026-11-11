@@ -181,7 +181,7 @@ class TestResumeAfterKill:
         orch2 = make_orch(case_dir, clk=clk)
         orch2.run()
         # the entire generator stage was NOT re-dispatched
-        for role in ("ingest", "extractor", "model", "writer", "generator_lead"):
+        for role in ("ingest", "extractor", "model", "writer"):
             assert orch2.dispatch.calls_of(role) == [], role
         after = {rel: sha for rel, sha in {
             str(p.relative_to(case_dir)): statestore.sha256_file(p)

@@ -89,7 +89,7 @@ class TestAssemblyStructure:
         assert ACCOUNTING.strip() in out
         assert "# Body" in out
         # the bound payload is injected as strict JSON
-        assert json.dumps({"x": 1}, sort_keys=True, indent=2) in out
+        assert json.dumps({"x": 1}, sort_keys=True, separators=(",", ":")) in out
 
     def test_only_pinned_references_included(self, tree):
         """Read-scope is what the controller includes: pinned refs only."""
@@ -178,8 +178,6 @@ class TestRepoCards:
         "extractor": "facts.json",
         "model": "forecast_assumptions.json",
         "writer": "report.md",
-        "generator_lead": "candidate-manifest.json",
-        "critic_lead": "merged-findings.json",
         "critic_c1": "critic-report.json",
         "critic_c2": "critic-report.json",
         "critic_c3": "critic-report.json",
@@ -209,7 +207,7 @@ class TestRepoCards:
 
     def test_critic_cards_pin_the_locked_rubric_and_only_it(self):
         root = pa.default_root()
-        for role in ("critic_lead", "critic_c1", "critic_c2", "critic_c3", "critic_c4"):
+        for role in ("critic_c1", "critic_c2", "critic_c3", "critic_c4"):
             meta = pa.parse_role_card(root / "prompts" / f"{role}.md")
             assert meta["references"] == ["critic-rubric-v1.1.md"], role
 
@@ -244,3 +242,18 @@ class TestRepoCards:
         for role in self.EXPECTED_CARDS:
             words = len((root / "prompts" / f"{role}.md").read_text().split())
             assert words < 600, f"{role}.md has {words} words"
+
+
+class TestCompactPayload:
+    def test_facts_render_as_pipe_rows(self):
+        from coverageflow import _prompt_assembly as pa
+        fact = {"field": "income_statement.revenue", "period": "2026-Q3",
+                "value": 16513, "unit": "USDmm", "confidence": 0.99,
+                "citation": {"doc_id": "d1", "slice_id": "d1/IS",
+                             "anchor": "A", "locator": "line 3|x"}}
+        out = pa._canonical_request_json({"a": {"facts": [fact]}})
+        assert "\n" not in out and ": " not in out
+        assert pa.FACT_HEADER in out
+        assert ("income_statement.revenue|2026-Q3|16513|USDmm|d1|IS|line 3/x"
+                in out)
+        assert "confidence" not in out

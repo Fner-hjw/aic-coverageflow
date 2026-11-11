@@ -1888,7 +1888,7 @@ class TestExtractorPromptIsSelfContained:
 
     def test_other_roles_do_not_carry_the_slice_text(self, tmp_path):
         orch, dispatch, case_dir = self._case_with_slices(tmp_path)
-        for role in ("model", "writer", "generator_lead"):
+        for role in ("model", "writer"):
             calls = dispatch.calls_of(role)
             assert calls, role
             slices = (calls[0].payload.get("prior_artifacts") or {}).get("slices") or []
@@ -2135,3 +2135,53 @@ class TestPeriodCoverageWiring:
         names = [r["gate"] for r in rep["results"]]
         assert names.index("period_coverage") == names.index("citation_presence") + 1
         assert all(r["ok"] for r in rep["results"] if r["gate"] == "period_coverage")
+
+
+class TestControllerStepsAndScopedPayloads:
+    """Manifest and critic merge are code; model/writer see scoped facts."""
+
+    def test_no_lead_agents_are_dispatched(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        assert dispatch.calls_of("generator_lead") == []
+        assert dispatch.calls_of("critic_lead") == []
+        manifest = statestore.read_json(
+            next(case_dir.glob("rounds/round-*/generator/candidate-manifest.json")))
+        assert manifest["candidate_id"].startswith("cand-")
+        assert manifest["request_id"].startswith("ctl-r")
+        assert all(r["sha256"] for r in manifest["reports"])
+        merged = next(case_dir.glob("rounds/round-*/critic/merged-findings.json"))
+        assert statestore.read_json(merged)["merged_by"] == "controller"
+
+    def test_merge_dedups_and_keeps_conflicts(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        f1 = {"finding_id": "a", "check_id": "C1.2", "severity": "major",
+              "summary": "x", "affected_artifacts": ["report.md"]}
+        reports = [
+            {"role": "critic_c1", "request_id": "r1", "findings": [f1, dict(f1, finding_id="b")],
+             "checks": [{"check_id": "C1.2", "result": "fail"}]},
+            {"role": "critic_c2", "request_id": "r2", "findings": [],
+             "checks": [{"check_id": "C2.1", "result": "pass"}]},
+            {"role": "critic_c3", "request_id": "r3", "findings": [], "checks": []},
+            {"role": "critic_c4", "request_id": "r4", "findings": [], "checks": []},
+        ]
+        merged = orch._merge_critic_reports(1, "cand-x", reports)
+        assert len(merged["findings"]) == 1
+        f = merged["findings"][0]
+        assert f["duplicates"] == ["b"]
+        assert f["conflict_group"] == "numbers:report.md"
+        assert f["disagreeing_critics"] == ["critic_c2"]
+        assert merged["coverage_ok"] and merged["clean"] is False
+
+    def test_role_scoped_fact_filters(self):
+        from coverageflow import orchestrator as O
+        mk = lambda fld, per: {"field": fld, "period": per}
+        wf = O._writer_period_filter("2026-Q3")
+        assert wf(mk("a", "2026-Q3")) and wf(mk("a", "2026-Q3-YTD"))
+        assert wf(mk("a", "2025-Q3")) and wf(mk("a", "2025-Q3-YTD"))
+        assert wf(mk("a", "2025")) and wf(mk("a", "weird"))
+        assert not wf(mk("a", "2024")) and not wf(mk("a", "2023"))
+        assert O._writer_period_filter(None)(mk("a", "2023"))
+        assert O._model_wants_fact(mk("segments.DCAI.revenue", "2024"))
+        assert O._model_wants_fact(mk("cash_flow.capital_expenditure", "2024"))
+        assert not O._model_wants_fact(mk("balance_sheet.goodwill", "2024"))
