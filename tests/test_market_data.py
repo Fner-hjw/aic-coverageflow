@@ -48,17 +48,18 @@ class TestDailyClose:
         with pytest.raises(md.MarketDataError):
             md.daily_close("INTC", CUTOFF, f)
 
-    def test_yahoo_fallback_when_stooq_has_no_data(self):
+    def test_yahoo_is_tried_first(self):
         s, y = _urls("INTC")
         f = Recorded({s: b"No data", y: yahoo_json(ROWS)})
         r = md.daily_close("INTC", CUTOFF, f)
         assert (r["price"], r["date"], r["source"]) == (23.0, "2026-10-30", "yahoo")
-        assert r["failures"] and "stooq" in r["failures"][0]
+        assert not r["failures"]
 
-    def test_yahoo_fallback_when_stooq_errors(self):
+    def test_stooq_fallback_when_yahoo_errors(self):
         s, y = _urls("INTC")
-        f = Recorded({s: md.MarketDataError("boom"), y: yahoo_json(ROWS)})
-        assert md.daily_close("INTC", CUTOFF, f)["source"] == "yahoo"
+        f = Recorded({y: md.MarketDataError("429"), s: b"No data"})
+        with pytest.raises(md.MarketDataError, match="all price providers failed"):
+            md.daily_close("INTC", CUTOFF, f)
 
     def test_all_providers_fail(self):
         with pytest.raises(md.MarketDataError, match="all price providers failed"):
@@ -107,6 +108,30 @@ class TestBeta:
 
 
 class TestRiskFree:
+    TREASURY_HDR = 'Date,"1 Mo","3 Mo","2 Yr","10 Yr","30 Yr"\n'
+
+    def test_treasury_is_primary_and_skips_later_days(self):
+        raw = (self.TREASURY_HDR
+               + "11/02/2026,4.0,4.1,4.2,9.99,5.0\n"
+               + "10/30/2026,4.0,4.1,4.2,4.31,5.0\n"
+               + "10/29/2026,4.0,4.1,4.2,4.28,5.0\n").encode()
+        r = md.risk_free(CUTOFF, Recorded({md.treasury_url(2026): raw}))
+        assert (r["rate"], r["date"]) == (0.0431, "2026-10-30")
+        assert r["source"] == "treasury:par_yield_10y" and not r["failures"]
+
+    def test_treasury_falls_back_to_previous_year_file(self):
+        jan = "2027-01-01"
+        prev = (self.TREASURY_HDR + "12/31/2026,4.0,4.1,4.2,4.5,5.0\n").encode()
+        cur = self.TREASURY_HDR.encode()
+        r = md.risk_free(jan, Recorded({md.treasury_url(2027): cur,
+                                        md.treasury_url(2026): prev}))
+        assert (r["rate"], r["date"]) == (0.045, "2026-12-31")
+
+    def test_fred_fallback_records_the_treasury_failure(self):
+        url = md.fred_url(CUTOFF)
+        r = md.risk_free(CUTOFF, Recorded({url: fred_csv([("2026-10-29", "4.2")])}))
+        assert r["source"] == "fred:DGS10" and "treasury" in r["failures"][0]
+
     def test_last_value_on_or_before_cutoff_skips_dots_and_later(self):
         raw = fred_csv([("2026-10-28", "4.10"), ("2026-10-29", "4.20"),
                         ("2026-10-30", "."), ("2026-11-02", "9.99")])

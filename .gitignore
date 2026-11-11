@@ -14,3 +14,5 @@ export/dossier.log
 .coverageflow.json
 .coverageflow-api.json
 workspace/
+# mandate prefill drafts (proposed, not yet accepted)
+drafts/

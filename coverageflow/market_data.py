@@ -9,9 +9,10 @@ ever sent; the contact in the User-Agent is bundle.py's generic placeholder.
 
 Providers
 ---------
-* Daily close on or before a date: Stooq CSV, fallback Yahoo chart API.
+* Daily close on or before a date: Yahoo chart API, fallback Stooq CSV.
 * Weekly closes (2 years, for beta): same providers, interval weekly.
-* Risk-free rate: FRED CSV (DGS10), last value on or before the cutoff.
+* Risk-free rate: US Treasury daily par yield curve (10Y), fallback FRED DGS10;
+  last value on or before the cutoff.
 * Fundamentals: SEC XBRL companyfacts, using only facts with ``filed`` <= cutoff.
 
 Every record carries ``source``, ``url``, ``sha256`` of the raw response and
@@ -60,6 +61,10 @@ BENCHMARK = "SPY"
 SEC_HOSTS = bundle_mod.SEC_HOSTS
 
 
+MARKET_USER_AGENT = "Mozilla/5.0 (compatible; CoverageFlow/1.0)"
+MARKET_MIN_INTERVAL = 1.0  # seconds between non-SEC requests
+
+
 class MarketDataError(Exception):
     """A provider chain could not produce the requested data."""
 
@@ -71,18 +76,34 @@ def default_fetch(min_interval: float | None = None) -> Fetch:
     import urllib.request
     edgar = bundle_mod.EdgarFetcher(
         **({"min_interval": min_interval} if min_interval is not None else {}))
-    ua = edgar.user_agent
+    import time
+    last = {"t": 0.0}
 
     def fetch(url: str) -> bytes:
         host = url.split("/", 3)[2] if url.count("/") >= 2 else ""
         if host in SEC_HOSTS:
             return edgar.get(url)
-        req = urllib.request.Request(url, headers={"User-Agent": ua})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                return resp.read()
-        except Exception as exc:
-            raise MarketDataError(f"GET {url} failed: {exc}") from exc
+        # Yahoo answers 429 to the default urllib agent; a generic
+        # browser-style agent (no personal contact) is accepted. Calls are
+        # spaced out and retried with backoff: rate limits and dropped TLS
+        # connections are transient on these endpoints.
+        req = urllib.request.Request(url, headers={"User-Agent": MARKET_USER_AGENT})
+        error: Exception | None = None
+        for attempt in range(4):
+            wait = last["t"] + MARKET_MIN_INTERVAL - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    last["t"] = time.monotonic()
+                    return resp.read()
+            except Exception as exc:
+                last["t"] = time.monotonic()
+                error = exc
+                if getattr(exc, "code", None) in (400, 401, 403, 404):
+                    break
+                time.sleep(2.0 * (attempt + 1))
+        raise MarketDataError(f"GET {url} failed: {error}") from error
 
     return fetch
 
@@ -165,8 +186,10 @@ def _series(ticker: str, d1: date, d2: date, stooq_i: str, yahoo_i: str,
             fetch: Fetch, cutoff: str) -> dict:
     """First provider that yields at least one point on/before the cutoff."""
     failures: list[str] = []
-    providers = (("stooq", _stooq_url(ticker, d1, d2, stooq_i), _parse_stooq),
-                 ("yahoo", _yahoo_url(ticker, d1, d2, yahoo_i), _parse_yahoo))
+    # Yahoo first: Stooq's CSV endpoint now answers scripted clients with a
+    # JavaScript browser check, so it is kept only as a fallback.
+    providers = (("yahoo", _yahoo_url(ticker, d1, d2, yahoo_i), _parse_yahoo),
+                 ("stooq", _stooq_url(ticker, d1, d2, stooq_i), _parse_stooq))
     for name, url, parse in providers:
         try:
             raw = fetch(url)
@@ -238,14 +261,48 @@ def regress_beta(stock: list[tuple[str, float]], bench: list[tuple[str, float]],
 
 # -------------------------------------------------------------- risk-free
 
-def risk_free(cutoff: str, fetch: Fetch) -> dict:
-    """10-year Treasury constant maturity (FRED DGS10), last value <= cutoff.
+def treasury_url(year: int) -> str:
+    return ("https://home.treasury.gov/resource-center/data-chart-center/"
+            f"interest-rates/daily-treasury-rates.csv/{year}/all"
+            f"?type=daily_treasury_yield_curve&field_tdr_date_value={year}"
+            "&page&_format=csv")
 
-    Returned ``rate`` is a fraction (4.25 percent -> 0.0425).
+
+def fred_url(cutoff: str) -> str:
+    end = _d(cutoff)
+    return ("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
+            f"&cosd={(end - timedelta(days=30)).isoformat()}&coed={end.isoformat()}")
+
+
+def _treasury_10y(cutoff: str, fetch: Fetch) -> dict:
+    """US Treasury daily par yield curve, 10-year column, last day <= cutoff.
+
+    The CSV is published per calendar year, so an early-January cutoff falls
+    back to the previous year's file.
     """
     end = _d(cutoff)
-    url = ("https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10"
-           f"&cosd={(end - timedelta(days=30)).isoformat()}&coed={end.isoformat()}")
+    for year in (end.year, end.year - 1):
+        url = treasury_url(year)
+        raw = fetch(url)
+        rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig", "replace"))))
+        best = None
+        for r in rows:
+            try:
+                m, d, y = (int(x) for x in str(r.get("Date", "")).split("/"))
+                day = date(y, m, d).isoformat()
+                val = float(r.get("10 Yr") or "")
+            except (ValueError, TypeError):
+                continue
+            if day <= cutoff and (best is None or day > best[0]):
+                best = (day, val)
+        if best is not None:
+            return {"rate": best[1] / 100.0, "date": best[0],
+                    **_record(url, raw, "treasury:par_yield_10y")}
+    raise MarketDataError("Treasury 10Y: no observation on or before the cutoff")
+
+
+def _fred_dgs10(cutoff: str, fetch: Fetch) -> dict:
+    url = fred_url(cutoff)
     raw = fetch(url)
     rows = list(csv.reader(io.StringIO(raw.decode("utf-8", "replace"))))
     best = None
@@ -263,6 +320,24 @@ def risk_free(cutoff: str, fetch: Fetch) -> dict:
         raise MarketDataError("FRED DGS10: no observation on or before the cutoff")
     return {"rate": best[1] / 100.0, "date": best[0],
             **_record(url, raw, "fred:DGS10")}
+
+
+def risk_free(cutoff: str, fetch: Fetch) -> dict:
+    """10-year Treasury yield, last value on or before the cutoff.
+
+    Primary: the US Treasury's daily par yield curve (official source, no
+    key). Fallback: FRED DGS10. Returned ``rate`` is a fraction
+    (4.25 percent -> 0.0425).
+    """
+    failures: list[str] = []
+    for name, fn in (("treasury", _treasury_10y), ("fred", _fred_dgs10)):
+        try:
+            out = fn(cutoff, fetch)
+            out["failures"] = failures
+            return out
+        except Exception as exc:
+            failures.append(f"{name}: {exc}")
+    raise MarketDataError(f"risk-free: all providers failed ({'; '.join(failures)})")
 
 
 # ------------------------------------------------------ SEC companyfacts
