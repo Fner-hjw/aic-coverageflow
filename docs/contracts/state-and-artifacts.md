@@ -79,26 +79,68 @@ The trace never logs full prompts/responses (those live in `replay/` when record
 
 ## 3. mandate.json (written at case creation; IMMUTABLE for the case)
 
+**Authoritative definition: `references/mandate-schema.json`** (JSON Schema draft
+2020-12). It is validated by `coverageflow/mandate_check.py`, the one validator behind
+`case new`, `case accept` and the UI wizard (`ui.service.validate_mandate`). Business
+rules a schema cannot say (WACC band, terminal growth below WACC, margin ordering) live
+next to it in `mandate_check.semantic_errors`. `cli.live_mandate_problems` stays as the
+extra rule for live (non-stub) backends. The schema marks those fields with the custom
+keyword `x-live-required` and the human-owned inputs with `x-human-owned`.
+
 ```json
-{"mandate_id": "man-0003", "case_id": "...", "ticker": "INTC", "cik": "0000050863",
- "cutoff_date": "2026-10-30", "report_policy": {"note_type": "quarterly_update",
-   "length_words": [800, 1600], "sections": ["Summary","Results","Segment detail","Outlook","Valuation","Risks"]},
+{"mandate_id": "man-0003", "case_id": "intc-fy2026q3-20261030", "ticker": "INTC",
+ "cik": "0000050863", "cutoff_date": "2026-10-30", "trigger_document": "intc-10q-2026q3",
+ "report_policy": {"note_type": "quarterly_update", "length_words": [800, 1600],
+   "sections": ["Summary","Results","Segment detail","Outlook","Valuation","Risks"]},
  "assumptions": {                                   // human-owned, dated, hashed
    "as_of": "2026-10-30",
    "wacc": 0.104, "terminal_growth": 0.025, "exit_multiple_ebitda": 14.0,
-   "discount_convention": "year_end", "tax_rate": 0.15,
-   "forecast_bounds": {"segments": {"CCG": [-0.10, 0.12], "DCAI": [-0.05, 0.25],
-                                     "NEX": [-0.05, 0.20], "Foundry": [-0.05, 0.30],
-                                     "Altera": [-0.10, 0.15], "Mobileye": [-0.05, 0.20]},
-                        "margin_floor_gross": 0.30, "margin_ceiling_gross": 0.55},
-   "peer_block": {"as_of": "2026-10-30",
-     "peers": [{"ticker":"AMD","p_e_ttm":null,"ev_ebitda":null,"p_s":null,
-                "rev_growth_yoy":null,"notional_note":"filled at mandate creation"}]},
-   "dcf_comps_tolerance": 0.25},
+   "discount_convention": "year_end", "tax_rate": 0.21,
+   "forecast_bounds": {"segments": {"CCG": [-0.10, 0.12], "DCAI": [-0.05, 0.25]},
+                       "margin_floor_gross": 0.30, "margin_ceiling_gross": 0.55,
+                       "operating_margin_floor": null, "operating_margin_ceiling": null,
+                       "capex_pct_bounds": null},                 // last three optional
+   "peer_block": {"as_of": "2026-10-30",                          // live: >= 1 peer multiple
+     "peers": [{"ticker": "AMD", "ev_ebitda": 21.0, "p_e_ttm": 33.0, "p_s": 6.1,
+                "rev_growth_yoy": 0.22, "notional_note": "..."}]},
+   "market": {"as_of": "2026-10-30", "price": 24.5},              // live: price, as_of <= cutoff
+   "own_band": {"as_of": "2026-10-30", "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0], "p_s": [2.5, 7.5]},
+   "sensitivity": {"wacc_points": [0.064, 0.084, 0.104, 0.124, 0.144],
+                   "terminal_growth_points": [0.005, 0.015, 0.025, 0.035, 0.045]},
+   "dcf_comps_tolerance": 0.25,
+   "terminal_tolerance": 0.35,         // mean of both terminal values inside this band
+   "terminal_gate_ratio_max": 3.0,     // gate blocks beyond this ratio (optional)
+   "nwc_pct_incremental": 0.0,
+   "rating_bands": {"buy": 0.15, "sell": -0.10}},                 // optional
  "limits": {"role_tokens_max": 250000, "case_minutes": 45, "rounds_max": 4, "retries_max": 3,
-              "approval_hours": 48},
- "schema_version": "1.0"}
+            "approval_hours": 48, "stall_rounds": 2,
+            "case_cost_usd_max": null, "call_cost_usd_max": null,   // cost_usd_max = legacy alias
+            "role_timeouts": {"writer": 600}},                       // optional
+ "schema_version": "1.0",
+ "status": "accepted",              // prefill only: "proposed" until a human accepts
+ "provenance": {"assumptions.market.price": {"value": 24.5, "source": "stooq", "url": "...",
+                "as_of": "2026-10-30", "sha256": "...", "basis": "last close on or before cutoff"}},
+ "approval": {"by": "human", "at": "2026-11-01T09:00:00Z",
+              "edits": [{"path": "assumptions.wacc", "proposed": 0.091, "final": 0.104}]},
+ "missing": []}
 ```
+
+Human-owned: everything under `assumptions` (WACC, terminal growth, exit multiple, tax
+rate, forecast bounds, peers, market price, own band, sensitivity grid, tolerances,
+rating bands), `report_policy` and `limits`. Only `ticker`, `cik`, `cutoff_date`, ids
+and `trigger_document` identify the case.
+
+Prefill fields (additive, optional; see README "Mandate prefill and review"):
+
+- `status`: absent means a hand-written mandate (treated as accepted). `proposed` is a
+  machine proposal; nothing may run on it (`case new`, `run`, `resume` and the UI refuse).
+  `accepted` requires an `approval` block.
+- `provenance`: map from dotted json-path (list indices as numbers, e.g.
+  `assumptions.peer_block.peers.0.ev_ebitda`) to `{value, source, url, as_of, sha256,
+  basis}`; derived values also carry `inputs`. Edited fields add `edited: true` and `final`.
+- `approval`: `{by, at, edits: [{path, proposed, final}]}` written by `case accept`.
+- `missing`: json-paths that could not be fetched. A proposal may hold nulls there;
+  an accepted mandate may not (core assumptions must be numbers).
 
 ## 4. inputs/manifest.json
 

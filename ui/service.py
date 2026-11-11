@@ -45,6 +45,8 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+
+from coverageflow import mandate_check as _mc
 from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
@@ -1589,80 +1591,17 @@ def list_cases() -> dict:
     return out
 
 
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
 def validate_mandate(payload: dict) -> list[str]:
-    """New-case wizard validation; returns human-readable errors ([] = ok)."""
-    errors: list[str] = []
-    ticker = str(payload.get("ticker") or "").strip().upper()
-    if not re.fullmatch(r"[A-Z]{1,6}", ticker):
-        errors.append("ticker is required (1-6 letters, e.g. INTC)")
-    cutoff = str(payload.get("cutoff_date") or "")
-    if not _DATE_RE.match(cutoff):
-        errors.append("cutoff_date must be a date YYYY-MM-DD")
-    if not payload.get("trigger_document"):
-        errors.append("trigger document is required")
-    rp = payload.get("report_policy") or {}
-    words = rp.get("length_words")
-    if (not isinstance(words, list) or len(words) != 2
-            or not all(isinstance(w, (int, float)) for w in words)):
-        errors.append("report_policy.length_words must be [min_words, max_words]")
-    elif words[0] > words[1]:
-        errors.append("report_policy.length_words: min must be ≤ max")
-    if not rp.get("sections"):
-        errors.append("report_policy.sections must list at least one section")
-    a = payload.get("assumptions") or {}
-    try:
-        wacc = float(a.get("wacc"))
-        if not 0.01 <= wacc <= 0.30:
-            errors.append(f"wacc {wacc:g} outside plausible band [0.01, 0.30]")
-    except (TypeError, ValueError):
-        errors.append("assumptions.wacc must be a number")
-        wacc = None
-    try:
-        tg = float(a.get("terminal_growth"))
-        if tg <= -0.05:
-            errors.append(f"terminal_growth {tg:g} below floor -0.05")
-        if wacc is not None and tg >= wacc:
-            errors.append(f"terminal_growth {tg:g} must be below wacc {wacc:g}")
-    except (TypeError, ValueError):
-        errors.append("assumptions.terminal_growth must be a number")
-    try:
-        if float(a.get("exit_multiple_ebitda")) <= 0:
-            errors.append("assumptions.exit_multiple_ebitda must be positive")
-    except (TypeError, ValueError):
-        errors.append("assumptions.exit_multiple_ebitda must be a number")
-    fb = (a.get("forecast_bounds") or {})
-    segs = fb.get("segments") or {}
-    if not segs:
-        errors.append("forecast_bounds.segments must define at least one "
-                      "segment [min, max] growth")
-    for seg, bounds in segs.items():
-        if (not isinstance(bounds, (list, tuple)) or len(bounds) != 2
-                or not all(isinstance(b, (int, float)) for b in bounds)):
-            errors.append(f"forecast_bounds.segments['{seg}']: [min, max] required")
-        elif bounds[0] > bounds[1]:
-            errors.append(
-                f"forecast_bounds.segments['{seg}']: min {bounds[0]:g} > max "
-                f"{bounds[1]:g}")
-        elif bounds[0] < -0.50 or bounds[1] > 1.00:
-            errors.append(
-                f"forecast_bounds.segments['{seg}']: outside [-0.50, 1.00] — "
-                "widen limits deliberately, not by typo")
-    try:
-        mf = float(fb.get("margin_floor_gross"))
-        mc = float(fb.get("margin_ceiling_gross"))
-        if not (0.0 <= mf <= 1.0 and 0.0 <= mc <= 1.0):
-            errors.append("gross margin bounds must be fractions in [0, 1]")
-        elif mf > mc:
-            errors.append("margin_floor_gross must be ≤ margin_ceiling_gross")
-    except (TypeError, ValueError):
-        errors.append("forecast_bounds.margin_floor/ceiling_gross must be "
-                      "numbers in [0, 1]")
-    for p in ((a.get("peer_block") or {}).get("peers") or []):
-        if not p.get("ticker"):
-            errors.append("peer_block: every peer row needs a ticker")
+    """New-case wizard validation; returns human-readable errors ([] = ok).
+
+    Business rules come from coverageflow.mandate_check.semantic_errors; the
+    mandate the payload would produce is then checked against
+    references/mandate-schema.json, the same schema the CLI uses.
+    """
+    errors = _mc.semantic_errors(payload)
+    if not errors:
+        candidate = _mandate_from_payload(payload, "man-0000", "validate-0000")
+        errors = _mc.schema_errors(candidate)
     return errors
 
 
@@ -1998,6 +1937,13 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False,
                                                 for b in _BACKENDS):
             raise ValidationError(f"unknown backend: {backend}")
         state = _rstate(cd)
+        _mp = cd / "mandate.json"
+        if _mp.is_file():
+            try:
+                _mc.refuse_unaccepted(json.loads(_mp.read_text("utf-8")),
+                                      f"run case {case_id}")
+            except _mc.UnacceptedMandateError as exc:
+                raise ConflictError(str(exc))
         if state["status"] in ("CLOSED", "APPROVED", "REJECTED"):
             raise ConflictError(
                 f"case {case_id} is terminal ({state['status']}); start a "

@@ -20,7 +20,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import gates, statestore
+from . import gates, mandate_check, statestore
 from . import bundle as bundle_mod
 from . import registry as registry_mod
 from .orchestrator import (Orchestrator, missing_input_documents,
@@ -242,6 +242,14 @@ def cmd_case_new(args, ws: Path) -> int:
     mandate = default_mandate(case_id, args.ticker, args.cutoff)
     if args.mandate:
         mandate = statestore.read_json(Path(args.mandate))
+        _require_usable_mandate(mandate, "create a case from it")
+        if mandate.get("status") == "accepted":
+            # an accepted prefill is drafted before the case id is known
+            mandate["case_id"] = case_id
+            mandate["mandate_id"] = f"man-{case_id}"
+            mandate.setdefault("trigger_document", args.trigger_doc)
+    else:
+        _require_usable_mandate(mandate, "create a case from it")
     # The backend is pinned at creation. An unspecified backend means the
     # offline stub, and the case then says so for good: a later run cannot
     # swap it without --override-backend.
@@ -274,6 +282,28 @@ def cmd_case_new(args, ws: Path) -> int:
             "note": "the bundle's filings are copied into the case inputs; "
                     "overrides: --manifest / --mandate / --bundle"})
     return 0
+
+
+def _require_usable_mandate(mandate: dict, what: str) -> None:
+    """Refuse a proposed prefill and any mandate the shared schema rejects."""
+    try:
+        mandate_check.refuse_unaccepted(mandate, what)
+    except mandate_check.UnacceptedMandateError as exc:
+        raise SystemExit(str(exc))
+    problems = mandate_check.schema_errors(mandate)
+    if problems:
+        raise SystemExit("mandate does not match references/mandate-schema.json:\n  - "
+                         + "\n  - ".join(problems))
+
+
+def _require_accepted_case_mandate(case_dir: Path) -> None:
+    path = case_dir / "mandate.json"
+    if path.is_file():
+        try:
+            mandate_check.refuse_unaccepted(
+                statestore.read_json(path), f"run case {case_dir.name}")
+        except mandate_check.UnacceptedMandateError as exc:
+            raise SystemExit(str(exc))
 
 
 LIVE_MANDATE_EXAMPLE = """\
@@ -499,6 +529,7 @@ def _name_to_arg(recorded: str) -> str:
 
 def cmd_run(args, ws: Path) -> int:
     case_dir = _find_case(ws, args.case)
+    _require_accepted_case_mandate(case_dir)
     dispatch, backend_name = _backend_for_existing_case(args, ws, case_dir)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
@@ -541,6 +572,7 @@ def cmd_resume(args, ws: Path) -> int:
     fixture numbers and nothing flagged it, because a stub is a valid backend.
     """
     case_dir = _find_case(ws, args.case)
+    _require_accepted_case_mandate(case_dir)
     dispatch, backend_name = _backend_for_existing_case(args, ws, case_dir)
     orch = Orchestrator(case_dir, dispatch=dispatch,
                         gate_engine=load_gate_engine(
