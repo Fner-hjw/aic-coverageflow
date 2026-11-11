@@ -84,6 +84,11 @@ STAGE_ROLE = {"ingest": "ingest", "extractor": "extractor", "model": "model",
 STAGE_ARTIFACT = {"ingest": "ingest-report.json", "extractor": "facts.json",
                   "model": "forecast_assumptions.json", "writer": "report.md",
                   "candidate": "candidate-manifest.json"}
+# Rebuild scope (diagnosis 3.6): stages a repair can restart from, earliest
+# first, and the owner whose finding names each one.
+REBUILD_STAGE_OF_OWNER = {"extractor": "extractor", "model": "model",
+                          "writer": "writer"}
+REBUILD_ORDER = ("ingest", "extractor", "model", "writer")
 # BLOCKED reasons that are not "fix and re-run": the defect is in the harness
 # or in a human-owned input, so the case ends and feeds an evolution proposal.
 OWNER_BLOCK_CODES = ("needs_system_change", "needs_mandate_change")
@@ -663,7 +668,11 @@ class Orchestrator:
                     self._sync_budget(state, budget)
                     self._transition(state, "RUNNING", "RUNNING",
                                      verified=f"rounds/round-{p['round']:03d} build start",
-                                     detail={"round_start": p["round"]})
+                                     detail={"round_start": p["round"],
+                                             "rebuild_from": p.get("rebuild_from")
+                                             or "ingest",
+                                             "rebuild_scope": self._scope_label(
+                                                 p.get("rebuild_from"))})
                     continue
                 budget = self._budget(state)
                 arts.round = state["pending"]["round"]
@@ -989,6 +998,8 @@ class Orchestrator:
             self._carry_ingest_forward(state, budget, arts)
         if stage == "extractor":
             self._carry_extractor_forward(state, budget, arts)
+        if stage == "model":
+            self._carry_model_forward(state, budget, arts)
 
         # resume fast-path: verified artifact on disk -> role NOT re-dispatched
         if self._artifact_intact(rel):
@@ -1101,7 +1112,8 @@ class Orchestrator:
             "conformance": "schema 1.0",
             "prompt_version": "1.0",
         }
-        manifest = self._stamp_manifest_header(arts, manifest)
+        manifest = self._stamp_manifest_header(
+            arts, manifest, state["pending"].get("rebuild_from"))
         sha = statestore.atomic_write_json(self.case_dir / rel, manifest)
         arts.files[rel] = sha
         arts.content[rel] = manifest
@@ -1500,7 +1512,8 @@ class Orchestrator:
             idx.setdefault(key, valuation_rel)
         return idx
 
-    def _stamp_manifest_header(self, arts: Arts, manifest: dict) -> dict:
+    def _stamp_manifest_header(self, arts: Arts, manifest: dict,
+                               rebuild_from: str | None = None) -> dict:
         """Write the provenance header the harness knows into the manifest.
 
         Critics check that every artifact can be tied to the cutoff, the input
@@ -1533,11 +1546,12 @@ class Orchestrator:
                 "model_engine": model_engine_name,
                 "valuation_engine": valuation_engine_name,
             },
-            "scope_statement": self._scope_statement(arts),
+            "scope_statement": self._scope_statement(arts, rebuild_from),
         })
         return out
 
-    def _scope_statement(self, arts: Arts) -> str:
+    def _scope_statement(self, arts: Arts,
+                         rebuild_from: str | None = None) -> str:
         """What this round actually did, from the artifact hashes.
 
         The lead used to assert "full rebuild" every round. Once ingest is
@@ -1569,7 +1583,9 @@ class Orchestrator:
         if prev and self._ingest_carried_from(arts, prev):
             parts.append("ingest classification and slices carried from round "
                          f"{prev:03d} under a fresh request binding")
-        return ("Round " + f"{arts.round:03d} build: " + "; ".join(parts) +
+        prefix = (f"Rebuild scope: {self._scope_label(rebuild_from)}. "
+                  if prev else "")
+        return (prefix + "Round " + f"{arts.round:03d} build: " + "; ".join(parts) +
                 ". Reuse is a hash-match proof against the previous round, not "
                 "a skipped stage.")
 
@@ -1853,8 +1869,11 @@ class Orchestrator:
         rel = arts.rel("generator", "facts.json")
         if self._artifact_intact(rel):
             return True
-        if any("facts.json" in (f.get("affected_artifacts") or [])
-               for f in self._carried()):
+        scope = state["pending"].get("rebuild_from")
+        if scope in ("ingest", "extractor"):
+            return False        # the open findings name this stage: re-run it
+        if scope is None and any("facts.json" in (f.get("affected_artifacts") or [])
+                                 for f in self._carried()):
             return False
         ingest = self._lazy(arts, arts.rel("generator", "ingest-report.json"))
         if not isinstance(ingest, dict):
@@ -1898,6 +1917,80 @@ class Orchestrator:
                         round=arts.round)
             return True
         return False
+
+    def _carry_model_forward(self, state: dict,
+                             budget: budget_mod.BudgetTracker,
+                             arts: Arts) -> bool:
+        """Carry the model role's forecast proposal forward (writer-only repair).
+
+        Only when the repair scope starts at the writer: the open findings are
+        about the note, so the model role is not dispatched and the forecast
+        proposal of the candidate under review is reused unchanged. It is the
+        candidate's own proposal only if the facts it was built on are still
+        the facts of this round. The engines are deterministic and re-run in
+        the model stage's side effects.
+        """
+        if state["pending"].get("rebuild_from") != "writer":
+            return False
+        rel = arts.rel("generator", "forecast_assumptions.json")
+        if self._artifact_intact(rel):
+            return True
+        prev = int(state["candidate"].get("built_round") or 0)
+        if not prev or prev >= arts.round:
+            return False
+        prev_arts = Arts(round=prev)
+        path = self.case_dir / prev_arts.rel("generator",
+                                             "forecast_assumptions.json")
+        if not path.is_file():
+            return False
+
+        def content(a: Arts) -> Any:
+            c = statestore.read_json_or_none(
+                self.case_dir / a.rel("generator", "facts.json"))
+            return ({k: v for k, v in c.items() if k not in _IDENTITY_EXCLUDED}
+                    if isinstance(c, dict) else None)
+        facts_now = content(arts)
+        if facts_now is None or facts_now != content(prev_arts):
+            return False
+        forecast = statestore.read_json_or_none(path)
+        if not isinstance(forecast, dict):
+            return False
+        payload = {"case_id": state["case_id"], "round": arts.round,
+                   "carried_findings": self._carried(),
+                   "mandate": self.mandate(),
+                   "bundle": self._bundle_provenance(),
+                   "prior_artifacts": self._stage_inputs(arts, "model")}
+        req_id = self._bind_request(state, "model", payload, None)
+        forecast = dict(forecast)
+        forecast["request_id"] = req_id
+        forecast["candidate_id"] = None     # stamped at the candidate stage
+        sha = statestore.atomic_write_json(self.case_dir / rel, forecast)
+        self._verified[rel] = sha
+        arts.files[rel] = sha
+        arts.content[rel] = forecast
+        budget.add_tokens("model", 0, 0)
+        budget.note_reuse("model")
+        self._sync_budget(state, budget)
+        self._persist(state)
+        self._trace(event="MODEL_REUSED",
+                    detail={"from_round": prev, "artifact": rel,
+                            "request_id": req_id,
+                            "reason": "repair scope starts at the writer"},
+                    round=arts.round)
+        return True
+
+    @staticmethod
+    def _scope_label(rebuild_from: str | None) -> str:
+        """The rebuild scope as a sentence fragment (trace and manifest)."""
+        if rebuild_from in (None, "ingest"):
+            return "full build from ingest (ingest and extraction reused by hash proof)"
+        carried = [s for s in REBUILD_ORDER[:REBUILD_ORDER.index(rebuild_from)]]
+        engines = ("; model_engine and valuation_engine re-run (deterministic)"
+                   if rebuild_from in ("extractor", "model") else
+                   "; model_engine and valuation_engine re-run on the carried "
+                   "forecast (deterministic, model role not dispatched)")
+        return (f"partial rebuild from the {rebuild_from} stage; "
+                f"carried forward unchanged: {', '.join(carried)}" + engines)
 
     def _candidate_context(self, state: dict, arts: Arts) -> gates.CandidateContext:
         return gates.CandidateContext(
@@ -1980,6 +2073,21 @@ class Orchestrator:
         }
 
     # ================================================================ repair
+    @staticmethod
+    def _rebuild_scope(repairable: list[dict]) -> str:
+        """Earliest stage a repair must restart from (extractor < model < writer).
+
+        Taken from the owners of the open repairable findings. With none to go
+        on (nothing blocking was left) the model stage is the safe default:
+        it is what a full rebuild did before partial rebuilds existed, minus
+        the extraction that is carried by hash proof.
+        """
+        stages = [REBUILD_STAGE_OF_OWNER[f["owner"]] for f in repairable
+                  if f.get("owner") in REBUILD_STAGE_OF_OWNER]
+        if not stages:
+            return "model"
+        return min(stages, key=REBUILD_ORDER.index)
+
     def _stop_for_owner(self, state: dict,
                         led: ledger_mod.FindingsLedger) -> bool:
         """End the case when an open blocking finding is not a role's to fix.
@@ -2041,6 +2149,7 @@ class Orchestrator:
         # the critics re-raised them verbatim and the ledger could never
         # drain -- the packet was manufacturing its own findings.
         carried = led.repairable_findings()
+        rebuild_from = self._rebuild_scope(carried)
         advisory = [f for f in led.open_findings()
                     if f.get("severity") not in ledger_mod.BLOCKING_SEVERITIES]
         packet = {
@@ -2059,10 +2168,13 @@ class Orchestrator:
                 "rubric_version": RUBRIC_VERSION,
                 "note": note,
             },
-            "delta_scope": ("full re-build of all four specialist stages; "
-                            "stages may short-circuit internal work via "
-                            "hash-match proofs; carried findings must be "
-                            "addressed"),
+            "rebuild_from": rebuild_from,
+            "delta_scope": (
+                f"partial re-build from the {rebuild_from} stage (earliest "
+                "stage owned by an open finding); earlier stages are carried "
+                "forward unchanged under a fresh request binding; the "
+                "deterministic engines re-run with the model stage; carried "
+                "findings must be addressed"),
         }
         sha = statestore.atomic_write_json(self.case_dir / rel, packet)
         self._verified[rel] = sha
@@ -2071,7 +2183,9 @@ class Orchestrator:
                     artifact=rel, artifact_sha256=sha,
                     detail={"open_findings": len(carried),
                             "advisory_findings": len(advisory),
+                            "rebuild_from": rebuild_from,
                             "owners": sorted({f.get("owner") for f in carried})})
+        state["pending"]["rebuild_from"] = rebuild_from
         state["pending"]["role"] = "generator"
         state["pending"]["stage"] = None
         state["pending"]["retry_count"] = 0
