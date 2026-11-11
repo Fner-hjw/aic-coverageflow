@@ -634,10 +634,14 @@ def value_company(
     ufcf_final, ebitda_final = years[-1]["ufcf"], years[-1]["ebitda"]
     df_final = years[-1]["discount_factor"]
     tv_exit = ebitda_final * assumptions.exit_multiple_ebitda
-    tv_gordon = ufcf_final * (1.0 + g) / (w - g)
+    terminal_fcf = _terminal_fcf(years[-1], g, nwc_pct)
+    tv_gordon = terminal_fcf / (w - g)
     implied_multiple = tv_gordon / ebitda_final if ebitda_final else None
-    denom = tv_exit + ufcf_final
-    implied_g = (tv_exit * w - ufcf_final) / denom if denom else None
+    # solve tv_exit = nopat_H(1+g)/(w-g) for g (nwc term is second order and
+    # is left out of the inversion; the reported figure is labelled implied)
+    nopat_final = years[-1]["nopat"]
+    denom = tv_exit + nopat_final
+    implied_g = (tv_exit * w - nopat_final) / denom if denom else None
     ratio = tv_exit / tv_gordon if tv_gordon > 0 else None
     within = ratio is not None and abs(ratio - 1.0) <= assumptions.terminal_tolerance
     reconciliation = {"ratio": ratio, "tolerance": assumptions.terminal_tolerance,
@@ -702,6 +706,9 @@ def value_company(
             },
             "gordon": {
                 "wacc": w, "terminal_growth": g, "ufcf_final": ufcf_final,
+                "terminal_fcf": terminal_fcf,
+                "terminal_fcf_basis": ("normalised: NOPAT and working capital "
+                                       "grow at g, capex = depreciation"),
                 "terminal_value": tv_gordon, "pv": tv_gordon * df_final,
             },
             "implied_exit_multiple_from_gordon": implied_multiple,
@@ -848,9 +855,23 @@ def _relative_valuation(assumptions: Assumptions, base: dict,
     }
 
 
+def _terminal_fcf(last_year: dict, g: float, nwc_pct: float) -> float:
+    """Steady-state free cash flow for the first year after the horizon.
+
+    Gordon growth needs a cash flow that can grow at ``g`` for ever. The
+    final forecast year is not one when capex still runs ahead of
+    depreciation (a build-out phase): its free cash flow is depressed, often
+    negative, and a perpetuity on it says nothing about the business. So the
+    terminal year is normalised: revenue and EBIT grow at ``g``, capex equals
+    depreciation (maintenance only), and working capital grows with revenue.
+    """
+    nopat_next = last_year["nopat"] * (1.0 + g)
+    nwc_next = nwc_pct * last_year["revenue"] * g
+    return nopat_next - nwc_next
+
+
 def _sensitivity_grid(years, assumptions: Assumptions, net_claims, shares) -> dict:
     wacc_points, g_points = assumptions.sensitivity_points
-    ufcf_final = years[-1]["ufcf"]
     e_final = years[-1]["exponent"]
     grid = []
     for w in wacc_points:
@@ -860,7 +881,7 @@ def _sensitivity_grid(years, assumptions: Assumptions, net_claims, shares) -> di
                 row.append(None)
                 continue
             pv_flows = sum(y["ufcf"] / (1.0 + w) ** y["exponent"] for y in years)
-            tv = ufcf_final * (1.0 + g) / (w - g)
+            tv = _terminal_fcf(years[-1], g, assumptions.nwc_pct_incremental) / (w - g)
             ev = pv_flows + tv / (1.0 + w) ** e_final
             row.append((ev - net_claims) / shares)
         grid.append(row)

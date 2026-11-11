@@ -88,9 +88,9 @@ def test_dcf_tab_has_projection_and_market_vs_intrinsic(workbook):
                   "per diluted share", "Market vs. intrinsic"):
         assert label.lower() in flat.lower(), f"DCF tab missing label: {label}"
     # DCF outputs present (valuation_engine@2.0 fixture; the hand math lives in
-    # test_valuation.py: exit per-share 2.5569, Gordon -0.6855, PV of FCF 6,850.3)
+    # test_valuation.py: exit per-share 2.5569, Gordon 0.3168, PV of FCF 6,850.3)
     assert _find(ws, 2.5569, rel=1e-3), "exit-multiple per-share value missing"
-    assert _find(ws, -0.6855, rel=1e-3), "Gordon per-share value missing"
+    assert _find(ws, 0.3168, rel=1e-3), "Gordon per-share value missing"
     assert _find(ws, 6850.311, rel=1e-3), "PV sum missing"
 
 

@@ -45,6 +45,7 @@ GATE_ORDER = (
     "forecast_bounds",
     "candidate_manifest_integrity",
     "recompute",
+    "terminal_reconciliation",
     "report_evidence_links",
     "controls_conformance",
 )
@@ -359,11 +360,19 @@ def gate_terminal_reconciliation(valuation: dict, mandate: dict) -> tuple[bool, 
             "valuation.json carries no dcf.terminal.reconciliation block",
             ["valuation.json"],
             required_evidence="terminal reconciliation from valuation_engine@2.0")]
-    if rec.get("within"):
+    # Two thresholds. ``terminal_tolerance`` (default 35%) only decides how the
+    # engine forms the target (mean of both terminal values, or Gordon alone).
+    # The gate blocks on ``terminal_gate_ratio_max`` (default 3x): a candidate
+    # whose terminal values differ by more than that, or whose Gordon value is
+    # not positive, is broken, not merely debatable. The exit multiple is a
+    # human mandate input, so blocking on the tight band would stop cases no
+    # agent can repair.
+    assumptions = (mandate or {}).get("assumptions") or {}
+    hard = float(assumptions.get("terminal_gate_ratio_max", 3.0))
+    ratio = rec.get("ratio")
+    if rec.get("within") or (ratio is not None and 1.0 / hard <= ratio <= hard):
         return True, []
-    tol = rec.get("tolerance")
-    if tol is None:
-        tol = ((mandate or {}).get("assumptions") or {}).get("terminal_tolerance", 0.35)
+    tol = f"{hard:.1f}x"
     tv_exit = (term.get("exit_multiple") or {}).get("terminal_value")
     tv_g = (term.get("gordon") or {}).get("terminal_value")
     mult = (term.get("exit_multiple") or {}).get("multiple")
@@ -374,12 +383,11 @@ def gate_terminal_reconciliation(valuation: dict, mandate: dict) -> tuple[bool, 
     def f(v, spec):
         return "n/a" if v is None else format(v, spec)
 
-    ratio = rec.get("ratio")
     return False, [_finding(
         "terminal_reconciliation", "terminal:outside-tolerance",
         f"exit-multiple terminal value {f(tv_exit, ',.0f')} (multiple {f(mult, '.1f')}x) "
         f"and Gordon terminal value {f(tv_g, ',.0f')} (growth {f(g, '.2%')}) "
-        f"differ: ratio {f(ratio, '.2f')} outside tolerance {f(tol, '.0%')}; "
+        f"differ: ratio {f(ratio, '.2f')} outside the gate limit {tol}; "
         f"the Gordon value implies an exit multiple of {f(imp_mult, '.1f')}x and "
         f"the exit multiple implies terminal growth of {f(imp_g, '.2%')}",
         ["valuation.json"],
@@ -1027,6 +1035,8 @@ class GateEngine:
             return self._schema_findings(ctx.facts)
         if gate == "citation_presence":
             return gate_citation_presence(ctx.facts, manifest=ctx.input_manifest)
+        if gate == "terminal_reconciliation":
+            return gate_terminal_reconciliation(ctx.valuation_json or {}, mandate)
         if gate == "period_coverage":
             return gate_period_coverage(ctx.facts, ctx.current_period or "")
         if gate == "forecast_bounds":

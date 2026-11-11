@@ -350,7 +350,15 @@ class TestManifestIntegrityAndPipeline:
                    for f in findings)
 
     def test_run_all_passes_on_clean_candidate(self, tmp_path):
+        import copy
         manifest = self._materials(tmp_path)
+        # a valid @2.0 valuation carries the terminal reconciliation block
+        valuation = copy.deepcopy(TestRecomputeGate.VALUATION_JSON)
+        valuation["dcf"]["terminal"] = {
+            "exit_multiple": {"multiple": 10.0, "terminal_value": 60000.0},
+            "gordon": {"terminal_growth": 0.02, "terminal_value": 50000.0},
+            "reconciliation": {"ratio": 1.2, "tolerance": 0.35, "within": True},
+        }
         ctx = gates.CandidateContext(
             facts=GOOD_FACTS,
             forecast=GOOD_FORECAST,
@@ -359,7 +367,7 @@ class TestManifestIntegrityAndPipeline:
             input_manifest=casekit.MANIFEST,
             mandate=casekit.MANDATE,
             model_json=TestRecomputeGate.MODEL_JSON,
-            valuation_json=TestRecomputeGate.VALUATION_JSON,
+            valuation_json=valuation,
             case_dir=tmp_path,
         )
         eng = make_engine()

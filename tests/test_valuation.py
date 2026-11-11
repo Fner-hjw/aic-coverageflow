@@ -111,6 +111,7 @@ def valuation():
 
 UFCF_PCT = 0.04 * 0.85 + 1200 / 52000 - 0.03
 EBITDA_PCT = 0.04 + 1200 / 52000
+NOPAT_PCT = 0.04 * 0.85   # NOPAT / revenue (EBIT margin x (1 - tax))
 
 
 @pytest.fixture
@@ -269,33 +270,61 @@ def test_ebitda_and_exit_multiple_terminal_hand_math(valuation):
     assert t["exit_multiple"]["ebitda_final"] == pytest.approx(rev5 * EBITDA_PCT)
     assert t["exit_multiple"]["terminal_value"] == pytest.approx(rev5 * EBITDA_PCT * 10)
     assert t["exit_multiple"]["pv"] == pytest.approx(rev5 * EBITDA_PCT * 10 / 1.1 ** 5)
-    assert t["gordon"]["terminal_value"] == pytest.approx(rev5 * UFCF_PCT * 1.02 / 0.08)
+    # normalised terminal cash flow: NOPAT_H * (1+g), capex = D&A, no NWC (default 0)
+    assert t["gordon"]["terminal_fcf"] == pytest.approx(rev5 * NOPAT_PCT * 1.02)
+    assert t["gordon"]["terminal_value"] == pytest.approx(rev5 * NOPAT_PCT * 1.02 / 0.08)
+
+
+def test_gordon_terminal_includes_nwc_growth_charge():
+    model = build_model(Facts.from_payload(valuation_payload()), "1.0")
+    t = value_company(model, FORECAST, {**ASSUMPTIONS, "nwc_pct_incremental": 0.10}
+                      ).to_dict()["dcf"]["terminal"]
+    rev5 = 52000 * 1.09 ** 5
+    fcf = rev5 * NOPAT_PCT * 1.02 - 0.10 * rev5 * 0.02
+    assert t["gordon"]["terminal_fcf"] == pytest.approx(fcf)
+    assert t["gordon"]["terminal_value"] == pytest.approx(fcf / 0.08)
+
+
+def test_negative_final_year_ufcf_still_gives_positive_gordon_value():
+    model = build_model(Facts.from_payload(valuation_payload()), "1.0")
+    # build-out horizon: capex 8% of revenue exceeds D&A (~2.3%), ufcf < 0
+    f = {**FORECAST, "capex_pct_revenue_path": [0.08] * 5}
+    dcf = value_company(model, f, ASSUMPTIONS).to_dict()["dcf"]
+    assert dcf["years"][-1]["ufcf"] < 0
+    g = dcf["terminal"]["gordon"]
+    rev5 = 52000 * 1.09 ** 5
+    assert g["terminal_value"] > 0
+    assert g["terminal_value"] == pytest.approx(rev5 * NOPAT_PCT * 1.02 / 0.08)
+    assert dcf["terminal"]["reconciliation"]["ratio"] > 0
 
 
 # --------------------------------------------------- terminal reconciliation
 
 def test_terminal_reconciliation_and_implied_figures(valuation):
     t = valuation.to_dict()["dcf"]["terminal"]
-    ebitda5 = 52000 * 1.09 ** 5 * EBITDA_PCT
-    ufcf5 = 52000 * 1.09 ** 5 * UFCF_PCT
-    tv_x, tv_g = ebitda5 * 10, ufcf5 * 1.02 / 0.08
+    rev5 = 52000 * 1.09 ** 5
+    ebitda5 = rev5 * EBITDA_PCT
+    nopat5 = rev5 * NOPAT_PCT
+    tv_x, tv_g = ebitda5 * 10, nopat5 * 1.02 / 0.08
     assert t["implied_exit_multiple_from_gordon"] == pytest.approx(tv_g / ebitda5)
     ig = t["implied_growth_from_exit"]
-    assert ig == pytest.approx((tv_x * 0.10 - ufcf5) / (tv_x + ufcf5))
-    # the implied growth reproduces the exit value under Gordon
-    assert ufcf5 * (1 + ig) / (0.10 - ig) == pytest.approx(tv_x)
+    assert ig == pytest.approx((tv_x * 0.10 - nopat5) / (tv_x + nopat5))
+    # the implied growth reproduces the exit value under the normalised Gordon
+    assert nopat5 * (1 + ig) / (0.10 - ig) == pytest.approx(tv_x)
     rec = t["reconciliation"]
     assert rec["ratio"] == pytest.approx(tv_x / tv_g)
     assert rec["tolerance"] == 0.35
-    assert rec["within"] is False   # exit value is ~2.7x the Gordon value here
+    assert rec["within"] is False   # exit value is ~1.46x the Gordon value here
+
+
+def _matching_multiple():
+    rev5 = 52000 * 1.09 ** 5
+    return rev5 * NOPAT_PCT * 1.02 / 0.08 / (rev5 * EBITDA_PCT)
 
 
 def test_reconciliation_within_with_matching_terminals_and_custom_tolerance():
     model = build_model(Facts.from_payload(valuation_payload()), "1.0")
-    # pick the exit multiple that equals the Gordon value
-    ebitda5 = 52000 * 1.09 ** 5 * EBITDA_PCT
-    ufcf5 = 52000 * 1.09 ** 5 * UFCF_PCT
-    mult = ufcf5 * 1.02 / 0.08 / ebitda5
+    mult = _matching_multiple()   # exit multiple that equals the Gordon value
     v = value_company(model, FORECAST, {**ASSUMPTIONS, "exit_multiple_ebitda": mult * 1.1,
                                         "terminal_tolerance": 0.15}).to_dict()
     rec = v["dcf"]["terminal"]["reconciliation"]
@@ -303,17 +332,28 @@ def test_reconciliation_within_with_matching_terminals_and_custom_tolerance():
     assert rec["ratio"] == pytest.approx(1.1)
 
 
-def test_gate_terminal_reconciliation_pass_and_fail():
+def _valued_at_ratio(ratio, **over):
     model = build_model(Facts.from_payload(valuation_payload()), "1.0")
-    ebitda5 = 52000 * 1.09 ** 5 * EBITDA_PCT
-    ufcf5 = 52000 * 1.09 ** 5 * UFCF_PCT
-    mult = ufcf5 * 1.02 / 0.08 / ebitda5
-    good = value_company(model, FORECAST,
-                         {**ASSUMPTIONS, "exit_multiple_ebitda": mult}).to_dict()
-    ok, findings = gate_terminal_reconciliation(good, {"assumptions": ASSUMPTIONS})
+    a = {**ASSUMPTIONS, "exit_multiple_ebitda": _matching_multiple() * ratio, **over}
+    return value_company(model, FORECAST, a).to_dict()
+
+
+def test_gate_terminal_reconciliation_pass_and_fail():
+    mandate = {"assumptions": ASSUMPTIONS}
+    # within the 35% band: passes
+    good = _valued_at_ratio(1.0)
+    assert good["dcf"]["terminal"]["reconciliation"]["within"] is True
+    ok, findings = gate_terminal_reconciliation(good, mandate)
     assert ok and findings == []
-    bad = value_company(model, FORECAST, ASSUMPTIONS).to_dict()
-    ok, findings = gate_terminal_reconciliation(bad, {"assumptions": ASSUMPTIONS})
+    # ratio 2.0: outside 35% but inside the default 3x hard limit: passes
+    mid = _valued_at_ratio(2.0)
+    rec = mid["dcf"]["terminal"]["reconciliation"]
+    assert rec["within"] is False and rec["ratio"] == pytest.approx(2.0)
+    ok, findings = gate_terminal_reconciliation(mid, mandate)
+    assert ok and findings == []
+    # ratio 4.0: outside 3x: fails with the implied figures in the message
+    bad = _valued_at_ratio(4.0)
+    ok, findings = gate_terminal_reconciliation(bad, mandate)
     assert not ok and len(findings) == 1
     msg = findings[0]["summary"]
     t = bad["dcf"]["terminal"]
@@ -322,6 +362,26 @@ def test_gate_terminal_reconciliation_pass_and_fail():
     assert f"{t['implied_exit_multiple_from_gordon']:.1f}x" in msg
     assert f"{t['implied_growth_from_exit']:.2%}" in msg
     assert findings[0]["gate"] == "terminal_reconciliation"
+    # ratio 1/4 (exit far below Gordon) is symmetric: also fails
+    low = _valued_at_ratio(0.25)
+    assert not gate_terminal_reconciliation(low, mandate)[0]
+
+
+def test_gate_fails_when_gordon_not_positive():
+    v = _valued_at_ratio(1.0)
+    v["dcf"]["terminal"]["reconciliation"].update(ratio=None, within=False)
+    v["dcf"]["terminal"]["gordon"]["terminal_value"] = -5.0
+    ok, findings = gate_terminal_reconciliation(v, {"assumptions": ASSUMPTIONS})
+    assert not ok and findings
+
+
+def test_gate_custom_terminal_gate_ratio_max():
+    four = _valued_at_ratio(4.0)
+    assert not gate_terminal_reconciliation(four, {"assumptions": ASSUMPTIONS})[0]
+    wide = {"assumptions": {**ASSUMPTIONS, "terminal_gate_ratio_max": 5.0}}
+    assert gate_terminal_reconciliation(four, wide)[0]
+    tight = {"assumptions": {**ASSUMPTIONS, "terminal_gate_ratio_max": 1.5}}
+    assert not gate_terminal_reconciliation(_valued_at_ratio(2.0), tight)[0]
 
 
 def test_gate_flags_an_artifact_without_the_block():
