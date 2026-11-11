@@ -1769,7 +1769,8 @@ class Orchestrator:
     def _current_period(self) -> str | None:
         """The trigger filing's period label in the extractor's format.
 
-        ``YYYY-QN`` for a 10-Q, ``YYYY`` for a 10-K. The doc id carries it
+        ``YYYY-QN`` for a 10-Q, ``FYYYYY`` for a 10-K (the model engine's
+        annual label). The doc id carries it
         (``intc-10q-2026q3``, ``intc-10k-fy2025``); failing that, the period
         end date does (fiscal quarters end within days of a calendar quarter
         end, so the date is shifted back before taking the quarter).
@@ -1785,7 +1786,7 @@ class Orchestrator:
             return f"{m.group(1)}-Q{m.group(2)}"
         m = re.search(r"fy(20\d{2})", doc_id)
         if m and not is_q:
-            return m.group(1)
+            return f"FY{m.group(1)}"
         end = None
         for d in self.input_manifest().get("documents") or []:
             if isinstance(d, dict) and d.get("doc_id") == trig.get("doc_id"):
@@ -1795,7 +1796,7 @@ class Orchestrator:
         except ValueError:
             return None
         return (f"{dt.year}-Q{(dt.month - 1) // 3 + 1}" if is_q
-                else str(dt.year))
+                else f"FY{dt.year}")
 
     # ================================================================ repair
     def _issue_repair_packet(self, state: dict, arts: Arts,
