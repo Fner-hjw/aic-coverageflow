@@ -47,6 +47,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from coverageflow import mandate_check as _mc
+from coverageflow import mandate_prefill as _mp
+from coverageflow import market_data as _md
 from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
@@ -1600,9 +1602,52 @@ def validate_mandate(payload: dict) -> list[str]:
     """
     errors = _mc.semantic_errors(payload)
     if not errors:
-        candidate = _mandate_from_payload(payload, "man-0000", "validate-0000")
+        candidate = _mandate_from_payload(payload, "man-0000", "validate-0000",
+                                          apply_prefill=False)
         errors = _mc.schema_errors(candidate)
+    if not errors and _prefill_block(payload):
+        try:
+            _apply_prefill(payload, candidate)
+        except _mp.PrefillError as exc:
+            errors = [ln.strip(" -") for ln in str(exc).splitlines()[1:]] or [str(exc)]
     return errors
+
+
+# A prefill proposal's fetch; tests replace it with recorded fixtures.
+_PREFILL_FETCH: Callable[[str], bytes] | None = None
+
+
+def prefill_mandate(ticker: str, cutoff: str, peers: list[str] | None = None,
+                    erp: float | None = None) -> dict:
+    """POST /api/mandate/prefill: market-data proposal + provenance (status proposed).
+
+    Nothing is saved: the human reviews the form and submits it (= accept).
+    """
+    ticker = str(ticker or "").strip().upper()
+    if not re.fullmatch(r"[A-Z]{1,6}", ticker):
+        raise ValidationError("ticker is required (1-6 letters, e.g. INTC)")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(cutoff or "")):
+        raise ValidationError("cutoff_date must be a date YYYY-MM-DD")
+    try:
+        return _mp.propose_mandate(
+            ticker, cutoff, fetch=_PREFILL_FETCH or _md.default_fetch(),
+            peers=peers or None,
+            **({"erp": float(erp)} if erp is not None else {}))
+    except _mp.PrefillError as exc:
+        raise ValidationError(str(exc))
+
+
+def _prefill_block(payload: dict) -> dict | None:
+    pf = payload.get("prefill")
+    prop = pf.get("proposal") if isinstance(pf, dict) else None
+    return prop if isinstance(prop, dict) and prop.get("status") == "proposed" else None
+
+
+def _apply_prefill(payload: dict, built: dict) -> dict:
+    """Submitting a reviewed prefill form = accept: record approval + edits."""
+    proposal = _prefill_block(payload)
+    final = _mp.overlay_form(proposal, built)
+    return _mp.finalize(proposal, final, by=str(payload["prefill"].get("by") or "human"))
 
 
 def _config_versions() -> dict:
@@ -1615,7 +1660,8 @@ def _config_versions() -> dict:
             "schema": "1.0"}
 
 
-def _mandate_from_payload(payload: dict, mandate_id: str, case_id: str) -> dict:
+def _mandate_from_payload(payload: dict, mandate_id: str, case_id: str,
+                          apply_prefill: bool = True) -> dict:
     """Wizard payload -> mandate.json content (shared by demo + real paths)."""
     a_in = payload.get("assumptions") or {}
     segs = (a_in.get("forecast_bounds") or {}).get(
@@ -1641,6 +1687,11 @@ def _mandate_from_payload(payload: dict, mandate_id: str, case_id: str) -> dict:
         mandate["assumptions"]["forecast_bounds"] = a_in["forecast_bounds"]
     if isinstance(a_in.get("peer_block"), dict):
         mandate["assumptions"]["peer_block"] = a_in["peer_block"]
+    if apply_prefill and _prefill_block(payload):
+        try:
+            mandate = _apply_prefill(payload, mandate)
+        except _mp.PrefillError as exc:
+            raise ValidationError("mandate validation failed", errors=[str(exc)])
     return mandate
 
 

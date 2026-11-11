@@ -512,7 +512,7 @@ def _leaves(m: dict) -> dict:
 
 
 def _is_derived_note(path: str) -> bool:
-    return path.endswith(".note")
+    return path.endswith((".note", ".notional_note"))
 
 
 def edits_between(proposed: dict, final: dict) -> list[dict]:
@@ -525,6 +525,29 @@ def edits_between(proposed: dict, final: dict) -> list[dict]:
         if p.get(path) != f.get(path):
             edits.append({"path": path, "proposed": p.get(path), "final": f.get(path)})
     return edits
+
+
+FORM_CONTROLLED = ("wacc", "terminal_growth", "exit_multiple_ebitda", "tax_rate",
+                   "forecast_bounds", "peer_block", "market", "own_band", "sensitivity",
+                   "dcf_comps_tolerance")
+
+
+def overlay_form(proposed: dict, built: dict) -> dict:
+    """The proposal with the fields a reviewed form controls taken from ``built``.
+
+    ``built`` is the mandate the UI wizard assembled from the submitted form;
+    keys the form does not carry (tolerances, rating bands, limits) stay as
+    proposed so they are not reported as edits.
+    """
+    out = copy.deepcopy(proposed)
+    for k in ("mandate_id", "case_id", "ticker", "cik", "cutoff_date", "trigger_document"):
+        if k in built:
+            out[k] = built[k]
+    out["report_policy"] = copy.deepcopy(built["report_policy"])
+    for k in FORM_CONTROLLED:
+        if k in (built.get("assumptions") or {}):
+            out["assumptions"][k] = copy.deepcopy(built["assumptions"][k])
+    return out
 
 
 def parse_set(spec: str) -> tuple[str, Any]:

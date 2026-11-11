@@ -82,6 +82,16 @@ def create_app() -> FastAPI:
     def backend_api_configure(payload: dict) -> dict:
         return service.configure_api(payload)
 
+    # ---- mandate prefill (proposal only; submitting the form accepts it) ----
+    @app.post("/api/mandate/prefill")
+    def mandate_prefill(payload: dict) -> dict:
+        peers = payload.get("peers")
+        if isinstance(peers, str):
+            peers = [p for p in peers.replace(" ", "").split(",") if p]
+        return service.prefill_mandate(
+            str(payload.get("ticker") or ""), str(payload.get("cutoff_date") or ""),
+            list(peers) if isinstance(peers, list) else None, payload.get("erp"))
+
     # ---- cases ------------------------------------------------------------
     @app.get("/api/cases")
     def cases() -> dict:

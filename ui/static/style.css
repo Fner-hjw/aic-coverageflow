@@ -2299,3 +2299,10 @@ button.btn.selected-filing-remove { display: inline-flex; justify-content: cente
   .bundle-layout table.bundle-table tbody td { grid-template-columns: minmax(48px, 58px) minmax(0, 1fr); gap: 6px; }
 }
 
+
+/* market-data prefill: source captions and the prefill bar */
+.pf-bar { align-items: center; gap: 8px; margin-bottom: 8px; }
+.pf-bar input[type="text"] { max-width: 260px; }
+.pf-caption { display: block; margin-top: 2px; }
+.pf-summary { margin: 6px 0 0; }
+.pf-status:empty { display: none; }
