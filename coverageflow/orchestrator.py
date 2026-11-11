@@ -3132,8 +3132,11 @@ class Orchestrator:
         """Human STOP: terminal STOPPED with a precise reason."""
         state = self.load()
         frm = state["status"]
-        if state["status"] in ("CLOSED", *TERMINAL):
-            raise RuntimeError(f"case already terminal: {state['status']}")
+        # BLOCKED and EXHAUSTED are terminal for a run but can be re-run, so
+        # a human may still retire them; only finished decisions are final.
+        if state["status"] in ("CLOSED", "APPROVED", "REJECTED", "STOPPED",
+                               "PUBLISHED_WITH_EXCEPTIONS"):
+            raise RuntimeError(f"case already final: {state['status']}")
         budget = self._budget(state)
         budget.pause_clock()
         state["status"] = "STOPPED"

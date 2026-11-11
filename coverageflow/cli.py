@@ -679,7 +679,10 @@ def cmd_case_stop(args, ws: Path) -> int:
     orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
                         gate_engine=load_gate_engine(stub_engines=False,
                                                       workspace=ws))
-    _print(orch.stop(by=args.by, reason=args.reason))
+    try:
+        _print(orch.stop(by=args.by, reason=args.reason))
+    except RuntimeError as exc:
+        raise SystemExit(str(exc))
     return 0
 
 
