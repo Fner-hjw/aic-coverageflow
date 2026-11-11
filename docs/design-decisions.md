@@ -295,3 +295,47 @@ The Gordon terminal value is built on a normalised steady-state cash flow, not o
 ## Mandate prefill
 
 Market data is fetched by code, with provenance, but the mandate stays human-owned: the machine proposes, the human accepts or edits. `case prefill` (and the UI button) fetches the share price, peer multiples, beta, risk-free rate and fundamentals through one injectable fetch, derives WACC (CAPM), the exit multiple and the own band deterministically, and records for every value where it came from (source, URL, as-of date, response hash, and the basis of any derivation). The result carries `status: proposed`, and the controller refuses to create a case from it or to run one: only `case accept` (or submitting the reviewed UI form) turns it into a mandate, recording who accepted it, when, and each edit as proposed versus final. Values that could not be fetched stay null and block acceptance until a person supplies them; nothing is guessed. The provenance and approval blocks travel with the frozen mandate, so a later reader can see which numbers were fetched and which were a person's judgment. `references/mandate-schema.json` is the single definition of the mandate shape, used by the CLI and the UI wizard alike.
+
+## Input handling
+
+Every user-supplied value is cleaned on the server or CLI side (authoritative) by
+`coverageflow/sanitize.py` (typed cleaners: text, note, person name, identifier,
+ticker, CIK, ISO date, number/rate/multiple, http(s) URL, secret, confined or
+relative path). Each cleaner NFC-normalises, strips control, zero-width and bidi
+characters, collapses whitespace, caps length and returns a field-specific
+`InputError`. Text that can reach a prompt or a published artifact is also screened
+by the injection heuristic (instruction overrides, "system prompt", "you are now",
+role markers, `###`, code fences, chat-template tokens, URLs): such text is
+rejected, never silently stripped. Mandates additionally go through
+`coverageflow/mandate_sanitize.py` and the tightened `references/mandate-schema.json`
+(per-field patterns, length caps, numeric ranges; floor < ceiling, terminal growth <
+WACC, min words < max words). The browser normaliser (`ui/static/normalise.js`) only
+gives early feedback. Prompt assembly reads the mandate through `Orchestrator.mandate()`,
+which re-applies the cleaner, and `references/harness-preamble.md` (rule 7) tells every
+role that payload values are data.
+
+| Entry point | Input | Cleaner |
+| --- | --- | --- |
+| `ui/api.py` middleware | request body size | 1 MB cap (413) |
+| `ui/service.py` `_get`, `_rcase_dir` (all `/api/cases/{id}/...`) | case_id | identifier |
+| `read_artifact` | artifact path | safe_relative |
+| `read_replay`, `prefill_job_status` | request_id, job_id | identifier |
+| `get_trace` | from cursor | integer clamp |
+| `get_report` | version | identifier |
+| `export_download` | filename | filename (identifier) |
+| `validate_mandate`, `create_case` (new and restart) | whole mandate payload | `sanitize_mandate` plus schema |
+| `start_prefill_job` / `_prefill_inputs` | ticker, cutoff, peers, erp | ticker, iso_date, tickers, number |
+| `run_case`, `select_backend`, `demo_action` | backend, action, stage | identifier |
+| `record_approval` | by, reasoning, acknowledged finding ids | person_name, note, identifier |
+| `configure_api` | base URL, model, API key | api_url, text(charset), secret |
+| `edgar_search` | ticker, forms, window | ticker, text(charset) |
+| `build_bundle` | cik, name, doc specs | cik, identifier, per-field cleaners |
+| `evolution_prepare` | scope, description, author, linked case, diff files | text, note, person_name, identifier, safe_relative |
+| `evolution_regress/approve/rollback` | version, by, reasoning | identifier, person_name, note |
+| `ui/ws.py` | no client messages are read | not applicable |
+| `coverageflow/cli.py` `clean_args` (all subcommands) | ticker, cutoff, period, trigger doc, case, peers, by, author, reason, scope, version, stage, decision, acknowledge, backend, bundle, file paths, `--set` path | ticker, iso_date, identifier, tickers, person_name, note, text, control-character check |
+| `cli.py` `--mandate` file, `case accept --set` values (`mandate_prefill.finalize`) | mandate JSON, edit values | `sanitize_mandate` plus schema |
+| `cli.py evolve propose --spec` | proposal JSON | `clean_json` |
+| `Orchestrator.create_case`, `Orchestrator.mandate()` | case id, frozen mandate | identifier, `sanitize_mandate` |
+| `backends/api_backend.py` `_clean_config` | saved or env base URL, model, key | api_url, text, secret |
+| `launch.py` `check_answers`, API prompts | mode, workspace, backend, port, URL, model, key | choice, text, identifier, clamp, api_url, secret |

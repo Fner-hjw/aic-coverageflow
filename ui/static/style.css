@@ -2350,3 +2350,7 @@ button.btn.selected-filing-remove { display: inline-flex; justify-content: cente
                          border-radius: inherit; transition: width .5s ease; }
 .pf-progress-step { margin: 8px 0 0; font-size: 13px; color: var(--ink); }
 .pf-progress-note { margin: 2px 0 0; font-size: 12px; color: var(--ink-2); }
+
+/* form inputs: shadow text is clearly lighter than entered text */
+input::placeholder, textarea::placeholder { color: var(--ink-3); opacity: .8; }
+input.invalid { border-color: var(--major); background: var(--major-wash); }

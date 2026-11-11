@@ -302,3 +302,16 @@ def test_api_backend_drops_invalid_saved_config():
     from coverageflow.backends.api_backend import _clean_config
     out = _clean_config({"base_url": "javascript:x", "model": "ok-model", "api_key": "k y"})
     assert out == {"base_url": None, "model": "ok-model", "api_key": None}
+
+
+# ------------------------------------------------------- client normaliser (node)
+
+def test_client_normaliser_with_node():
+    import pathlib, shutil, subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    script = pathlib.Path(__file__).resolve().parent / "js" / "normalise_check.js"
+    r = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "ok"
