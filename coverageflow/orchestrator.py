@@ -93,6 +93,9 @@ REBUILD_ORDER = ("ingest", "extractor", "model", "writer")
 # or in a human-owned input, so the case ends and feeds an evolution proposal.
 OWNER_BLOCK_CODES = ("needs_system_change", "needs_mandate_change")
 EVOLUTION_INPUT_FILE = "evolution-input.json"
+PRIOR_DIR = "prior"
+PRIOR_NOTE_FILE = "prior-note.md"
+PRIOR_VALUATION_FILE = "prior-valuation.json"
 CRITIC_ROLES = tuple(f"critic_c{i}" for i in range(1, 5))
 RUBRIC_VERSION = "1.1"
 # Rubric v1.1 checklist IDs per critic area (references/critic-rubric-v1.1.md).
@@ -1061,7 +1064,7 @@ class Orchestrator:
                     "carried_findings": self._carried()}
         inputs = self._stage_inputs(arts, stage)
         inputs = self._scope_inputs(stage, inputs)
-        return {"case_id": state["case_id"], "round": arts.round,
+        payload = {"case_id": state["case_id"], "round": arts.round,
                 "carried_findings": self._carried(),
                 # every role works under the frozen mandate: the writer
                 # needs the report policy and cutoff, the model needs
@@ -1072,6 +1075,13 @@ class Orchestrator:
                 # writer cannot invent a bundle id it was never given
                 "bundle": self._bundle_provenance(),
                 "prior_artifacts": inputs}
+        prior = self._prior_publication() if stage == "writer" else None
+        if prior:
+            # the last published note and its headline values; the values are
+            # citable as [EV:prior.target_price] etc. Absent: nothing is sent.
+            payload["prior_note"] = prior["note"]
+            payload["prior_valuation"] = prior["valuation"]
+        return payload
 
     def _scope_inputs(self, stage: str, inputs: dict) -> dict:
         """Role-scoped view of the facts ledger (model and writer only).
@@ -1510,7 +1520,115 @@ class Orchestrator:
         # valuation number unciteable, so the note could not state a value.
         for key in _dotted_paths(valuation):
             idx.setdefault(key, valuation_rel)
+        # the previous publication's headline values, citable as [EV:prior.*]
+        prior = self._prior_publication()
+        if prior:
+            for key in _dotted_paths(prior["valuation"], "prior"):
+                idx.setdefault(key, f"{PRIOR_DIR}/{PRIOR_VALUATION_FILE}")
         return idx
+
+    # --------------------------------------------------------- prior note
+    def _prior_publication(self) -> dict | None:
+        """The previously published note for this ticker, frozen per case.
+
+        ``{"note": text, "valuation": {...}}`` or None. Looked up once and
+        written under ``prior/`` (a sentinel when nothing exists), so a later
+        publication elsewhere cannot change what this case's writer saw or
+        what its evidence index resolves.
+        """
+        if getattr(self, "_prior_cache", None) is not None:
+            return self._prior_cache or None
+        d = self.case_dir / PRIOR_DIR
+        vfile, nfile = d / PRIOR_VALUATION_FILE, d / PRIOR_NOTE_FILE
+        frozen = statestore.read_json_or_none(vfile) if vfile.is_file() else None
+        if isinstance(frozen, dict):
+            found = ({"note": nfile.read_text(encoding="utf-8")
+                      if nfile.is_file() else "",
+                      "valuation": frozen.get("valuation") or {}}
+                     if frozen.get("present") else None)
+        else:
+            found = self._find_prior_publication()
+            statestore.atomic_write_json(
+                vfile, {"present": True, "valuation": found["valuation"]}
+                if found else {"present": False})
+            if found:
+                statestore.atomic_write_text(nfile, found["note"])
+        self._prior_cache = found or {}
+        return found
+
+    def _find_prior_publication(self) -> dict | None:
+        """Newest published note of the same ticker in this workspace.
+
+        Published notes live in ``<case>/report/vN-*.md``; recurring coverage
+        of one ticker is one case per period under the same ``cases/``
+        directory. This case's own report directory counts too; any other
+        case counts only when its cutoff is earlier than this one.
+        """
+        from . import render_note
+        mine = self.mandate()
+        ticker = str(mine.get("ticker") or "").lower()
+        if not ticker:
+            return None
+        best: tuple | None = None
+        parent = self.case_dir.parent
+        dirs = [self.case_dir] + (sorted(p for p in parent.iterdir()
+                                         if p.is_dir() and p != self.case_dir)
+                                  if parent.is_dir() else [])
+        for cd in dirs:
+            other = statestore.read_json_or_none(cd / "mandate.json")
+            if not isinstance(other, dict) or \
+                    str(other.get("ticker") or "").lower() != ticker:
+                continue
+            cutoff = str(other.get("cutoff_date") or "")
+            if cd != self.case_dir and not (
+                    cutoff and cutoff < str(mine.get("cutoff_date") or "")):
+                continue
+            for note in (cd / "report").glob("v*.md") if (cd / "report").is_dir() else []:
+                m = re.match(r"v(\d+)-", note.name)
+                if note.name.endswith(".clean.md") or not m:
+                    continue
+                key = (cutoff, int(m.group(1)))
+                if best is None or key > best[0]:
+                    best = (key, cd, note)
+        if best is None:
+            return None
+        _, cd, note = best
+        clean = note.with_name(note.name[:-3] + ".clean.md")
+        text = (clean if clean.is_file() else note).read_text(encoding="utf-8")
+        if not clean.is_file():
+            text = render_note.render_clean(text, {})
+        return {"note": text,
+                "valuation": self._prior_valuation_summary(cd, note.name)}
+
+    @staticmethod
+    def _prior_valuation_summary(case_dir: Path, note_name: str) -> dict:
+        """Headline values of the published candidate's valuation.json."""
+        out: dict = {"source_case": case_dir.name, "source_note": note_name}
+        state = statestore.load_state(case_dir) or {}
+        built = int((state.get("candidate") or {}).get("built_round") or 0)
+        val = statestore.read_json_or_none(
+            case_dir / Arts(round=built).rel("generator", "valuation.json")) \
+            if built else None
+        if not isinstance(val, dict):
+            return out
+        dcf = val.get("dcf") if isinstance(val.get("dcf"), dict) else {}
+        for key in ("target_price", "rating", "upside", "wacc"):
+            v = dcf.get(key, val.get(key))
+            if v is not None:
+                out[key] = v
+        years = dcf.get("years") if isinstance(dcf.get("years"), list) else []
+        base = dcf.get("base") if isinstance(dcf.get("base"), dict) else {}
+        est: dict = {}
+        if years and isinstance(years[0], dict):
+            for k in ("revenue", "ebit", "ebitda", "ufcf"):
+                if years[0].get(k) is not None:
+                    est[f"year1_{k}"] = years[0][k]
+        for k in ("revenue", "ebit", "ebitda", "fcf"):
+            if base.get(k) is not None:
+                est[f"base_{k}"] = base[k]
+        if est:
+            out["estimates"] = est
+        return out
 
     def _stamp_manifest_header(self, arts: Arts, manifest: dict,
                                rebuild_from: str | None = None) -> dict:
@@ -2262,6 +2380,9 @@ class Orchestrator:
         if role == "critic_c1":
             payload["input_manifest"] = self.input_manifest()
             payload["evidence_index"] = self._evidence_index(build_arts)
+            prior = self._prior_publication()
+            if prior:       # the values behind the prior.* evidence keys
+                payload["prior_valuation"] = prior["valuation"]
         elif role == "critic_c2":
             payload["mandate_bounds"] = {
                 "forecast_bounds": mandate["assumptions"]["forecast_bounds"],
