@@ -958,7 +958,8 @@ function renderCaseOverview(body, c) {
                 h("a", { class: "btn", href: "#/demo" }, "Open rehearsal"),
                 h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log"))) :
               h("div", { class: "control-actions" },
-                h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log")))),
+                h("a", { class: "btn", href: `#/terminal/${c.case_id}` }, "Open activity log")),
+            deleteCaseControl(c))),
       ),
       h("div", null,
         overviewPanel("Source snapshot", "overview-sources",
@@ -1086,6 +1087,37 @@ async function doRun(caseId, replay, extend) {
 async function doResume(caseId) {
   const r = await guard(() => Api.post(`/api/cases/${caseId}/resume`), "resume failed");
   if (r.ok) { toast("Resume: Pending role dispatched again", r.data.verified_checkpoint); render(); }
+}
+
+/* Delete a case: the analyst types the case ID, then confirms. The server
+ * refuses a case that is running and moves the folder to <workspace>/deleted/
+ * instead of erasing it. */
+function deleteCaseControl(c) {
+  const caseId = c.case_id, st = c.state || {};
+  const input = h("input", { type: "text", placeholder: caseId, autocomplete: "off",
+                             spellcheck: "false", "aria-label": "Type the case ID to confirm" });
+  const btn = h("button", { class: "btn danger", type: "button", disabled: "" }, "Delete case");
+  const msg = h("div");
+  input.addEventListener("input", () => { btn.disabled = input.value.trim() !== caseId; });
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      const r = await Api.del(`/api/cases/${encodeURIComponent(caseId)}?confirm=${encodeURIComponent(input.value.trim())}`);
+      toast("Case deleted", r.moved_to ? `Moved to ${r.moved_to}. Move it back to restore it.` : caseId);
+      location.hash = "#/dashboard";
+    } catch (err) {
+      msg.replaceChildren(h("div", { class: "err-box" }, err.message || "Delete failed."));
+      btn.disabled = input.value.trim() !== caseId;
+    }
+  });
+  const running = st.status === "RUNNING" && !c.interrupted;
+  return h("div", { class: "control-group" },
+    h("h3", null, "Delete case"),
+    h("p", null, running
+      ? "This case is running. Stop it before deleting."
+      : "Removes the case from the workspace. The folder is kept under deleted/ so it can be restored. Type the case ID to confirm."),
+    h("div", { class: "control-actions" }, input, btn),
+    msg);
 }
 
 async function doKill(caseId) {

@@ -1873,6 +1873,34 @@ def create_case(payload: dict) -> dict:
             "validation": "passed", "trace_tail": len(tr)}
 
 
+def delete_case(case_id: str, confirm: str) -> dict:
+    """DELETE /api/cases/{id}: remove a case the analyst no longer wants.
+
+    The analyst must type the case id to confirm. A case that a live process
+    is running is refused. In a real workspace the folder is moved to
+    ``<workspace>/deleted/<case_id>-<UTC timestamp>/`` rather than erased, so
+    an accidental delete can be undone by moving it back.
+    """
+    case_id = _v(_san.identifier, "case_id", case_id)
+    confirm = str(confirm or "").strip()
+    if confirm != case_id:
+        raise ValidationError("type the case ID to confirm the delete",
+                              errors=["confirm: must equal the case ID"])
+    if _using_real():
+        cd = _rcase_dir(case_id)
+        if _real_statestore.run_owner(cd) is not None:
+            raise ConflictError("the case is running; stop it before deleting",
+                                case_id=case_id)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        dest = _rws() / "deleted" / f"{case_id}-{stamp}"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(cd), str(dest))
+        return {"deleted": case_id, "moved_to": str(dest.relative_to(_rws()))}
+    _get(case_id)
+    _CASES.pop(case_id, None)
+    return {"deleted": case_id, "moved_to": None}
+
+
 def get_case(case_id: str) -> dict:
     """GET /api/cases/{id} — state, rounds, findings, budget summary."""
     if _using_real():

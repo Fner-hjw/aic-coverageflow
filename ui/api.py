@@ -135,6 +135,10 @@ def create_app() -> FastAPI:
     def case_detail(case_id: str) -> dict:
         return service.get_case(case_id)
 
+    @app.delete("/api/cases/{case_id}")
+    def case_delete(case_id: str, confirm: str = "") -> dict:
+        return service.delete_case(case_id, confirm)
+
     @app.get("/api/cases/{case_id}/trace")
     def case_trace(case_id: str, request: Request):
         frm = _int_query(request, "from", 0)

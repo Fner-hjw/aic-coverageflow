@@ -512,3 +512,31 @@ class TestEvidenceResolution:
     def test_an_unknown_marker_is_reported_as_unresolved(self, case_dir):
         ev = service._revidence(case_dir, ["nope.not_a_field"])[0]
         assert ev["citation"]["kind"] == "unresolved"
+
+
+class TestDeleteCase:
+    CID = "intc-fy2026q3-20261030"
+
+    def test_delete_needs_the_typed_case_id(self, controller, real_ws):
+        r = controller.delete(f"/api/cases/{self.CID}?confirm=wrong")
+        assert r.status_code == 422
+        assert (real_ws / "cases" / self.CID).is_dir()
+
+    def test_delete_moves_the_case_to_deleted(self, controller, real_ws):
+        r = controller.delete(f"/api/cases/{self.CID}?confirm={self.CID}")
+        assert r.status_code == 200, r.text
+        assert not (real_ws / "cases" / self.CID).exists()
+        moved = list((real_ws / "deleted").glob(f"{self.CID}-*"))
+        assert len(moved) == 1 and (moved[0] / "state.json").is_file()
+        assert controller.get(f"/api/cases/{self.CID}").status_code == 404
+
+    def test_delete_refuses_a_running_case(self, controller, real_ws, monkeypatch):
+        from ui import service
+        monkeypatch.setattr(service._real_statestore, "run_owner", lambda cd: 4242)
+        r = controller.delete(f"/api/cases/{self.CID}?confirm={self.CID}")
+        assert r.status_code == 409
+        assert (real_ws / "cases" / self.CID).is_dir()
+
+    def test_delete_rejects_path_traversal(self, controller):
+        r = controller.delete("/api/cases/..%2F..%2Fetc?confirm=..%2F..%2Fetc")
+        assert r.status_code in (404, 422)
