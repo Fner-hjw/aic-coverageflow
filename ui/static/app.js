@@ -54,7 +54,15 @@ const Api = {
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
     }
-    const res = await fetch(path, opts);
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch (cause) {
+      const err = new Error("CoverageFlow server is unavailable. Restart it and try again.");
+      err.cause = cause;
+      err.network = true;
+      throw err;
+    }
     let data = null;
     try { data = await res.json(); } catch { /* non-json */ }
     if (!res.ok) {
@@ -77,11 +85,29 @@ function toast(msg, sub, isErr) {
   setTimeout(() => t.remove(), isErr ? 6500 : 4000);
 }
 
+function requestErrorText(error) {
+  return error && error.network
+    ? "CoverageFlow server is unavailable. Restart it and try again."
+    : (error && error.message) || "Request failed. Try again.";
+}
+
+function errorNotice(error, ...children) {
+  if (error && error.network) {
+    return h("div", { class: "offline-notice", role: "status" },
+      h("span", { class: "offline-dot", "aria-hidden": "true" }),
+      h("div", { class: "offline-copy" },
+        h("strong", null, "Server unavailable"),
+        h("span", null, "Reconnect to CoverageFlow and retry your request.")),
+      ...children);
+  }
+  return h("div", { class: "err-box", role: "alert" }, requestErrorText(error), ...children);
+}
+
 async function guard(fn, errNote) {
   try { return { ok: true, data: await fn() }; }
   catch (e) {
     const detail = e.detail && (Array.isArray(e.detail.errors) ? e.detail.errors.join("\n") : e.detail.error);
-    toast(errNote || "Request failed", detail || e.message, true);
+    toast(errNote || (e.network ? "Server unavailable" : "Request failed"), detail || requestErrorText(e), true);
     return { ok: false, err: e };
   }
 }
@@ -475,9 +501,8 @@ async function render() {
     else if (page === "case" && rest[0]) await Views.case(view, rest[0], rest[1] || "overview");
     else await Views.dashboard(view);
   } catch (e) {
-    view.replaceChildren(h("div", { class: "err-box" },
-      `view failed: ${e.message}`,
-      e.detail && e.detail.error ? h("div", { class: "mt2" }, e.detail.error) : ""));
+    view.replaceChildren(errorNotice(e,
+      e.detail && e.detail.error ? h("p", null, e.detail.error) : null));
   }
   window.scrollTo(0, 0);
 }
@@ -599,7 +624,7 @@ const Views = {};
 
 Views.dashboard = async function (view) {
   const r = await guard(() => Api.get("/api/cases"));
-  if (!r.ok) { view.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+  if (!r.ok) { view.replaceChildren(errorNotice(r.err)); return; }
   const data = r.data;
   CURRENT_CASE_REFRESH = null;
   CURRENT_TAB_SNAPSHOT = null;
@@ -768,7 +793,7 @@ function coverageQueue(rows) {
 Views.case = async function (view, caseId, tab) {
   const r = await guard(() => Api.get(`/api/cases/${caseId}`), "case load failed");
   if (!r.ok) {
-    view.replaceChildren(h("div", { class: "err-box" }, r.err.message,
+    view.replaceChildren(errorNotice(r.err, r.err.network ? null :
       h("p", null, "No such case in this workspace.")));
     return;
   }
@@ -1192,7 +1217,7 @@ async function renderCaseFindings(body, c) {
 
 async function renderCaseTrace(body, c) {
   const full = await guard(() => Api.get(`/api/cases/${c.case_id}/trace`), "trace load failed");
-  if (!full.ok) { body.replaceChildren(h("div", { class: "err-box" }, full.err.message)); return; }
+  if (!full.ok) { body.replaceChildren(errorNotice(full.err)); return; }
   const events = full.data.events;
   const EVENT_TYPES = [...new Set(events.map(e => e.event))].sort();
   const ROLES = [...new Set(events.map(e => e.role).filter(Boolean))].sort();
@@ -1321,7 +1346,7 @@ async function renderCaseArtifacts(body, c) {
     detail.replaceChildren(loadingRow("Artifact"));
     const r = await guard(() => Api.get(
       `/api/cases/${c.case_id}/artifacts/${path}`), "artifact load failed");
-    if (!r.ok) { detail.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+    if (!r.ok) { detail.replaceChildren(errorNotice(r.err)); return; }
     const art = r.data;
     const rawBox = h("pre", { class: "rawjson" },
       art.kind === "json" ? JSON.stringify(art.content, null, 2) : art.content.text);
@@ -1457,7 +1482,7 @@ async function renderCaseReport(body, c) {
     const r = await guard(() => Api.get(
       v ? `/api/cases/${c.case_id}/report?version=${v}`
         : `/api/cases/${c.case_id}/report`), "report load failed");
-    if (!r.ok) { pane.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+    if (!r.ok) { pane.replaceChildren(errorNotice(r.err)); return; }
     const data = r.data;
     const unresolved = (data.evidence || []).filter(ev => !(ev.citation || {}).doc_id).length;
     pane.replaceChildren(
@@ -2646,7 +2671,7 @@ Views.bundles = async function bundles(view) {
     if (filedFrom.value || filedTo.value)
       q.set("window", `${filedFrom.value || "0001-01-01"}:${filedTo.value || "9999-12-31"}`);
     const r = await guard(() => Api.get(`/api/edgar/search?${q}`), "search failed");
-    if (!r.ok) { results.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+    if (!r.ok) { results.replaceChildren(errorNotice(r.err)); return; }
     cikVal = r.data.cik;
     if (r.data.cik) W_cik().value = r.data.cik;
     const sourceNote = /^live (?:edgar|sec) submissions/i.test(r.data.note || "")
@@ -2903,7 +2928,7 @@ function termLine(ev) {
 
 Views.terminal = async function (view, caseId) {
   const r = await guard(() => Api.get("/api/cases"), "case list failed");
-  if (!r.ok) { view.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+  if (!r.ok) { view.replaceChildren(errorNotice(r.err)); return; }
   const cases = r.data.cases || [];
   CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
   document.title = "Activity log | CoverageFlow";
@@ -2938,8 +2963,7 @@ Views.terminal = async function (view, caseId) {
     const rr = await guard(() =>
       Api.get(`/api/cases/${target.case_id}/trace?from=${cursor}`), null);
     if (token !== TERMINAL_TOKEN) return;   // view was replaced
-    if (!rr.ok) { if (first) term.append(h("div", { class: "tl bad" },
-      `Trace unavailable: ${rr.err.message}`)); return; }
+    if (!rr.ok) { if (first) term.append(errorNotice(rr.err)); return; }
     const evs = rr.data.events || [];
     cursor = rr.data.next_cursor ?? cursor + evs.length;
     for (const ev of evs) term.append(termLine(ev));
@@ -2987,7 +3011,7 @@ Views.backends = async function backends(view) {
   CURRENT_CASE_REFRESH = null; CURRENT_TAB_SNAPSHOT = null;
   document.title = "Model routing | CoverageFlow";
   const r = await guard(() => Api.get("/api/backends"), null);
-  if (!r.ok) { view.replaceChildren(h("div", { class: "err-box" }, r.err.message)); return; }
+  if (!r.ok) { view.replaceChildren(errorNotice(r.err)); return; }
   const b = r.data;
   const apiBackend = b.backends.find(x => x.name === "api");
   const apiForm = h("div", { class: "api-config", hidden: "" });

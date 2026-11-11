@@ -1312,6 +1312,35 @@ table.grid tbody tr:hover { background: #eef5df; }
   border-left: 4px solid currentColor;
   border-radius: 4px;
   padding: 16px 18px;
+  font: 13px/1.5 var(--sans);
+}
+.offline-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 var(--s2);
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  background: var(--card);
+  color: var(--ink-2);
+  font: 13px/1.5 var(--sans);
+}
+.offline-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--minor);
+  box-shadow: 0 0 0 3px var(--minor-wash);
+}
+.offline-copy { display: grid; gap: 2px; }
+.offline-copy strong { color: var(--ink); font-weight: 600; }
+.offline-copy span { color: var(--ink-2); }
+.err-box p, .ok-box p {
+  margin: 6px 0 0;
+  font: inherit;
 }
 
 .tabs {
