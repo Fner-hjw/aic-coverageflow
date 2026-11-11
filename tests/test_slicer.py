@@ -223,3 +223,78 @@ class TestTenKStatementSelection:
     def test_income_statement_carries_the_annual_columns(self, tags):
         text = tags["IS"].text
         assert "Net revenue | 52,853 | 53,101" in text
+
+
+# ---------------------------------------------------------------------------
+# segment note keeps every table; MD&A bounded (diagnosis section 5.2)
+# ---------------------------------------------------------------------------
+
+def _seg_table(period_head: str, date: str, rev: int) -> str:
+    return (f"<table><tr><td>{period_head}</td></tr>"
+            f"<tr><td>(In Millions)</td><td>{date}</td></tr>"
+            f"<tr><td>Segment</td><td>Client Computing</td><td>Data Center</td></tr>"
+            f"<tr><td>Revenue</td><td>{rev}</td><td>{rev + 1}</td></tr>"
+            f"<tr><td>Operating income</td><td>{rev // 10}</td><td>{rev // 9}</td></tr>"
+            "</table>")
+
+
+def _write_segment_doc(path):
+    tables = "".join([
+        _seg_table("Three Months Ended", "Sep 26, 2026", 1111),
+        _seg_table("Three Months Ended", "Sep 27, 2025", 2222),
+        _seg_table("Nine Months Ended", "Sep 26, 2026", 3333),
+        _seg_table("Nine Months Ended", "Sep 27, 2025", 4444),
+    ])
+    mda_body = "".join(f"<p>{'Revenue discussion sentence. ' * 20}{i}</p>" for i in range(200))
+    path.write_text(
+        "<html><body>"
+        "<table><tr><td>Note 1 : Basis</td></tr></table><p>basis text</p>"
+        "<table><tr><td>Note 2 : Operating Segments</td></tr></table>"
+        f"<p>We report segments.</p>{tables}"
+        "<table><tr><td>Note 3 : Other</td></tr></table>"
+        + _seg_table("Three Months Ended", "Sep 1, 1999", 9999) +
+        "<p>Item 2. Management&#8217;s Discussion and Analysis</p>"
+        f"<p>Overview</p>{mda_body}"
+        "<p>Item 3. Quantitative and Qualitative Disclosures About Market Risk</p>"
+        "</body></html>", encoding="utf-8")
+
+
+def test_segment_note_keeps_every_table(tmp_path):
+    doc = tmp_path / "seg-10q.htm"
+    _write_segment_doc(doc)
+    tags = _slice_map(slice_document(doc, "10-Q", tmp_path / "out"))
+    seg = tags["SEG"].text
+    for marker in ("1111", "2222", "3333", "4444"):
+        assert marker in seg, marker
+    assert seg.count("Three Months Ended") == 2
+    assert seg.count("Nine Months Ended") == 2
+    assert "1999" not in seg and "9999" not in seg  # next note excluded
+    assert tags["SEG"].anchors["heading"].startswith("Note 2")
+
+
+def test_mda_slice_is_bounded_and_deterministic(tmp_path):
+    doc = tmp_path / "seg-10q.htm"
+    _write_segment_doc(doc)
+    mda = _slice_map(slice_document(doc, "10-Q", tmp_path / "a"))["MDA"].text
+    again = _slice_map(slice_document(doc, "10-Q", tmp_path / "b"))["MDA"].text
+    assert mda == again
+    assert 2_000 < len(mda) <= 12_000
+    assert "Discussion and Analysis" in mda.splitlines()[0]
+    assert "Quantitative and Qualitative" not in mda
+
+
+REAL_INTEL_Q3 = (Path(__file__).resolve().parent.parent
+                 / "data" / "intel-bundle" / "inputs" / "intc-10q-2026q3.htm")
+
+
+@pytest.mark.skipif(not REAL_INTEL_Q3.exists(), reason="intel bundle not present")
+def test_real_intel_10q_segment_and_mda(tmp_path):
+    tags = _slice_map(slice_document(REAL_INTEL_Q3, "10-Q", tmp_path))
+    seg = tags["SEG"].text
+    assert seg.count("Three Months Ended") >= 2
+    assert seg.count("Nine Months Ended") >= 2
+    assert "Sep 26, 2026" in seg and "Sep 27, 2025" in seg
+    assert len(seg) > 2_000
+    mda = tags["MDA"].text
+    assert 8_000 <= len(mda) <= 12_000
+    assert "Overview" in mda

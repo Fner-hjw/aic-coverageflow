@@ -787,3 +787,37 @@ class TestSpanLabels:
         from coverageflow.gates import gate_report_evidence_links
         ok, findings = gate_report_evidence_links("Revenue rose 9 percent.\n", {})
         assert not ok
+
+
+# ===========================================================================
+# period coverage
+# ===========================================================================
+
+class TestPeriodCoverageGate:
+    @staticmethod
+    def _facts(*pairs):
+        return {"facts": [{"field": f, "period": p, "value": 1.0} for f, p in pairs]}
+
+    def test_current_period_present_passes(self):
+        facts = self._facts(("income_statement.revenue", "2026-Q3"),
+                            ("income_statement.revenue", "2025-Q3"),
+                            ("segments.Intel Foundry.revenue", "2026-Q3"),
+                            ("cash_flow_statement.capex", "2026-Q3-YTD"))
+        ok, findings = gates.gate_period_coverage(facts, "2026-Q3")
+        assert ok, findings
+
+    def test_segments_missing_current_period_fails(self):
+        facts = self._facts(("income_statement.revenue", "2026-Q3"),
+                            ("segments.Intel Foundry.revenue", "2025-Q3"),
+                            ("segments.Intel Foundry.revenue", "2025-Q3-YTD"))
+        ok, findings = gates.gate_period_coverage(facts, "2026-Q3")
+        assert not ok
+        assert [f["dedup_key"] for f in findings] == ["period-missing:segments"]
+        assert findings[0]["gate"] == "period_coverage"
+        assert "2026-Q3" in findings[0]["summary"]
+
+    def test_absent_statement_type_not_required_and_derived_ignored(self):
+        facts = self._facts(("income_statement.revenue", "2026-Q3"),
+                            ("derived.growth", "2024-Q1"))
+        ok, findings = gates.gate_period_coverage(facts, "2026-Q3")
+        assert ok, findings

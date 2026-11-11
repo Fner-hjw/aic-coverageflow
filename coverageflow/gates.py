@@ -290,6 +290,52 @@ def gate_citation_presence(facts: dict, manifest: dict | None = None) -> tuple[b
 
 
 # ---------------------------------------------------------------------------
+# gate: the trigger filing's current period is covered for every statement
+# ---------------------------------------------------------------------------
+
+PERIOD_COVERAGE_STATEMENTS = (
+    "income_statement", "balance_sheet", "cash_flow_statement", "segments",
+)
+
+
+def gate_period_coverage(facts: dict, current_period: str,
+                         statements: tuple[str, ...] = PERIOD_COVERAGE_STATEMENTS,
+                         ) -> tuple[bool, list[dict]]:
+    """Every statement type present in the facts must carry the current period.
+
+    ``current_period`` is the trigger filing's period label (``YYYY-QN``, as
+    the extractor emits it). For each statement prefix (the part of ``field``
+    before the first dot) that appears in ``facts`` at all, at least one fact
+    must be for ``current_period`` (a ``-YTD`` variant counts: a 10-Q cash-flow
+    statement is year-to-date only). This catches an extraction that, for
+    example, has only prior-year segment facts.
+    """
+    findings: list[dict] = []
+    if not current_period:
+        return (True, findings)
+    accepted = {current_period, f"{current_period}-YTD"}
+    seen: dict[str, set[str]] = {}
+    for fact in (facts or {}).get("facts", []):
+        field_name = str(fact.get("field", ""))
+        prefix = field_name.split(".", 1)[0]
+        if prefix in statements:
+            seen.setdefault(prefix, set()).add(str(fact.get("period", "")))
+    for prefix in statements:
+        periods = seen.get(prefix)
+        if periods is None or periods & accepted:
+            continue
+        findings.append(_finding(
+            "period_coverage", f"period-missing:{prefix}",
+            f"{prefix} facts cover periods {sorted(periods)} but not the trigger "
+            f"filing's current period {current_period}",
+            ["facts.json"],
+            required_evidence=f"{prefix} facts for {current_period} cited to the "
+                              f"trigger filing's slice",
+        ))
+    return (not findings, findings)
+
+
+# ---------------------------------------------------------------------------
 # gate 4: forecast bounds vs mandate
 # ---------------------------------------------------------------------------
 
