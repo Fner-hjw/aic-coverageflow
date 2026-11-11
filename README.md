@@ -166,6 +166,26 @@ command above. The UI service ships with deterministic in-memory demo data and
 switches to a real workspace in controller mode via `COVERAGEFLOW_WORKSPACE`,
 wired by the integration stream.)
 
+## Mandate prefill and review
+
+Market data is fetched by code, with provenance; the mandate stays human-owned. A prefill is only a proposal until a person accepts it.
+
+```bash
+# propose: price, peers + multiples, beta/risk-free/WACC, exit multiple, own band
+python -m coverageflow case prefill INTC --cutoff 2026-10-30 [--peers AMD,NVDA] [--erp 0.05]
+# -> workspace/drafts/intc-2026-10-30/mandate.proposed.json (or the case dir if the case exists)
+python -m coverageflow case review intc-2026-10-30         # re-print the table
+python -m coverageflow case accept intc-2026-10-30 --set assumptions.exit_multiple_ebitda=15
+python -m coverageflow case new --ticker INTC --trigger-doc intc-10q-2026q3 \
+    --cutoff 2026-10-30 --mandate workspace/drafts/intc-2026-10-30/mandate.json
+```
+
+- Sources: Stooq daily/weekly closes (Yahoo chart API as fallback), FRED `DGS10` for the risk-free rate, SEC XBRL `companyfacts` for fundamentals (only facts `filed` on or before the cutoff). All reads go through one injectable `fetch`, so tests use recorded fixtures. Tags and fallbacks are listed in `coverageflow/market_data.py`.
+- Every proposed value has a `provenance` entry (`value, source, url, as_of, sha256, basis`, plus `inputs` for derived values such as WACC). Anything that could not be fetched is `null`, listed in `missing`, and must be entered with `--set path=value` before the mandate can be accepted.
+- `status: proposed` mandates are refused by `case new`, `run` and `resume`. `case accept` validates against `references/mandate-schema.json` and the live-backend rules, then writes `mandate.json` with `approval: {by, at, edits: [{path, proposed, final}]}` and keeps the provenance.
+- Peers: `--peers`, else `references/peer-sets.json` (INTC, AMD seeded), else a coarse same-SIC suggestion from EDGAR. Segment growth bounds fall back to the existing defaults because companyfacts has no segment history; the basis says so.
+- In the web UI the mandate form has a "Prefill from market data" button. Each field shows its source and as-of date, changed fields are marked "edited", and creating the case accepts the form and records the edits.
+
 ## SEC filing search
 
 The source bundle search resolves ticker symbols through the SEC company ticker
