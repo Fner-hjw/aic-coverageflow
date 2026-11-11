@@ -290,7 +290,7 @@ def _default_critic(critic_role: str) -> Callable[[dict], dict]:
                                   "cutoff_discipline", "risk_controls"],
             },
             "conformance": "schema 1.0",
-            "prompt_version": "1.1",
+            "prompt_version": "1.2",
         }
     return build
 

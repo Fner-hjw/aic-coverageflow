@@ -476,7 +476,8 @@ def collect_case(case_dir: Path) -> dict:
         if report_path.exists():
             report_md = report_path.read_text(encoding="utf-8")
         else:
-            for p in sorted((case_dir / "report").glob("*.md")) if (case_dir / "report").exists() else []:
+            for p in sorted(q for q in (case_dir / "report").glob("*.md")
+                            if not q.name.endswith(".clean.md")) if (case_dir / "report").exists() else []:
                 report_md = p.read_text(encoding="utf-8")
     if not report_md:
         fallback = gen_dir / "report.md"

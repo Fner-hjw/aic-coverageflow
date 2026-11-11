@@ -84,6 +84,18 @@ STAGE_ROLE = {"ingest": "ingest", "extractor": "extractor", "model": "model",
 STAGE_ARTIFACT = {"ingest": "ingest-report.json", "extractor": "facts.json",
                   "model": "forecast_assumptions.json", "writer": "report.md",
                   "candidate": "candidate-manifest.json"}
+# Rebuild scope (diagnosis 3.6): stages a repair can restart from, earliest
+# first, and the owner whose finding names each one.
+REBUILD_STAGE_OF_OWNER = {"extractor": "extractor", "model": "model",
+                          "writer": "writer"}
+REBUILD_ORDER = ("ingest", "extractor", "model", "writer")
+# BLOCKED reasons that are not "fix and re-run": the defect is in the harness
+# or in a human-owned input, so the case ends and feeds an evolution proposal.
+OWNER_BLOCK_CODES = ("needs_system_change", "needs_mandate_change")
+EVOLUTION_INPUT_FILE = "evolution-input.json"
+PRIOR_DIR = "prior"
+PRIOR_NOTE_FILE = "prior-note.md"
+PRIOR_VALUATION_FILE = "prior-valuation.json"
 CRITIC_ROLES = tuple(f"critic_c{i}" for i in range(1, 5))
 RUBRIC_VERSION = "1.1"
 # Rubric v1.1 checklist IDs per critic area (references/critic-rubric-v1.1.md).
@@ -486,6 +498,18 @@ class Orchestrator:
             # the last verified stage; otherwise one transient backend
             # failure forces a brand-new case, and the workspace fills with
             # dead cases that all point at the same frozen bundle.
+            if code in OWNER_BLOCK_CODES:
+                # Not an instruction to re-run: a rebuild cannot repair a
+                # harness or mandate defect, so clearing the block would only
+                # re-open the same findings and stop again.
+                return self._summary(
+                    state, f"case blocked ({code}): the open blocking "
+                           f"finding(s) are owned by "
+                           f"{'the harness' if code == 'needs_system_change' else 'the mandate'}"
+                           f", not by a role. See {EVOLUTION_INPUT_FILE} "
+                           "(input for an evolution proposal) and state.reason."
+                           "detail; apply the change, then open a new case. "
+                           "Re-running this case does nothing.")
             if code == "missing_inputs":
                 missing = missing_input_documents(self.case_dir,
                                                   self.input_manifest())
@@ -647,7 +671,11 @@ class Orchestrator:
                     self._sync_budget(state, budget)
                     self._transition(state, "RUNNING", "RUNNING",
                                      verified=f"rounds/round-{p['round']:03d} build start",
-                                     detail={"round_start": p["round"]})
+                                     detail={"round_start": p["round"],
+                                             "rebuild_from": p.get("rebuild_from")
+                                             or "ingest",
+                                             "rebuild_scope": self._scope_label(
+                                                 p.get("rebuild_from"))})
                     continue
                 budget = self._budget(state)
                 arts.round = state["pending"]["round"]
@@ -973,6 +1001,8 @@ class Orchestrator:
             self._carry_ingest_forward(state, budget, arts)
         if stage == "extractor":
             self._carry_extractor_forward(state, budget, arts)
+        if stage == "model":
+            self._carry_model_forward(state, budget, arts)
 
         # resume fast-path: verified artifact on disk -> role NOT re-dispatched
         if self._artifact_intact(rel):
@@ -1034,7 +1064,7 @@ class Orchestrator:
                     "carried_findings": self._carried()}
         inputs = self._stage_inputs(arts, stage)
         inputs = self._scope_inputs(stage, inputs)
-        return {"case_id": state["case_id"], "round": arts.round,
+        payload = {"case_id": state["case_id"], "round": arts.round,
                 "carried_findings": self._carried(),
                 # every role works under the frozen mandate: the writer
                 # needs the report policy and cutoff, the model needs
@@ -1045,6 +1075,13 @@ class Orchestrator:
                 # writer cannot invent a bundle id it was never given
                 "bundle": self._bundle_provenance(),
                 "prior_artifacts": inputs}
+        prior = self._prior_publication() if stage == "writer" else None
+        if prior:
+            # the last published note and its headline values; the values are
+            # citable as [EV:prior.target_price] etc. Absent: nothing is sent.
+            payload["prior_note"] = prior["note"]
+            payload["prior_valuation"] = prior["valuation"]
+        return payload
 
     def _scope_inputs(self, stage: str, inputs: dict) -> dict:
         """Role-scoped view of the facts ledger (model and writer only).
@@ -1085,7 +1122,8 @@ class Orchestrator:
             "conformance": "schema 1.0",
             "prompt_version": "1.0",
         }
-        manifest = self._stamp_manifest_header(arts, manifest)
+        manifest = self._stamp_manifest_header(
+            arts, manifest, state["pending"].get("rebuild_from"))
         sha = statestore.atomic_write_json(self.case_dir / rel, manifest)
         arts.files[rel] = sha
         arts.content[rel] = manifest
@@ -1482,9 +1520,118 @@ class Orchestrator:
         # valuation number unciteable, so the note could not state a value.
         for key in _dotted_paths(valuation):
             idx.setdefault(key, valuation_rel)
+        # the previous publication's headline values, citable as [EV:prior.*]
+        prior = self._prior_publication()
+        if prior:
+            for key in _dotted_paths(prior["valuation"], "prior"):
+                idx.setdefault(key, f"{PRIOR_DIR}/{PRIOR_VALUATION_FILE}")
         return idx
 
-    def _stamp_manifest_header(self, arts: Arts, manifest: dict) -> dict:
+    # --------------------------------------------------------- prior note
+    def _prior_publication(self) -> dict | None:
+        """The previously published note for this ticker, frozen per case.
+
+        ``{"note": text, "valuation": {...}}`` or None. Looked up once and
+        written under ``prior/`` (a sentinel when nothing exists), so a later
+        publication elsewhere cannot change what this case's writer saw or
+        what its evidence index resolves.
+        """
+        if getattr(self, "_prior_cache", None) is not None:
+            return self._prior_cache or None
+        d = self.case_dir / PRIOR_DIR
+        vfile, nfile = d / PRIOR_VALUATION_FILE, d / PRIOR_NOTE_FILE
+        frozen = statestore.read_json_or_none(vfile) if vfile.is_file() else None
+        if isinstance(frozen, dict):
+            found = ({"note": nfile.read_text(encoding="utf-8")
+                      if nfile.is_file() else "",
+                      "valuation": frozen.get("valuation") or {}}
+                     if frozen.get("present") else None)
+        else:
+            found = self._find_prior_publication()
+            statestore.atomic_write_json(
+                vfile, {"present": True, "valuation": found["valuation"]}
+                if found else {"present": False})
+            if found:
+                statestore.atomic_write_text(nfile, found["note"])
+        self._prior_cache = found or {}
+        return found
+
+    def _find_prior_publication(self) -> dict | None:
+        """Newest published note of the same ticker in this workspace.
+
+        Published notes live in ``<case>/report/vN-*.md``; recurring coverage
+        of one ticker is one case per period under the same ``cases/``
+        directory. This case's own report directory counts too; any other
+        case counts only when its cutoff is earlier than this one.
+        """
+        from . import render_note
+        mine = self.mandate()
+        ticker = str(mine.get("ticker") or "").lower()
+        if not ticker:
+            return None
+        best: tuple | None = None
+        parent = self.case_dir.parent
+        dirs = [self.case_dir] + (sorted(p for p in parent.iterdir()
+                                         if p.is_dir() and p != self.case_dir)
+                                  if parent.is_dir() else [])
+        for cd in dirs:
+            other = statestore.read_json_or_none(cd / "mandate.json")
+            if not isinstance(other, dict) or \
+                    str(other.get("ticker") or "").lower() != ticker:
+                continue
+            cutoff = str(other.get("cutoff_date") or "")
+            if cd != self.case_dir and not (
+                    cutoff and cutoff < str(mine.get("cutoff_date") or "")):
+                continue
+            for note in (cd / "report").glob("v*.md") if (cd / "report").is_dir() else []:
+                m = re.match(r"v(\d+)-", note.name)
+                if note.name.endswith(".clean.md") or not m:
+                    continue
+                key = (cutoff, int(m.group(1)))
+                if best is None or key > best[0]:
+                    best = (key, cd, note)
+        if best is None:
+            return None
+        _, cd, note = best
+        clean = note.with_name(note.name[:-3] + ".clean.md")
+        text = (clean if clean.is_file() else note).read_text(encoding="utf-8")
+        if not clean.is_file():
+            text = render_note.render_clean(text, {})
+        return {"note": text,
+                "valuation": self._prior_valuation_summary(cd, note.name)}
+
+    @staticmethod
+    def _prior_valuation_summary(case_dir: Path, note_name: str) -> dict:
+        """Headline values of the published candidate's valuation.json."""
+        out: dict = {"source_case": case_dir.name, "source_note": note_name}
+        state = statestore.load_state(case_dir) or {}
+        built = int((state.get("candidate") or {}).get("built_round") or 0)
+        val = statestore.read_json_or_none(
+            case_dir / Arts(round=built).rel("generator", "valuation.json")) \
+            if built else None
+        if not isinstance(val, dict):
+            return out
+        dcf = val.get("dcf") if isinstance(val.get("dcf"), dict) else {}
+        for key in ("target_price", "rating", "upside", "wacc"):
+            v = dcf.get(key, val.get(key))
+            if v is not None:
+                out[key] = v
+        years = dcf.get("years") if isinstance(dcf.get("years"), list) else []
+        base = dcf.get("base") if isinstance(dcf.get("base"), dict) else {}
+        est: dict = {}
+        if years and isinstance(years[0], dict):
+            for k in ("revenue", "ebit", "ebitda", "ufcf"):
+                if years[0].get(k) is not None:
+                    est[f"year1_{k}"] = years[0][k]
+        for k in ("revenue", "ebit", "ebitda", "fcf"):
+            if base.get(k) is not None:
+                est[f"base_{k}"] = base[k]
+        if est:
+            out["estimates"] = est
+        return out
+
+    def _stamp_manifest_header(self, arts: Arts, manifest: dict,
+                               rebuild_from: str | None = None) -> dict:
         """Write the provenance header the harness knows into the manifest.
 
         Critics check that every artifact can be tied to the cutoff, the input
@@ -1517,11 +1664,12 @@ class Orchestrator:
                 "model_engine": model_engine_name,
                 "valuation_engine": valuation_engine_name,
             },
-            "scope_statement": self._scope_statement(arts),
+            "scope_statement": self._scope_statement(arts, rebuild_from),
         })
         return out
 
-    def _scope_statement(self, arts: Arts) -> str:
+    def _scope_statement(self, arts: Arts,
+                         rebuild_from: str | None = None) -> str:
         """What this round actually did, from the artifact hashes.
 
         The lead used to assert "full rebuild" every round. Once ingest is
@@ -1553,7 +1701,9 @@ class Orchestrator:
         if prev and self._ingest_carried_from(arts, prev):
             parts.append("ingest classification and slices carried from round "
                          f"{prev:03d} under a fresh request binding")
-        return ("Round " + f"{arts.round:03d} build: " + "; ".join(parts) +
+        prefix = (f"Rebuild scope: {self._scope_label(rebuild_from)}. "
+                  if prev else "")
+        return (prefix + "Round " + f"{arts.round:03d} build: " + "; ".join(parts) +
                 ". Reuse is a hash-match proof against the previous round, not "
                 "a skipped stage.")
 
@@ -1837,8 +1987,11 @@ class Orchestrator:
         rel = arts.rel("generator", "facts.json")
         if self._artifact_intact(rel):
             return True
-        if any("facts.json" in (f.get("affected_artifacts") or [])
-               for f in self._carried()):
+        scope = state["pending"].get("rebuild_from")
+        if scope in ("ingest", "extractor"):
+            return False        # the open findings name this stage: re-run it
+        if scope is None and any("facts.json" in (f.get("affected_artifacts") or [])
+                                 for f in self._carried()):
             return False
         ingest = self._lazy(arts, arts.rel("generator", "ingest-report.json"))
         if not isinstance(ingest, dict):
@@ -1882,6 +2035,80 @@ class Orchestrator:
                         round=arts.round)
             return True
         return False
+
+    def _carry_model_forward(self, state: dict,
+                             budget: budget_mod.BudgetTracker,
+                             arts: Arts) -> bool:
+        """Carry the model role's forecast proposal forward (writer-only repair).
+
+        Only when the repair scope starts at the writer: the open findings are
+        about the note, so the model role is not dispatched and the forecast
+        proposal of the candidate under review is reused unchanged. It is the
+        candidate's own proposal only if the facts it was built on are still
+        the facts of this round. The engines are deterministic and re-run in
+        the model stage's side effects.
+        """
+        if state["pending"].get("rebuild_from") != "writer":
+            return False
+        rel = arts.rel("generator", "forecast_assumptions.json")
+        if self._artifact_intact(rel):
+            return True
+        prev = int(state["candidate"].get("built_round") or 0)
+        if not prev or prev >= arts.round:
+            return False
+        prev_arts = Arts(round=prev)
+        path = self.case_dir / prev_arts.rel("generator",
+                                             "forecast_assumptions.json")
+        if not path.is_file():
+            return False
+
+        def content(a: Arts) -> Any:
+            c = statestore.read_json_or_none(
+                self.case_dir / a.rel("generator", "facts.json"))
+            return ({k: v for k, v in c.items() if k not in _IDENTITY_EXCLUDED}
+                    if isinstance(c, dict) else None)
+        facts_now = content(arts)
+        if facts_now is None or facts_now != content(prev_arts):
+            return False
+        forecast = statestore.read_json_or_none(path)
+        if not isinstance(forecast, dict):
+            return False
+        payload = {"case_id": state["case_id"], "round": arts.round,
+                   "carried_findings": self._carried(),
+                   "mandate": self.mandate(),
+                   "bundle": self._bundle_provenance(),
+                   "prior_artifacts": self._stage_inputs(arts, "model")}
+        req_id = self._bind_request(state, "model", payload, None)
+        forecast = dict(forecast)
+        forecast["request_id"] = req_id
+        forecast["candidate_id"] = None     # stamped at the candidate stage
+        sha = statestore.atomic_write_json(self.case_dir / rel, forecast)
+        self._verified[rel] = sha
+        arts.files[rel] = sha
+        arts.content[rel] = forecast
+        budget.add_tokens("model", 0, 0)
+        budget.note_reuse("model")
+        self._sync_budget(state, budget)
+        self._persist(state)
+        self._trace(event="MODEL_REUSED",
+                    detail={"from_round": prev, "artifact": rel,
+                            "request_id": req_id,
+                            "reason": "repair scope starts at the writer"},
+                    round=arts.round)
+        return True
+
+    @staticmethod
+    def _scope_label(rebuild_from: str | None) -> str:
+        """The rebuild scope as a sentence fragment (trace and manifest)."""
+        if rebuild_from in (None, "ingest"):
+            return "full build from ingest (ingest and extraction reused by hash proof)"
+        carried = [s for s in REBUILD_ORDER[:REBUILD_ORDER.index(rebuild_from)]]
+        engines = ("; model_engine and valuation_engine re-run (deterministic)"
+                   if rebuild_from in ("extractor", "model") else
+                   "; model_engine and valuation_engine re-run on the carried "
+                   "forecast (deterministic, model role not dispatched)")
+        return (f"partial rebuild from the {rebuild_from} stage; "
+                f"carried forward unchanged: {', '.join(carried)}" + engines)
 
     def _candidate_context(self, state: dict, arts: Arts) -> gates.CandidateContext:
         return gates.CandidateContext(
@@ -1964,11 +2191,74 @@ class Orchestrator:
         }
 
     # ================================================================ repair
+    @staticmethod
+    def _rebuild_scope(repairable: list[dict]) -> str:
+        """Earliest stage a repair must restart from (extractor < model < writer).
+
+        Taken from the owners of the open repairable findings. With none to go
+        on (nothing blocking was left) the model stage is the safe default:
+        it is what a full rebuild did before partial rebuilds existed, minus
+        the extraction that is carried by hash proof.
+        """
+        stages = [REBUILD_STAGE_OF_OWNER[f["owner"]] for f in repairable
+                  if f.get("owner") in REBUILD_STAGE_OF_OWNER]
+        if not stages:
+            return "model"
+        return min(stages, key=REBUILD_ORDER.index)
+
+    def _stop_for_owner(self, state: dict,
+                        led: ledger_mod.FindingsLedger) -> bool:
+        """End the case when an open blocking finding is not a role's to fix.
+
+        ``system`` (engine, slicer, harness) and ``mandate`` (human-owned
+        inputs) findings cannot be repaired by any rewrite; spending more
+        rounds on them is the loop the diagnosis measured. The case ends
+        BLOCKED with a distinct code and writes ``evolution-input.json``, the
+        input to an evolution proposal. True when the case was stopped.
+        """
+        stop = led.stopping_findings()
+        if not stop:
+            return False
+        code = ("needs_system_change"
+                if any(f["owner"] == "system" for f in stop)
+                else "needs_mandate_change")
+        cand_id = state["candidate"]["candidate_id"]
+        fields = ("finding_id", "owner", "severity", "summary", "source_critic",
+                  "affected_artifacts", "required_evidence", "dedup_key",
+                  "first_seen_round", "last_seen_round")
+        rows = [{k: f.get(k) for k in fields} for f in stop]
+        others = [f["finding_id"] for f in led.repairable_findings()]
+        statestore.atomic_write_json(self.case_dir / EVOLUTION_INPUT_FILE, {
+            "case_id": state["case_id"],
+            "candidate_id": cand_id,
+            "round": state["pending"]["round"],
+            "reason_code": code,
+            "findings": rows,
+            "other_open_blocking_finding_ids": others,
+            "note": ("input for an evolution proposal: each finding names a "
+                     "defect in the harness (system) or a human-owned input "
+                     "(mandate) that no role can repair"),
+        })
+        who = ", ".join(f"{r['finding_id']} ({r['owner']}): {r['summary']}"
+                        for r in rows)
+        self.blocked(
+            state, code,
+            f"{len(rows)} open blocking finding(s) cannot be repaired by a "
+            f"role and need a "
+            f"{'system' if code == 'needs_system_change' else 'mandate'} "
+            f"change: {who}. Written to {EVOLUTION_INPUT_FILE}.",
+            {"findings": rows, "candidate_id": cand_id,
+             "evolution_input": EVOLUTION_INPUT_FILE,
+             "other_open_blocking_finding_ids": others})
+        return True
+
     def _issue_repair_packet(self, state: dict, arts: Arts,
                              led: ledger_mod.FindingsLedger,
                              note: str = "") -> None:
         """Repair packet per contracts section 6; the next build is a full
         re-build (rounds budget consumed at build start)."""
+        if self._stop_for_owner(state, led):
+            return      # a role cannot repair it: no packet, no rebuild
         round_no = arts.round if arts.round else state["pending"]["round"]
         rel = f"rounds/round-{round_no:03d}/repair-packet.json"
         mandate = self.mandate()
@@ -1976,7 +2266,8 @@ class Orchestrator:
         # too fed every advisory nit back into the next round's prompts, so
         # the critics re-raised them verbatim and the ledger could never
         # drain -- the packet was manufacturing its own findings.
-        carried = led.blocking_findings()
+        carried = led.repairable_findings()
+        rebuild_from = self._rebuild_scope(carried)
         advisory = [f for f in led.open_findings()
                     if f.get("severity") not in ledger_mod.BLOCKING_SEVERITIES]
         packet = {
@@ -1995,10 +2286,13 @@ class Orchestrator:
                 "rubric_version": RUBRIC_VERSION,
                 "note": note,
             },
-            "delta_scope": ("full re-build of all four specialist stages; "
-                            "stages may short-circuit internal work via "
-                            "hash-match proofs; carried findings must be "
-                            "addressed"),
+            "rebuild_from": rebuild_from,
+            "delta_scope": (
+                f"partial re-build from the {rebuild_from} stage (earliest "
+                "stage owned by an open finding); earlier stages are carried "
+                "forward unchanged under a fresh request binding; the "
+                "deterministic engines re-run with the model stage; carried "
+                "findings must be addressed"),
         }
         sha = statestore.atomic_write_json(self.case_dir / rel, packet)
         self._verified[rel] = sha
@@ -2006,7 +2300,10 @@ class Orchestrator:
                     candidate_id=state["candidate"]["candidate_id"],
                     artifact=rel, artifact_sha256=sha,
                     detail={"open_findings": len(carried),
-                            "advisory_findings": len(advisory)})
+                            "advisory_findings": len(advisory),
+                            "rebuild_from": rebuild_from,
+                            "owners": sorted({f.get("owner") for f in carried})})
+        state["pending"]["rebuild_from"] = rebuild_from
         state["pending"]["role"] = "generator"
         state["pending"]["stage"] = None
         state["pending"]["retry_count"] = 0
@@ -2083,6 +2380,9 @@ class Orchestrator:
         if role == "critic_c1":
             payload["input_manifest"] = self.input_manifest()
             payload["evidence_index"] = self._evidence_index(build_arts)
+            prior = self._prior_publication()
+            if prior:       # the values behind the prior.* evidence keys
+                payload["prior_valuation"] = prior["valuation"]
         elif role == "critic_c2":
             payload["mandate_bounds"] = {
                 "forecast_bounds": mandate["assumptions"]["forecast_bounds"],
@@ -2160,6 +2460,10 @@ class Orchestrator:
                         candidate_id=candidate_id, round=round_no,
                         role=f.get("source_critic"),
                         detail={"finding_id": fid, "summary": f.get("summary")})
+        # a defect only the harness or the mandate can fix ends the case here,
+        # before a clean streak or a stall verdict is even considered
+        if self._stop_for_owner(state, led):
+            return
         # No close-on-silence: a critic that fails to re-raise a finding has
         # NOT verified it fixed. It stays open until a critic returns a
         # verified_resolution for its ledger id.
@@ -2458,9 +2762,12 @@ class Orchestrator:
         cand8 = (cand["candidate_id"] or "unknown")[:8]
         reports_dir = self.case_dir / "report"
         reports_dir.mkdir(parents=True, exist_ok=True)
-        version = len(list(reports_dir.glob("v*.md")))
+        version = self._published_versions(reports_dir)
         out_rel = f"report/v{version + 1}-{cand8}.md"
         shutil.copyfile(self.case_dir / report_rel, self.case_dir / out_rel)
+        self._write_clean_note(state, out_rel,
+                               (self.case_dir / report_rel).read_text(
+                                   encoding="utf-8"))
         state["status"] = "APPROVED"
         state["reason"] = {"code": "APPROVED", "message": "human approved",
                            "detail": {"by": by}}
@@ -2485,6 +2792,27 @@ class Orchestrator:
                     detail={"terminal": "APPROVED"})
         return {"status": "CLOSED", "terminal": "APPROVED",
                 "report_version": f"v{version + 1}-{cand8}", "result": result}
+
+    @staticmethod
+    def _published_versions(reports_dir: Path) -> int:
+        """Published notes so far; the ``.clean.md`` companions are not versions."""
+        return len([p for p in reports_dir.glob("v*.md")
+                    if not p.name.endswith(".clean.md")])
+
+    def _write_clean_note(self, state: dict, out_rel: str, text: str) -> str:
+        """Write ``<same name>.clean.md`` beside a published note.
+
+        The marked note stays the verified record; the clean one is the
+        reader-facing rendering (footnotes, no process text). The evidence
+        index comes from the approved candidate's own round artifacts.
+        """
+        from . import render_note
+        arts = Arts(round=int(state["candidate"]["built_round"]))
+        clean_rel = out_rel[:-3] + ".clean.md"
+        statestore.atomic_write_text(
+            self.case_dir / clean_rel,
+            render_note.render_clean(text, self._evidence_index(arts)))
+        return clean_rel
 
     def _finish_published_with_exceptions(
             self, state: dict, by: str, reasoning: str,
@@ -2523,7 +2851,7 @@ class Orchestrator:
         cand8 = (cand["candidate_id"] or "unknown")[:8]
         reports_dir = self.case_dir / "report"
         reports_dir.mkdir(parents=True, exist_ok=True)
-        version = len(list(reports_dir.glob("v*.md")))
+        version = self._published_versions(reports_dir)
         out_rel = f"report/v{version + 1}-{cand8}.md"
         notice = ("> **PUBLISHED WITH EXCEPTIONS.** Not accepted by the review "
                   f"process; {len(exceptions)} blocking finding(s) were open: "
@@ -2531,6 +2859,7 @@ class Orchestrator:
                               for e in exceptions) + "\n\n")
         body = (self.case_dir / report_rel).read_text(encoding="utf-8")
         statestore.atomic_write_text(self.case_dir / out_rel, notice + body)
+        self._write_clean_note(state, out_rel, notice + body)
         message = (f"published with exceptions by {by}; "
                    f"{len(exceptions)} open blocking finding(s) recorded")
         state["status"] = "PUBLISHED_WITH_EXCEPTIONS"
