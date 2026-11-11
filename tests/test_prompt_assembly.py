@@ -243,4 +243,7 @@ class TestRepoCards:
         root = pa.default_root()
         for role in self.EXPECTED_CARDS:
             words = len((root / "prompts" / f"{role}.md").read_text().split())
-            assert words < 600, f"{role}.md has {words} words"
+            # writer 1.4 carries the unit / no-process-text / changes-since-
+            # last-note rules on top of the evidence-marker contract
+            cap = 850 if role == "writer" else 600
+            assert words < cap, f"{role}.md has {words} words"
