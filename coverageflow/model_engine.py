@@ -348,6 +348,11 @@ NCI_KEYS = (
 )
 
 
+# largest downward adjustment of the diluted EPS numerator accepted without a
+# violation, as a share of NI attributable / diluted shares
+_EPS_MAX_NUMERATOR_ADJ = 0.10
+
+
 def _eps_tolerance(reported: float) -> float:
     """Tight EPS tie tolerance: the larger of 0.01/share and 0.5% of EPS."""
     return max(_EPS_ABS_TOL, _EPS_REL_TOL * abs(reported))
@@ -462,8 +467,20 @@ def _reconciliation_checks(model: Model, tol: float) -> None:
                 eps_check[p] = "not_computable"
             else:
                 implied = ni / sh
-                if abs(implied - eps) <= _eps_tolerance(eps):
+                basic = model.series.get("income_statement.basic_eps", {}).get(p)
+                tol_eps = _eps_tolerance(eps)
+                if abs(implied - eps) <= tol_eps:
                     eps_check[p] = "ok"
+                elif (ni > 0 and eps < implied
+                      and implied - eps <= _EPS_MAX_NUMERATOR_ADJ * implied
+                      and (basic is None or eps <= basic + tol_eps)):
+                    # Diluted EPS below NI attributable / diluted shares is
+                    # GAAP when the numerator is adjusted for dilutive
+                    # securities (a subsidiary's equity awards, convertible
+                    # instruments). Intel 2026-Q3: 3,320 / 5,307 = 0.626 but
+                    # the filing prints 0.60 with a footnote. Recorded, not a
+                    # violation; a gap beyond the cap still is.
+                    eps_check[p] = "numerator_adjusted"
                 else:
                     raise BoundsViolation(
                         f"EPS linkage violation in {p}: net income attributable {ni} / "

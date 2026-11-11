@@ -466,3 +466,34 @@ class TestSegmentNamesWithoutAMap:
     def test_mapped_segments_carry_a_margin(self):
         model = self._model(["CCPG"])
         assert model.series["segments.ccg.operating_margin"]["FY2025"] == pytest.approx(0.1)
+
+
+def _set(payload, field_name, period, value):
+    for f in payload["facts"]:
+        if f["field"] == field_name and f["period"] == period:
+            f["value"] = value
+            return
+    payload["facts"].append({"field": field_name, "period": period,
+                             "value": value, "unit": "USD"})
+
+
+def test_diluted_eps_with_an_adjusted_numerator_is_recorded_not_blocked():
+    # Intel 2026-Q3 pattern: NI attributable / diluted shares = 0.1600, the
+    # filing prints diluted 0.15 (numerator adjusted for dilutive securities)
+    payload = mini_facts_payload()
+    _set(payload, "income_statement.diluted_eps", "2026-Q3", 0.15)
+    _set(payload, "income_statement.basic_eps", "2026-Q3", 0.16)
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    assert d["checks"]["eps_linkage"]["2026-Q3"] == "numerator_adjusted"
+
+
+def test_diluted_eps_above_basic_or_far_below_still_raises():
+    payload = mini_facts_payload()
+    _set(payload, "income_statement.diluted_eps", "2026-Q3", 0.15)
+    _set(payload, "income_statement.basic_eps", "2026-Q3", 0.12)   # diluted > basic
+    with pytest.raises(BoundsViolation, match="EPS"):
+        build_model(Facts.from_payload(payload), "1.0")
+    payload = mini_facts_payload()
+    _set(payload, "income_statement.diluted_eps", "2026-Q3", 0.10)   # 37% below implied
+    with pytest.raises(BoundsViolation, match="EPS"):
+        build_model(Facts.from_payload(payload), "1.0")
