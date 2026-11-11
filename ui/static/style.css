@@ -2336,9 +2336,17 @@ button.btn.selected-filing-remove { display: inline-flex; justify-content: cente
 .pf-summary { margin: 6px 0 0; }
 .pf-status:empty { display: none; }
 
-/* market-data prefill: slim progress bar and step label */
-.pf-progress { margin: 0 0 var(--s2); }
-.pf-progress-track { height: 5px; overflow: hidden; background: var(--paper-3); border-radius: 99px; }
+/* market-data prefill: progress panel (same anatomy as .run-limit) */
+.pf-progress { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px;
+               margin: 0 0 var(--s2); padding: 14px 16px; background: var(--card);
+               border: 1px solid var(--hairline); border-radius: var(--radius-s); }
+.pf-progress .run-limit-icon { color: var(--accent); background: var(--accent-wash); }
+.pf-progress-body { min-width: 0; }
+.pf-progress-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
+.pf-progress-head strong { font-size: 13px; font-weight: 600; color: var(--ink); }
+.pf-progress-count { font-size: 12px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pf-progress-track { height: 5px; margin-top: 9px; overflow: hidden; background: var(--paper-3); border-radius: 99px; }
 .pf-progress-track > i { display: block; height: 100%; background: var(--accent);
                          border-radius: inherit; transition: width .5s ease; }
-.pf-progress-line { display: flex; justify-content: space-between; gap: var(--s2); margin-top: 6px; }
+.pf-progress-step { margin: 8px 0 0; font-size: 13px; color: var(--ink); }
+.pf-progress-note { margin: 2px 0 0; font-size: 12px; color: var(--ink-2); }

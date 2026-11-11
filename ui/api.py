@@ -27,6 +27,20 @@ from .ws import ws_router, _startup, _shutdown
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+class _RevalidatedStatic(StaticFiles):
+    """Static files the browser must revalidate on every load.
+
+    A local desk tool changes its UI between restarts; with default caching a
+    browser kept an old stylesheet next to new markup. ``no-cache`` still
+    allows a 304 from the ETag, so reloads stay cheap.
+    """
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """Wire the service event hook + periodic snapshot loop while serving."""
@@ -226,11 +240,12 @@ def create_app() -> FastAPI:
 
     # ---- WebSocket push ----------------------------------------------------
     app.include_router(ws_router)
-    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+    app.mount("/static", _RevalidatedStatic(directory=str(_STATIC_DIR)), name="static")
 
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(str(_STATIC_DIR / "index.html"))
+        return FileResponse(str(_STATIC_DIR / "index.html"),
+                            headers={"Cache-Control": "no-cache"})
 
     return app
 

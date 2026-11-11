@@ -1964,14 +1964,22 @@ Views.newCase = async function newCase(view, fromId) {
   }
 
   function pfShowProgress(step, total, label) {
-    const pct = total ? Math.min(100, Math.max(0, ((step - 1) / total) * 100)) : 0;
-    setKids(pfStatus, h("div", { class: "pf-progress" },
-      h("div", { class: "pf-progress-track", role: "progressbar", "aria-valuemin": "0",
-                 "aria-valuemax": String(total || 0), "aria-valuenow": String(Math.max(0, step - 1)) },
-        h("i", { style: `width: ${pct}%` })),
-      h("div", { class: "pf-progress-line hint" },
-        h("span", null, label || "Starting"),
-        total ? h("span", { class: "mono" }, `${step} of ${total}`) : null)));
+    const done = Math.max(0, step - 1);
+    const pct = total ? Math.min(100, Math.max(0, done / total * 100)) : 0;
+    const count = total ? `Step ${Math.min(step, total)} of ${total}` : "Starting";
+    setKids(pfStatus, h("div", { class: "pf-progress", "aria-live": "polite" },
+      h("div", { class: "run-limit-icon" }, icon("pulse")),
+      h("div", { class: "pf-progress-body" },
+        h("div", { class: "pf-progress-head" },
+          h("strong", null, "Fetching market data"),
+          h("span", { class: "pf-progress-count" }, count)),
+        h("div", { class: "pf-progress-track", role: "progressbar", "aria-label": "Market data prefill",
+                   "aria-valuemin": "0", "aria-valuemax": String(total || 0),
+                   "aria-valuenow": String(done), "aria-valuetext": count },
+          h("i", { style: `width: ${pct}%` })),
+        h("p", { class: "pf-progress-step" }, label ? `${label}…` : "Contacting data sources…"),
+        h("p", { class: "pf-progress-note" },
+          "This usually takes under a minute. Results are cached, so a second attempt is quick."))));
   }
 
   async function runPrefill() {
