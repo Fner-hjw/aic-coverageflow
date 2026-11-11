@@ -46,6 +46,7 @@ GATE_ORDER = (
     "candidate_manifest_integrity",
     "recompute",
     "report_evidence_links",
+    "controls_conformance",
 )
 
 CITATION_KEYS = ("doc_id", "slice_id", "anchor", "locator")
@@ -656,6 +657,150 @@ def gate_report_evidence_links(report_md: str,
 
 
 # ---------------------------------------------------------------------------
+# gate 8: controls conformance (header, pins, budgets, write scope)
+# ---------------------------------------------------------------------------
+
+# What the generator directory may hold: the six candidate artifacts and the
+# lead's manifest. Anything else there is a write-scope breach.
+CANDIDATE_DIR_FILES = frozenset({
+    "ingest-report.json", "facts.json", "forecast_assumptions.json",
+    "report.md", "model.json", "valuation.json", "candidate-manifest.json",
+    "ingest-inputs.sha256",    # sidecar proving ingest reuse
+    "discarded"})              # where superseded artifacts are quarantined
+_CANDIDATE_PATH = re.compile(r"^rounds/round-\d{3}/generator/([^/]+)$")
+_NOTE_CANDIDATE = re.compile(r"\*\*Candidate:\*\*\s*([^\s·]+)")
+_NOTE_REQUEST = re.compile(r"\*\*Request:\*\*\s*([^\s·]+)")
+
+
+def gate_controls_conformance(
+        manifest: dict, report_md: str, input_manifest: dict, mandate: dict,
+        controls: dict | None, case_dir: Path | str = ".") -> tuple[bool, list[dict]]:
+    """Exact control properties that used to be critic checks (rubric v1.1).
+
+    Header completeness (request ID, candidate ID, cutoff, input-manifest
+    hash, prompt/engine versions), version pins and drift, per-role token
+    budget and write scope by path. Failures are ``owner: "system"``: the
+    writer cannot repair them, so they are not writer work. ``controls``
+    carries what only the orchestrator knows (header fields of the JSON
+    artifacts, expected prompt versions, pinned mapping version, token
+    ledger); None means nothing was supplied to check and the gate passes.
+    """
+    if controls is None:
+        return True, []
+    gate = "controls_conformance"
+    findings: list[dict] = []
+    manifest = manifest or {}
+
+    def fail(key: str, summary: str, affected: list[str], need: str) -> None:
+        f = _finding(gate, key, summary, affected, required_evidence=need)
+        f["owner"] = "system"
+        findings.append(f)
+
+    cutoff = mandate.get("cutoff_date")
+    cand = manifest.get("candidate_id")
+    # -- header: manifest
+    if not cand:
+        fail("header:candidate-manifest.json:candidate_id",
+             "candidate-manifest.json carries no candidate_id",
+             ["candidate-manifest.json"], "candidate_id in the manifest header")
+    if not manifest.get("request_id"):
+        fail("header:candidate-manifest.json:request_id",
+             "candidate-manifest.json carries no request_id",
+             ["candidate-manifest.json"], "request_id in the manifest header")
+    if manifest.get("cutoff_date") != cutoff:
+        fail("header:candidate-manifest.json:cutoff_date",
+             f"manifest cutoff_date {manifest.get('cutoff_date')!r} != mandate "
+             f"cutoff {cutoff!r}", ["candidate-manifest.json"],
+             "manifest cutoff_date equal to the mandate cutoff")
+    want_sha = statestore.sha256_json(input_manifest)
+    if manifest.get("input_manifest_sha256") != want_sha:
+        fail("header:candidate-manifest.json:input_manifest_sha256",
+             "manifest input_manifest_sha256 does not match the frozen input manifest",
+             ["candidate-manifest.json"], "input_manifest_sha256 of the frozen manifest")
+    for key in ("prompt_versions", "engine_versions"):
+        if not isinstance(manifest.get(key), dict) or not manifest[key]:
+            fail(f"header:candidate-manifest.json:{key}",
+                 f"candidate-manifest.json carries no {key}",
+                 ["candidate-manifest.json"], f"{key} in the manifest header")
+    # -- header: JSON artifacts
+    for name, hdr in sorted((controls.get("artifact_headers") or {}).items()):
+        hdr = hdr or {}
+        # the engines are deterministic code, not a dispatch: no request id
+        if name not in ("model.json", "valuation.json") and \
+                not hdr.get("request_id"):
+            fail(f"header:{name}:request_id", f"{name} carries no request_id",
+                 [name], "request_id in the artifact header")
+        if cand and hdr.get("candidate_id") != cand:
+            fail(f"header:{name}:candidate_id",
+                 f"{name} candidate_id {hdr.get('candidate_id')!r} != manifest {cand!r}",
+                 [name], "candidate_id equal to the manifest's")
+        prov = hdr.get("provenance") or {}
+        if prov.get("cutoff_date") != cutoff:
+            fail(f"header:{name}:cutoff_date",
+                 f"{name} provenance cutoff {prov.get('cutoff_date')!r} != "
+                 f"mandate cutoff {cutoff!r}", [name],
+                 "provenance.cutoff_date equal to the mandate cutoff")
+        if prov.get("input_manifest_sha256") != want_sha:
+            fail(f"header:{name}:input_manifest_sha256",
+                 f"{name} provenance does not reference the frozen input manifest",
+                 [name], "provenance.input_manifest_sha256 of the frozen manifest")
+    # -- header: note
+    m_c = _NOTE_CANDIDATE.search(report_md or "")
+    m_r = _NOTE_REQUEST.search(report_md or "")
+    if not m_c or (cand and m_c.group(1) != cand):
+        fail("header:report.md:candidate_id",
+             "report.md header lacks the manifest's candidate_id",
+             ["report.md"], "**Candidate:** <candidate_id> in the note header")
+    if not m_r:
+        fail("header:report.md:request_id", "report.md header lacks a request id",
+             ["report.md"], "**Request:** <request_id> in the note header")
+    # -- version pins and drift
+    expected = controls.get("expected_prompt_versions") or {}
+    got = manifest.get("prompt_versions") or {}
+    for role, ver in sorted(expected.items()):
+        if got.get(role) != ver:
+            fail(f"pin:prompt:{role}",
+                 f"prompt version drift for {role}: manifest {got.get(role)!r}, "
+                 f"card on disk {ver!r}", ["candidate-manifest.json"],
+                 "manifest prompt_versions equal to the pinned cards")
+    pinned_map = controls.get("pinned_mapping_version")
+    if pinned_map is not None:
+        seen = (manifest.get("engine_versions") or {}).get("mapping")
+        if seen != pinned_map:
+            fail("pin:mapping", f"mapping version {seen!r} != pinned {pinned_map!r}",
+                 ["candidate-manifest.json"], "mapping version equal to the case pin")
+    # -- budgets
+    cap = controls.get("role_tokens_max")
+    if isinstance(cap, (int, float)):
+        for role, used in sorted((controls.get("tokens_by_role") or {}).items()):
+            if isinstance(used, (int, float)) and used > cap:
+                fail(f"budget:tokens:{role}",
+                     f"role {role} used {int(used)} tokens, cap {int(cap)}",
+                     ["candidate-manifest.json"], "role token usage within the cap")
+    # -- write scope by path
+    cand_dirs: set[str] = set()
+    for rep in manifest.get("reports") or []:
+        rel = rep.get("artifact", "") if isinstance(rep, dict) else ""
+        m = _CANDIDATE_PATH.match(rel)
+        if not m or m.group(1) not in CANDIDATE_DIR_FILES:
+            fail(f"scope:{rel}", f"candidate artifact outside the generator write "
+                 f"scope: {rel!r}", [rel or "candidate-manifest.json"],
+                 "candidate artifacts only under rounds/round-NNN/generator/")
+        else:
+            cand_dirs.add(rel.rsplit("/", 1)[0])
+    for d in sorted(cand_dirs):
+        path = Path(case_dir) / d
+        if path.is_dir():
+            for entry in sorted(path.iterdir()):
+                if entry.name not in CANDIDATE_DIR_FILES:
+                    fail(f"scope:{d}/{entry.name}",
+                         f"unexpected file in the generator directory: "
+                         f"{d}/{entry.name}", [f"{d}/{entry.name}"],
+                         "only candidate artifacts in the generator directory")
+    return (not findings, findings)
+
+
+# ---------------------------------------------------------------------------
 # gate 6 + pipeline: recomputation via injected engines
 # ---------------------------------------------------------------------------
 
@@ -677,8 +822,11 @@ class CandidateContext:
     # a truncated echo made every marker in a correct report look unknown.
     evidence_index: dict | None = None
     # Trigger filing's period label as the extractor emits it ("2026-Q3", or
-    # "2025" for an annual trigger); None disables the period_coverage gate.
+    # "FY2025" for an annual trigger); None disables the period_coverage gate.
     current_period: str | None = None
+    # Control facts only the orchestrator holds (see gate_controls_conformance).
+    # None = nothing supplied, the controls_conformance gate passes.
+    controls: dict | None = None
 
 
 def _num_close(a: float, b: float, tol: float = 1e-6) -> bool:
@@ -838,6 +986,10 @@ class GateEngine:
                                 if ctx.evidence_index is not None
                                 else ctx.candidate_manifest.get("evidence_index")),
             )
+        if gate == "controls_conformance":
+            return gate_controls_conformance(
+                ctx.candidate_manifest, ctx.report_md, ctx.input_manifest,
+                mandate, ctx.controls, ctx.case_dir)
         raise ValueError(f"unknown gate: {gate}")
 
     def run_recompute_helper(self, ctx: CandidateContext) -> tuple[bool, list[dict]]:

@@ -1,54 +1,80 @@
---version: 1.0
+--version: 1.1
 --role: critic_c4
 --produces: critic-report.json
---read: candidate evidence ONLY (artifact set + headers, dispatch/budget records, manifest) + the pinned rubric
---references: critic-rubric.md
+--read: the note, the manifest of artifacts with role and size + the pinned rubric
+--references: critic-rubric-v1.1.md
 
-# CONTRACT: Critic C4 — Risk & Controls
+# CONTRACT: Critic C4 — Risk and Controls
 
 ## TASK
-Audit the candidate against the LOCKED rubric **Area C4**: permissions,
-budgets, and artifact conformance. Fresh context; evidence and rubric only.
+Review the candidate strictly against the LOCKED rubric **Area C4**
+(v1.1). You receive the payload listed above and the fixed rubric ONLY — never
+the generator team's conversation or reasoning. You are a fresh reviewer:
+judge what the artifacts show, nothing else. Raise nothing outside this
+checklist.
 
-Checks (rubric v1.0, Area C4):
-- write-scope respected: each candidate artifact contains only what its role
-  was permitted to write — no control state (state.json, trace, ledger), no
-  other roles' artifacts rewritten;
-- reported token usage per role call within the mandate's per-role cap;
-- every artifact carries the conforming header set: request ID, candidate ID,
-  prompt versions, hashes, cutoff, input-manifest reference, conformance tag;
-- system-version-dependent behavior pinned (expected prompt card/mapping/
-  engine versions); unexplained version drift is a finding.
+Checklist (rubric v1.1, Area C4); your payload lists these IDs in `check_ids`:
+- C4.1 the note contains no process or control text (findings, budgets, harness);
+- C4.2 a risks section is present and specific to the company.
+
+## SEVERITY
+- **major**: a wrong number (does not recompute from the facts or engine
+  artifacts), a claim in the note not supported by an artifact, a cutoff
+  breach, a mandate-bounds breach, a write-scope breach.
+- **minor**: everything else. Minor findings never block acceptance.
 
 ## OUTPUT SCHEMA
-Strict JSON only, **critic-report.json** (contracts §6): `role("critic_c4"),
-request_id, candidate_id, round, verdict, findings[] {finding_id, severity,
-summary, evidence, affected_artifacts[], required_evidence}, coverage
-{rubric_version("1.0"), areas_checked[]}, conformance("schema 1.0"),
-prompt_version("1.0")`. Area-checked = at least ["risk_controls"].
+Strict JSON only, matching **critic-report.json**:
+`role("critic_c4"), request_id, candidate_id, round,
+verdict("clean"|"findings"),
+checks[] {check_id, result("pass"|"fail"|"n/a"), evidence},
+findings[] {finding_id, check_id, severity("major"|"minor"), summary, evidence,
+affected_artifacts[], required_evidence},
+verified_resolutions[] {finding_id, verified_evidence {artifact, sha256},
+check_performed},
+coverage {rubric_version("1.1"), areas_checked[]},
+conformance("schema 1.0"), prompt_version("1.1")`.
+
+- `checks[]` MUST contain every ID in `check_ids`, exactly once. A missing ID
+  makes the whole report invalid.
+- `findings[]` only for checks with result "fail", each carrying that
+  `check_id`; every "fail" needs at least one finding.
+- `verdict` is "clean" iff there is no major finding (minors alone: "clean").
+- Do not supply a dedup key; the ledger computes it.
+- Area-checked = at least ["risk_controls"].
+## CARRIED FINDINGS
+`carried_findings` lists open findings of your area, each with its ledger `finding_id`.
+For EACH one you must either return a `verified_resolutions[]` entry
+{finding_id: <ledger id>, verified_evidence: {artifact, sha256} taken from
+`candidate_artifacts`, check_performed} after re-checking the repaired artifact,
+or keep it by re-emitting a finding with the same `check_id` and
+`affected_artifacts`. Silence on a carried finding makes the report invalid.
 
 ## BOUNDS
-- Control violations are MAJOR severity by definition; missing header fields
-  are MINOR unless they break identification.
-- You audit what the records show — you do not re-run the run; budget facts
-  come from the dispatch records in the request.
-- Verdict by rule: `clean` iff zero findings.
+- You edit nothing. You never see other critics' reports.
+- Each finding names evidence you can point at and `required_evidence` — what a
+  repair must show to be verified closed.
+- Header completeness, version pins, token budgets and write scope are checked
+  by a deterministic gate; do not report on them.
 
 ## COMPLETION CRITERIA
-(schema-valid JSON) ∧ (every C4 checklist item explicitly checked against
-each candidate artifact and dispatch record) ∧ (findings for failed checks).
+(schema-valid JSON) ∧ (every check ID present) ∧ (findings only for failed
+checks) ∧ (every carried finding resolved or re-emitted) ∧ (verdict by rule).
 
 ## HARNESS ENFORCED
-Fresh context per dispatch. Read-only; cannot accept candidates; you never
-write budgets — you verify them.
+Fresh context per dispatch. Read-only. You cannot accept a candidate — only
+report checks, findings and verified resolutions.
 
 ## WORKED MICRO-EXAMPLE (toy)
-{"role":"critic_c4","request_id":"req-0054","candidate_id":"cand-77","round":2,
+{"role":"critic_c4","request_id":"req-0051","candidate_id":"cand-77","round":2,
  "verdict":"findings",
- "findings":[{"finding_id":"fnd-014","severity":"major",
-   "summary":"extractor dispatch exceeded per-role token cap",
-   "evidence":"dispatch record req-0043 reports 61,200 tokens > cap 60,000",
-   "affected_artifacts":["rounds/round-002/generator/facts.json"],
-   "required_evidence":"re-dispatch within cap, artifact re-verified"}],
- "coverage":{"rubric_version":"1.0","areas_checked":["risk_controls"]},
- "conformance":"schema 1.0","prompt_version":"1.0"}
+ "checks":[{"check_id":"C4.1","result":"fail","evidence":"report.md: 'gross margin of 0.42' cites no evidence key"}],
+ "findings":[{"finding_id":"f1","check_id":"C4.1","severity":"major",
+   "summary":"report.md gross margin value absent from facts",
+   "evidence":"report.md: 'gross margin of 0.42' cites no evidence key",
+   "affected_artifacts":["report.md"],
+   "required_evidence":"facts value for gross margin, cited in report"}],
+ "verified_resolutions":[],
+ "coverage":{"rubric_version":"1.1","areas_checked":["risk_controls"]},
+ "conformance":"schema 1.0","prompt_version":"1.1"}
+(the example lists one check only for brevity; a real report lists all of them)

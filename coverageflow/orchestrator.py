@@ -83,6 +83,21 @@ STAGE_ARTIFACT = {"ingest": "ingest-report.json", "extractor": "facts.json",
                   "model": "forecast_assumptions.json", "writer": "report.md",
                   "candidate": "candidate-manifest.json"}
 CRITIC_ROLES = tuple(f"critic_c{i}" for i in range(1, 5))
+RUBRIC_VERSION = "1.1"
+# Rubric v1.1 checklist IDs per critic area (references/critic-rubric-v1.1.md).
+CHECK_IDS = {
+    "critic_c1": ("C1.1", "C1.2", "C1.3", "C1.4", "C1.5"),
+    "critic_c2": ("C2.1", "C2.2", "C2.3", "C2.4", "C2.5", "C2.6"),
+    "critic_c3": ("C3.1", "C3.2"),
+    "critic_c4": ("C4.1", "C4.2"),
+}
+_HEADER_KEYS = frozenset({"role", "artifact", "request_id", "candidate_id",
+                          "prompt_version", "conformance", "provenance",
+                          "cutoff", "engine", "input_facts_sha256",
+                          "input_forecast_sha256", "mapping_tables",
+                          "cutoff_date", "bundle_id", "bundle_sha256",
+                          "input_manifest_sha256", "prompt_versions",
+                          "engine_versions"})
 CANDIDATE_FILES = ["ingest-report.json", "facts.json",
                    "forecast_assumptions.json", "report.md",
                    "model.json", "valuation.json"]
@@ -122,21 +137,14 @@ _EVIDENCE_FEEDBACK_PREFIX = "evidence-link gate: every number needs an [EV:<key>
 # What each critic is contracted to read (see the --read line of its card).
 # A critic handed only sha256 digests cannot verify anything and reports
 # "unverifiable" findings every round, so the candidate never converges.
-# Every critic gets every candidate artifact: the header and provenance checks
-# span all six, and a digest is not evidence.
+# Role-scoped views (rubric v1.1): each critic reads only what its checklist
+# needs. C3 and C4 read the note plus small headers/manifests, not the ledger.
 CRITIC_ARTIFACTS = {
-    "critic_c1": ("ingest-report.json", "facts.json", "report.md",
-                  "candidate-manifest.json", "forecast_assumptions.json",
-                  "model.json", "valuation.json"),
-    "critic_c2": ("ingest-report.json", "facts.json",
-                  "forecast_assumptions.json", "model.json", "valuation.json",
-                  "report.md", "candidate-manifest.json"),
-    "critic_c3": ("ingest-report.json", "candidate-manifest.json", "report.md",
-                  "facts.json", "forecast_assumptions.json", "model.json",
-                  "valuation.json"),
-    "critic_c4": ("ingest-report.json", "candidate-manifest.json", "report.md",
-                  "facts.json", "forecast_assumptions.json", "model.json",
-                  "valuation.json"),
+    "critic_c1": ("facts.json", "report.md", "model.json", "valuation.json"),
+    "critic_c2": ("forecast_assumptions.json", "model.json", "valuation.json",
+                  "report.md"),
+    "critic_c3": ("report.md",),
+    "critic_c4": ("report.md",),
 }
 
 DEFAULT_CONFIG_VERSIONS = {
@@ -173,25 +181,6 @@ def _dotted_paths(obj: Any, prefix: str = "") -> list[str]:
         for i, value in enumerate(obj):
             out.extend(_dotted_paths(value, f"{prefix}.{i}"))
     return out
-
-
-# A critic reviewing the candidate sometimes reports on the harness's own
-# budget accounting ("per-role token cap breached"). No rewrite of report.md or
-# model.json can close that: the tokens are already spent. Left in the ledger it
-# reopens every round and the repair loop can never converge, so it is dropped
-# at ingestion. The budget tracker already records the breach and the run
-# transitions to EXHAUSTED on its own; a critic finding adds nothing but a
-# permanent blocker.
-_SELF_REFERENTIAL_FINDING = re.compile(
-    r"per-role\s+token\s+cap|token\s+cap\s+breach|budget\s+cap\s+breach",
-    re.IGNORECASE)
-
-
-def _is_self_referential_finding(finding: dict) -> bool:
-    """Does this finding describe the run's budget rather than the work?"""
-    haystack = " ".join(str(finding.get(k) or "") for k in
-                        ("dedup_key", "summary", "required_evidence"))
-    return bool(_SELF_REFERENTIAL_FINDING.search(haystack))
 
 
 def _growth_aliases(model: dict) -> list[str]:
@@ -752,12 +741,72 @@ class Orchestrator:
                     not isinstance(parsed.get("evidence_index"), dict):
                 return "lead submission must include reports and an evidence index"
         elif role.startswith("critic_c"):
-            if parsed.get("verdict") not in ("clean", "findings"):
-                return "critic submission must carry verdict clean|findings"
+            return self._validate_critic_report(role, parsed)
         elif role == "critic_lead":
             for k in ("clean", "coverage_ok", "reviewer_count"):
                 if k not in parsed:
                     return f"merged report missing required key {k!r}"
+        return None
+
+    def _validate_critic_report(self, role: str, parsed: dict) -> str | None:
+        """Rubric v1.1 shape: every check ID present, findings only for failed
+        checks, verdict by rule, no silence on a carried finding. Any failure
+        is an invalid submission, repaired at the same role by the existing
+        retry path."""
+        if parsed.get("verdict") not in ("clean", "findings"):
+            return "critic submission must carry verdict clean|findings"
+        want = list(CHECK_IDS[role])
+        checks = parsed.get("checks")
+        if not isinstance(checks, list):
+            return f"critic submission must carry checks[] covering {want}"
+        results: dict[str, str] = {}
+        for c in checks:
+            if not isinstance(c, dict) or not isinstance(c.get("check_id"), str):
+                return "every checks[] entry must be an object with a check_id"
+            if c.get("result") not in ("pass", "fail", "n/a"):
+                return (f"check {c['check_id']}: result must be "
+                        f"pass|fail|n/a")
+            results[c["check_id"]] = c["result"]
+        missing = [i for i in want if i not in results]
+        if missing:
+            return f"checks[] is missing check IDs {missing}; cover every ID in {want}"
+        findings = parsed.get("findings")
+        if not isinstance(findings, list):
+            return "critic submission must carry findings[] (possibly empty)"
+        for f in findings:
+            cid = f.get("check_id") if isinstance(f, dict) else None
+            if cid not in want:
+                return (f"finding {f.get('finding_id') if isinstance(f, dict) else f!r} "
+                        f"has check_id {cid!r}; it must be one of {want}")
+            if results[cid] != "fail":
+                return (f"finding cites {cid} but checks[] records {cid} as "
+                        f"{results[cid]!r}; findings are only for failed checks")
+            if f.get("severity") not in ("major", "minor"):
+                return "finding severity must be major|minor"
+        raised = {f["check_id"] for f in findings}
+        unexplained = [i for i in want if results[i] == "fail" and i not in raised]
+        if unexplained:
+            return f"checks {unexplained} failed but no finding carries them"
+        has_major = any(f.get("severity") == "major" for f in findings)
+        if (parsed["verdict"] == "findings") != has_major:
+            return ("verdict must be 'clean' iff there is no major finding "
+                    f"(found {'a major finding' if has_major else 'none'}, "
+                    f"verdict {parsed['verdict']!r})")
+        resolved = {r.get("finding_id") for r in parsed.get("verified_resolutions") or []
+                    if isinstance(r, dict)}
+        kept_keys = set()
+        kept_ids = set()
+        for f in findings:
+            kept_keys.add(ledger_mod.compute_dedup_key(dict(f, source_critic=role)))
+            kept_ids.add(f.get("finding_id"))
+        silent = [c["finding_id"] for c in self._area_carried(role)
+                  if c["finding_id"] not in resolved
+                  and c["finding_id"] not in kept_ids
+                  and c.get("dedup_key") not in kept_keys]
+        if silent:
+            return (f"silence on carried findings {silent}: return a "
+                    f"verified_resolutions entry or re-emit each finding with "
+                    f"its check_id")
         return None
 
     def _block_if_unrunnable(self, state: dict, role: str, result) -> None:
@@ -1764,6 +1813,7 @@ class Orchestrator:
             mapping_version=state["config_versions"]["mapping_tables"],
             evidence_index=self._evidence_index(arts),
             current_period=self._current_period(),
+            controls=self._controls_facts(state, arts),
         )
 
     def _current_period(self) -> str | None:
@@ -1798,6 +1848,35 @@ class Orchestrator:
         return (f"{dt.year}-Q{(dt.month - 1) // 3 + 1}" if is_q
                 else f"FY{dt.year}")
 
+
+    def _controls_facts(self, state: dict, arts: Arts) -> dict:
+        """What the controls_conformance gate needs from the harness."""
+        from . import _prompt_assembly as pa
+        headers: dict[str, dict] = {}
+        for name in CANDIDATE_FILES:
+            if not name.endswith(".json"):
+                continue
+            content = self._lazy(arts, arts.rel("generator", name))
+            if isinstance(content, dict):
+                headers[name] = {k: content.get(k) for k in
+                                 ("request_id", "candidate_id", "provenance")}
+        expected: dict[str, str] = {}
+        for role in sorted(set(STAGE_ROLE.values()) | set(CRITIC_ROLES)
+                           | {"critic_lead"}):
+            card = pa.default_root() / "prompts" / f"{role}.md"
+            if card.is_file():
+                expected[role] = pa.parse_role_card(card)["version"]
+        used = (state.get("budget") or {}).get("used") or {}
+        limits = state.get("budget") or {}
+        return {
+            "artifact_headers": headers,
+            "expected_prompt_versions": expected,
+            "pinned_mapping_version":
+                state["config_versions"].get("mapping_tables"),
+            "tokens_by_role": dict(used.get("tokens_by_role") or {}),
+            "role_tokens_max": limits.get("role_tokens_max"),
+        }
+
     # ================================================================ repair
     def _issue_repair_packet(self, state: dict, arts: Arts,
                              led: ledger_mod.FindingsLedger,
@@ -1811,21 +1890,6 @@ class Orchestrator:
         # too fed every advisory nit back into the next round's prompts, so
         # the critics re-raised them verbatim and the ledger could never
         # drain -- the packet was manufacturing its own findings.
-        # A finding about the run's own token usage is not a repair obligation
-        # either: the tokens are spent, so carrying it into the packet asks for
-        # work that cannot close it and the round is wasted. Close it here so a
-        # ledger written before the filter existed drains too.
-        for row in led.open_findings():
-            if _is_self_referential_finding(row):
-                led.close_finding(row["finding_id"], critic="orchestrator",
-                                  round=round_no,
-                                  verified_evidence={"artifact": rel,
-                                                     "sha256": "budget-accounting"})
-                self._trace(event="FINDING_DROPPED", round=round_no,
-                            role=row.get("source_critic"),
-                            candidate_id=state["candidate"]["candidate_id"],
-                            detail={"finding_id": row["finding_id"],
-                                    "reason": "budget accounting, not the work"})
         carried = led.blocking_findings()
         advisory = [f for f in led.open_findings()
                     if f.get("severity") not in ledger_mod.BLOCKING_SEVERITIES]
@@ -1842,7 +1906,7 @@ class Orchestrator:
                                "advisory and do not block."),
                 "forecast_bounds": mandate["assumptions"]["forecast_bounds"],
                 "cutoff_date": mandate["cutoff_date"],
-                "rubric_version": "1.0",
+                "rubric_version": RUBRIC_VERSION,
                 "note": note,
             },
             "delta_scope": ("full re-build of all four specialist stages; "
@@ -1878,43 +1942,8 @@ class Orchestrator:
             if self._artifact_intact(rel):
                 arts.content[rel] = self._load_verified(rel)
                 continue     # fresh-context dispatch already verified (resume)
-            payload = {
-                "case_id": state["case_id"], "round": round_no,
-                "candidate_id": candidate_id,
-                "built_round": built_round,
-                "candidate_artifacts": candidate_artifacts,
-                "artifacts": self._critic_artifacts(build_arts, role),
-                "carried_findings": self._carried(),
-                "input_manifest": self.input_manifest(),
-                "mandate": self.mandate(),
-                "mandate_summary": {
-                    "cutoff_date": self.mandate()["cutoff_date"],
-                    "report_policy": self.mandate()["report_policy"]},
-                "dispatch_records": {
-                    "rounds_used": budget.used_rounds(),
-                    "rounds_max": budget.limits.rounds_max,
-                    # the ACCUMULATED clock, not the live one: the live value
-                    # changes between the recording run and the replay run and
-                    # would make the assembled prompt hash differ
-                    "elapsed_minutes": round(budget.used["elapsed_minutes"], 3),
-                    "case_minutes": budget.limits.case_minutes,
-                    "tokens_by_role": dict(budget.used["tokens_by_role"]),
-                    "role_tokens_max": budget.limits.role_tokens_max,
-                    "retries_by_role": dict(budget.used.get("retries_by_role") or {}),
-                    "retries_max": budget.limits.retries_max,
-                    # a carried-forward role spends no tokens by design; the
-                    # count is here so a zero is not read as a broken ledger
-                    "reused_roles": dict(budget.used.get("reused_roles") or {}),
-                    # the engines are deterministic Python, not a dispatch, so
-                    # their zero spend is not a reuse and not a gap
-                    "deterministic_roles": ["engines"],
-                    # explicit human budget grants: the effective caps above
-                    # may exceed the frozen mandate's, and the critic must be
-                    # able to see that the difference was authorised
-                    "grants": list(budget.used.get("grants") or []),
-                },
-                "rubric_version": "1.0",
-            }
+            payload = self._critic_payload(state, role, round_no, build_arts,
+                                           candidate_id, candidate_artifacts)
             call = self._prepare_dispatch(state, budget, role, payload,
                                           candidate_id, [rel])
             pending.append((role, rel, payload, call))
@@ -1942,6 +1971,63 @@ class Orchestrator:
                              detail={"critic": role,
                                      "verdict": result.parsed.get("verdict")})
         state["pending"]["stage"] = "merge"
+
+    def _critic_payload(self, state: dict, role: str, round_no: int,
+                        build_arts: Arts, candidate_id: str,
+                        candidate_artifacts: dict) -> dict:
+        """Role-scoped critic payload (rubric v1.1).
+
+        Each critic gets only what its checklist needs: its artifacts, its
+        check IDs, its own carried findings and the artifact hash list that
+        verified resolutions must cite. No dispatch records: budgets and
+        headers are checked by the controls_conformance gate.
+        """
+        mandate = self.mandate()
+        payload: dict = {
+            "case_id": state["case_id"], "round": round_no,
+            "candidate_id": candidate_id,
+            "built_round": state["candidate"]["built_round"],
+            "candidate_artifacts": candidate_artifacts,
+            "check_ids": list(CHECK_IDS[role]),
+            "carried_findings": self._area_carried(role),
+            "rubric_version": RUBRIC_VERSION,
+        }
+        arts = self._critic_artifacts(build_arts, role)
+        payload["artifacts"] = arts
+        if role == "critic_c1":
+            payload["input_manifest"] = self.input_manifest()
+            payload["evidence_index"] = self._evidence_index(build_arts)
+        elif role == "critic_c2":
+            payload["mandate_bounds"] = {
+                "forecast_bounds": mandate["assumptions"]["forecast_bounds"],
+                "assumptions": mandate.get("assumptions"),
+            }
+        elif role == "critic_c3":
+            payload["input_manifest"] = self.input_manifest()
+            headers: dict[str, dict] = {}
+            for name in CANDIDATE_FILES + ["candidate-manifest.json"]:
+                rel = build_arts.rel("generator", name)
+                content = self._lazy(build_arts, rel)
+                if isinstance(content, dict):
+                    headers[rel] = {k: v for k, v in content.items()
+                                    if k in _HEADER_KEYS}
+            payload["artifact_headers"] = headers
+            payload["mandate_dates"] = {
+                "cutoff_date": mandate.get("cutoff_date")}
+        elif role == "critic_c4":
+            payload["artifact_manifest"] = [
+                {"role": r["role"], "artifact": r["artifact"],
+                 "size_bytes": self._size_of(r["artifact"])}
+                for r in self._candidate_artifact_list(build_arts)]
+        return payload
+
+    def _size_of(self, rel: str) -> int | None:
+        path = self.case_dir / rel
+        return path.stat().st_size if path.is_file() else None
+
+    def _area_carried(self, role: str) -> list[dict]:
+        """The blocking findings this critic raised, with their ledger ids."""
+        return [f for f in self._carried() if f.get("source_critic") == role]
 
     def _run_merge_and_decide(self, state: dict, budget: budget_mod.BudgetTracker,
                               arts: Arts) -> None:
@@ -1984,15 +2070,15 @@ class Orchestrator:
 
         led = self.ledger()
         self._apply_critic_closures(state, arts, reports, led)
+        # the lead may drop check_id; the critics' own reports still hold it
+        check_ids = {(r.get("role"), f.get("finding_id")): f.get("check_id")
+                     for r in reports for f in r.get("findings") or []
+                     if f.get("check_id")}
         for raw in merged.get("findings", []):
             f = dict(raw)
-            if _is_self_referential_finding(f):
-                self._trace(event="FINDING_DROPPED", round=round_no,
-                            role=f.get("source_critic"),
-                            candidate_id=candidate_id,
-                            detail={"reason": "budget accounting, not the work",
-                                    "summary": f.get("summary")})
-                continue
+            if not f.get("check_id"):
+                f["check_id"] = check_ids.get(
+                    (f.get("source_critic"), f.get("finding_id")))
             fid = led.open_finding(f, round=round_no)
             self._trace(event="FINDING_OPENED",
                         candidate_id=candidate_id, round=round_no,
