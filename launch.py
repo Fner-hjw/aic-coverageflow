@@ -40,6 +40,29 @@ DEMO_CASE_ID = "intc-fy2026q3-20261030"
 IS_WINDOWS = os.name == "nt"
 
 
+# ----------------------------------------------------------------- input checks
+sys.path.insert(0, str(ROOT))
+from coverageflow import sanitize as san  # noqa: E402  (stdlib-only module)
+
+
+def check_answers(cfg: dict) -> dict:
+    """Validate launcher answers (typed now or read back from the saved file).
+
+    Raises ValueError naming the bad field; callers re-run the wizard."""
+    try:
+        out = dict(cfg)
+        out["mode"] = san.choice("mode", cfg.get("mode"), ("offline", "api", "cli"))
+        out["workspace"] = san.text("workspace", cfg.get("workspace", "workspace"),
+                                    max_len=300, required=True, injection=False)
+        if "backend" in cfg:
+            out["backend"] = san.identifier("backend", cfg["backend"], required=False)
+        port = cfg.get("port", DEFAULT_PORT)
+        out["port"] = max(1024, min(65535, int(port)))
+        return out
+    except (san.InputError, TypeError, ValueError) as exc:
+        raise ValueError(str(exc)) from exc
+
+
 # ----------------------------------------------------------------- io utils
 def say(msg: str = "") -> None:
     print(msg, flush=True)
@@ -147,11 +170,23 @@ generator/critic model calls) can run three ways:
 
     if cfg["mode"] == "api":
         say("\n· API configuration (OpenAI-compatible /chat/completions)")
-        base = ask("  API base URL", "https://api.mistral.ai/v1", yes=yes)
-        model = ask("  Model name (e.g. mistral-medium-3.5, "
-                    "mistral-large-latest)", "mistral-medium-3.5", yes=yes)
-        key = ask_secret("  API key (hidden; stored in .coverageflow.json "
-                         "— keep it gitignored)", yes=yes)
+        while True:
+            try:
+                base = san.api_url("API base URL", ask(
+                    "  API base URL", "https://api.mistral.ai/v1", yes=yes))
+                model = san.text("model", ask(
+                    "  Model name (e.g. mistral-medium-3.5, "
+                    "mistral-large-latest)", "mistral-medium-3.5", yes=yes),
+                    max_len=100, charset=r"[A-Za-z0-9._:/@+-]", required=True,
+                    injection=False)
+                key = san.secret("API key", ask_secret(
+                    "  API key (hidden; stored in .coverageflow.json "
+                    "— keep it gitignored)", yes=yes))
+                break
+            except san.InputError as exc:
+                say(f"  ! {exc}")
+                if yes:
+                    raise SystemExit(1)
         if yes and not key:
             say("  (defaults mode: no key set — role runs will fail until "
                 "you add one to .coverageflow.json)")
@@ -180,6 +215,7 @@ generator/critic model calls) can run three ways:
     cfg["port"] = max(1024, min(65535, int(port) if port.isdigit()
                                 else DEFAULT_PORT))
 
+    cfg = check_answers(cfg)
     LAUNCH_CFG.write_text(json.dumps(cfg, indent=2))
     say(f"\n· configuration saved to {LAUNCH_CFG.name}")
     say("  (delete it or run with --configure to set up again)")
@@ -188,10 +224,14 @@ generator/critic model calls) can run three ways:
 
 def load_or_onboard(py: Path, yes: bool, reconfigure: bool) -> dict:
     if LAUNCH_CFG.is_file() and not reconfigure:
-        cfg = json.loads(LAUNCH_CFG.read_text())
-        if not reconfigure:
-            say(f"· using saved configuration ({LAUNCH_CFG.name}) "
-                f"— mode: {cfg.get('mode')}")
+        try:
+            cfg = check_answers(json.loads(LAUNCH_CFG.read_text()))
+        except (ValueError, OSError) as exc:
+            say(f"! saved configuration {LAUNCH_CFG.name} is invalid ({exc}); "
+                "running setup again")
+            return onboard(py, yes)
+        say(f"· using saved configuration ({LAUNCH_CFG.name}) "
+            f"— mode: {cfg.get('mode')}")
         return cfg
     return onboard(py, yes)
 

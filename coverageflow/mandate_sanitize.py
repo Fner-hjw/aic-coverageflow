@@ -16,53 +16,18 @@ from __future__ import annotations
 
 import copy
 import re
-import unicodedata
 from typing import Any
 
 from . import mandate_check
+from .sanitize import injection_reason, normalize_text  # noqa: F401  (re-exported)
 
 # Machine-written or reviewer-owned blocks: normalised but not injection-checked
 # (they hold fetched provenance text, URLs and approval records, not human input).
 _MACHINE_KEYS = frozenset({"provenance", "warnings", "missing", "approval",
                            "proposed_at", "prefill"})
 
-_INJECTION: list[tuple[str, re.Pattern]] = [(name, re.compile(rx, re.I)) for name, rx in (
-    ("instruction override",
-     r"\b(ignore|forget|override|bypass)\b[^.]{0,40}\b(instructions?|prompts?|rules|guidelines)\b"),
-    ("instruction override", r"\bdisregard\b"),
-    ("new instructions", r"\b(new|updated|real|actual) instructions?\b"),
-    ("system prompt reference", r"\b(system|developer)\s+(prompt|message|instructions?)\b"),
-    ("role reassignment", r"\byou\s+are\s+(now|no longer)\b|\bact\s+as\s+(a|an|the)\b|\bpretend\s+(to\s+be|you)\b"),
-    ("role marker", r"(^|[\s\n])(system|assistant|user|human|developer|ai)\s*:"),
-    ("markdown heading / fence", r"###|```|~~~"),
-    ("chat template token", r"<\||\|>|\[/?INST\]|<<\s*SYS|<\s*/?\s*(system|assistant|user|instructions?)\b"),
-    ("URL", r"\bhttps?://|\bwww\.|\b(ftp|file|data|javascript):[^\s]"),
-)]
-
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 _TICKER_FIELDS_NOTE = "ticker"
-
-
-def normalize_text(s: str) -> str:
-    """NFC, drop control/format (zero-width, bidi) chars, collapse whitespace."""
-    s = unicodedata.normalize("NFC", s)
-    out = []
-    for ch in s:
-        cat = unicodedata.category(ch)
-        if ch in "\t\n\r\v\f" or cat in ("Zs", "Zl", "Zp"):
-            out.append(" ")
-        elif cat in ("Cc", "Cf", "Cs", "Co", "Cn"):
-            continue
-        else:
-            out.append(ch)
-    return re.sub(r" +", " ", "".join(out)).strip()
-
-
-def injection_reason(s: str) -> str | None:
-    for name, rx in _INJECTION:
-        if rx.search(s):
-            return name
-    return None
 
 
 def _clean(node: Any, path: str, errors: list[str], check: bool) -> Any:
@@ -135,7 +100,7 @@ def _cross_rules(m: dict, errors: list[str]) -> None:
             errors.append(f"assumptions.forecast_bounds.segments.{seg}: min must be below max")
 
 
-def sanitize_mandate(payload: dict, validate: bool | None = None) -> tuple[dict, list[str]]:
+def sanitize_mandate(payload: dict, validate: bool | None = None, cross: bool = True) -> tuple[dict, list[str]]:
     """Clean + check a mandate (or a new-case payload). Returns (clean, errors).
 
     ``validate`` runs the JSON Schema too; default: only when ``payload`` is a
@@ -158,7 +123,8 @@ def sanitize_mandate(payload: dict, validate: bool | None = None) -> tuple[dict,
         v = clean.get(key)
         if isinstance(v, str) and v and not _ID_RE.match(v):
             errors.append(f"{key}: {v!r} must be letters, digits, '.', '_' or '-' (max 80)")
-    _cross_rules(clean, errors)
+    if cross:
+        _cross_rules(clean, errors)
     if validate is None:
         validate = "mandate_id" in clean
     if validate and not errors:

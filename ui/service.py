@@ -52,6 +52,8 @@ from typing import Any, Callable
 from coverageflow import mandate_check as _mc
 from coverageflow import mandate_prefill as _mp
 from coverageflow import market_data as _md
+from coverageflow import mandate_sanitize as _ms
+from coverageflow import sanitize as _san
 from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,14 @@ class ServiceError(Exception):
     def __init__(self, message: str, **detail: Any):
         super().__init__(message)
         self.detail = {"error": message, **detail}
+
+
+def _v(fn, field: str, value: Any, **kw: Any) -> Any:
+    """Run a coverageflow.sanitize cleaner; a rejection becomes a 422."""
+    try:
+        return fn(field, value, **kw)
+    except _san.InputError as exc:
+        raise ValidationError(str(exc), field=exc.field) from exc
 
 
 class NotFound(ServiceError):
@@ -193,6 +203,7 @@ def _rws() -> Path:
 
 
 def _rcase_dir(case_id: str) -> Path:
+    case_id = _v(_san.identifier, "case_id", case_id)
     cd = _rws() / "cases" / case_id
     if not (cd / "state.json").is_file():
         raise NotFound(f"case not found in real workspace: {case_id}",
@@ -1366,6 +1377,7 @@ _DEMO_COUNTERS = {"seed_finding": 100, "approval": 100, "bundle": 0}
 
 
 def _get(case_id: str) -> Case:
+    case_id = _v(_san.identifier, "case_id", case_id)
     c = _CASES.get(case_id)
     if c is None:
         raise NotFound(f"case not found: {case_id}", case_id=case_id)
@@ -1489,9 +1501,10 @@ def configure_api(payload: dict) -> dict:
     """Save workspace API settings without returning the secret to the browser."""
     if not _using_real():
         raise ConflictError("API configuration requires a controller workspace; demo runs are simulated")
-    base = str(payload.get("base_url") or "").strip().rstrip("/")
-    model = str(payload.get("model") or "").strip()
-    key = str(payload.get("api_key") or "").strip()
+    base = _v(_san.api_url, "base_url", str(payload.get("base_url") or "").strip().rstrip("/"))
+    model = _v(_san.text, "model", payload.get("model"), max_len=100,
+               charset=r"[A-Za-z0-9._:/@+-]", required=True)
+    key = _v(_san.secret, "api_key", payload.get("api_key"))
     try:
         url = urlsplit(base)
         valid_url = (url.scheme in ("http", "https") and url.hostname
@@ -1521,6 +1534,7 @@ def configure_api(payload: dict) -> dict:
 
 def select_backend(name: str) -> dict:
     """POST /api/backends/select — stores the choice (single backend active)."""
+    name = _v(_san.identifier, "backend", name, required=False)
     known = {b["name"] for b in _BACKENDS}
     if name not in known:
         raise ValidationError(
@@ -1604,7 +1618,8 @@ def validate_mandate(payload: dict) -> list[str]:
     mandate the payload would produce is then checked against
     references/mandate-schema.json, the same schema the CLI uses.
     """
-    errors = _mc.semantic_errors(payload)
+    payload, errors = _ms.sanitize_mandate(payload, validate=False)
+    errors = list(dict.fromkeys(errors + _mc.semantic_errors(payload)))
     if not errors:
         candidate = _mandate_from_payload(payload, "man-0000", "validate-0000",
                                           apply_prefill=False)
@@ -1622,11 +1637,8 @@ _PREFILL_FETCH: Callable[[str], bytes] | None = None
 
 
 def _prefill_inputs(ticker, cutoff) -> tuple[str, str]:
-    ticker = str(ticker or "").strip().upper()
-    if not re.fullmatch(r"[A-Z]{1,6}", ticker):
-        raise ValidationError("ticker is required (1-6 letters, e.g. INTC)")
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(cutoff or "")):
-        raise ValidationError("cutoff_date must be a date YYYY-MM-DD")
+    ticker = _v(_san.ticker, "ticker", ticker, letters_only=True)
+    cutoff = _v(_san.iso_date, "cutoff_date", cutoff)
     return ticker, cutoff
 
 
@@ -1664,6 +1676,9 @@ def start_prefill_job(ticker: str, cutoff: str, peers: list[str] | None = None,
                       erp: float | None = None) -> dict:
     """POST /api/mandate/prefill: validate, then fetch in a background thread."""
     ticker, cutoff = _prefill_inputs(ticker, cutoff)
+    peers = _v(_san.tickers, "peers", peers, letters_only=True) or None
+    if erp is not None:
+        erp = _v(_san.number, "erp", erp, kind="rate", lo=0.0, hi=0.2)
     job_id = uuid.uuid4().hex[:12]
     job = {"state": "running", "step": 0, "total": 0, "label": "Starting", "finished": 0.0}
     with _PREFILL_LOCK:
@@ -1690,6 +1705,7 @@ def start_prefill_job(ticker: str, cutoff: str, peers: list[str] | None = None,
 
 def prefill_job_status(job_id: str) -> dict:
     """GET /api/mandate/prefill/{job_id}."""
+    job_id = _v(_san.identifier, "job_id", job_id)
     with _PREFILL_LOCK:
         _prune_prefill_jobs(time.monotonic())
         job = _PREFILL_JOBS.get(job_id)
@@ -1769,6 +1785,7 @@ def create_case(payload: dict) -> dict:
     errors = validate_mandate(payload)
     if errors:
         raise ValidationError("mandate validation failed", errors=errors)
+    payload, _ = _ms.sanitize_mandate(payload, validate=False)  # cleaned copy
     ticker = str(payload["ticker"]).strip().upper()
     cutoff = str(payload["cutoff_date"])
     ts = _now_iso()
@@ -1953,6 +1970,7 @@ def get_case(case_id: str) -> dict:
 
 def get_trace(case_id: str, from_cursor: int = 0) -> dict:
     """GET /api/cases/{id}/trace?from=NN — trace events after the cursor."""
+    from_cursor = max(0, min(int(from_cursor), 10_000_000))
     if _using_real():
         events = _real_statestore.read_trace(_rcase_dir(case_id))
         window = events[from_cursor:]
@@ -1967,6 +1985,7 @@ def get_trace(case_id: str, from_cursor: int = 0) -> dict:
 
 def read_artifact(case_id: str, path: str) -> dict:
     """GET /api/cases/{id}/artifacts/{path} — read-only artifact access."""
+    path = _v(_san.safe_relative, "path", path)
     if _using_real():
         cd = _rcase_dir(case_id)
         rel = Path(path)
@@ -2023,6 +2042,7 @@ def list_replays(case_id: str) -> dict:
 
 def read_replay(case_id: str, request_id: str) -> dict:
     """GET /api/cases/{id}/replay/{request_id} — one recorded step."""
+    request_id = _v(_san.identifier, "request_id", request_id)
     if _using_real():
         for r in _rreplays(_rcase_dir(case_id)):
             if r.get("request_id") == request_id:
@@ -2051,6 +2071,7 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False,
     ``extend`` reopens an EXHAUSTED case with one more full budget allowance
     instead of forcing the operator to clone it into a new case.
     """
+    backend = _v(_san.identifier, "backend", backend or "auto")
     if _using_real():
         cd = _rcase_dir(case_id)
         if backend not in ("auto",) and not any(b["name"] == backend
@@ -2214,7 +2235,10 @@ def record_approval(case_id: str, decision: str, by: str,
                     reasoning: str = "",
                     acknowledge_findings: list[str] | None = None) -> dict:
     """POST /api/cases/{id}/approval — the human gate (auditable record)."""
-    ack = list(acknowledge_findings or [])
+    by = _v(_san.person_name, "by", by, required=False)
+    reasoning = _v(_san.note, "reasoning", reasoning)
+    ack = [_v(_san.identifier, f"acknowledge_findings[{i}]", a)
+           for i, a in enumerate(acknowledge_findings or [])]
     if _using_real():
         cd = _rcase_dir(case_id)
         state = _rstate(cd)
@@ -2324,6 +2348,8 @@ def demo_action(case_id: str, action: str, stage: str | None = None) -> dict:
     directory (cmd_demo equivalents), so the evidence runs are drivable
     from the UI against a real workspace too.
     """
+    action = _v(_san.identifier, "action", action)
+    stage = _v(_san.identifier, "stage", stage, required=False) or None
     ts = _now_iso()
     if _using_real():
         return _real_demo_action(case_id, action, stage)
@@ -2633,6 +2659,7 @@ def _revidence(cd: Path, markers: list[str]) -> list[dict]:
 
 def get_report(case_id: str, version: str | None = None) -> dict:
     """GET /api/cases/{id}/report?version=N — md + evidence + diff-vs-prior."""
+    version = _v(_san.identifier, "version", version, required=False) or None
     if _using_real():
         cd = _rcase_dir(case_id)
         versions = _rreport_versions(cd)
@@ -2921,8 +2948,7 @@ def export_case(case_id: str, fmt: str) -> dict:
 
 def export_download(case_id: str, filename: str) -> dict:
     """GET /api/cases/{id}/export-file/{name} — bytes for download."""
-    if ".." in filename or "/" in filename:
-        raise ValidationError("invalid file name")
+    filename = _v(_san.filename, "filename", filename)
     if _using_real():
         if not filename.startswith(case_id + "-") \
                 and filename not in ("model.xlsx", "dossier.pdf", "dossier.tex"):
@@ -2978,9 +3004,20 @@ def get_versions() -> dict:
 
 def evolution_prepare(change: dict) -> dict:
     """POST /api/evolution/prepare {scope, description, linked_case, ...}"""
-    scope = str(change.get("scope") or "").strip()
-    if not scope:
-        raise ValidationError("scope is required")
+    scope = _v(_san.text, "scope", change.get("scope"), max_len=100, required=True,
+               charset=r"[A-Za-z0-9 ._/&()-]")
+    change = dict(change)
+    change["description"] = _v(_san.note, "description", change.get("description"),
+                               max_len=1000)
+    change["author"] = _v(_san.person_name, "author", change.get("author"),
+                          required=False) or None
+    change["linked_case"] = _v(_san.identifier, "linked_case",
+                               change.get("linked_case"), required=False) or None
+    df = change.get("diff_files") or []
+    if not isinstance(df, list) or len(df) > 50:
+        raise ValidationError("diff_files must be a list of at most 50 paths")
+    change["diff_files"] = [_v(_san.safe_relative, f"diff_files[{i}]", f)
+                            for i, f in enumerate(df)]
     lsc = scope.lower()
     for locked, why in LOCKED_SCOPES.items():
         if locked in lsc:
@@ -3008,6 +3045,7 @@ def evolution_prepare(change: dict) -> dict:
 
 def evolution_regress(version: str) -> dict:
     """POST /api/evolution/regress {version} — offline baseline regression."""
+    version = _v(_san.identifier, "version", version)
     entry = _entry(version)
     if entry["approval"] is not None:
         raise ConflictError(f"version {version} already has an approval "
@@ -3037,6 +3075,9 @@ def evolution_regress(version: str) -> dict:
 def evolution_approve(version: str, decision: str, by: str,
                       reasoning: str = "") -> dict:
     """POST /api/evolution/approve {version, decision, by} — human gate."""
+    version = _v(_san.identifier, "version", version)
+    by = _v(_san.person_name, "by", by, required=False)
+    reasoning = _v(_san.note, "reasoning", reasoning)
     entry = _entry(version)
     if decision not in ("APPROVED", "REJECTED", "DEFERRED"):
         raise ValidationError(
@@ -3062,6 +3103,8 @@ def evolution_approve(version: str, decision: str, by: str,
 def evolution_rollback(to_version: str,
                        verify_case: str = "amd-fy2026q3-20261029") -> dict:
     """POST /api/evolution/rollback {to_version} — pointer + verification run."""
+    to_version = _v(_san.identifier, "to_version", to_version)
+    verify_case = _v(_san.identifier, "verify_case", verify_case)
     if to_version == _REGISTRY["active"]:
         raise ConflictError(f"{to_version} is already the active version")
     target = _entry(to_version)
@@ -3094,11 +3137,11 @@ def edgar_search(ticker: str, forms: str | None = None,
     Resolve the ticker through the SEC index and query recent submissions.
     If the SEC is unavailable, show demo rows when available.
     """
-    t = (ticker or "").strip().upper()
-    if not t:
-        raise ValidationError("ticker query parameter is required")
-    if not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,19}", t):
-        raise ValidationError("enter a valid ticker symbol")
+    t = _v(_san.ticker, "ticker", ticker)
+    forms = _v(_san.text, "forms", forms, max_len=60, charset=r"[A-Za-z0-9,/ -]",
+               injection=False) or None
+    window = _v(_san.text, "window", window, max_len=21, charset=r"[0-9:-]",
+                injection=False) or None
     try:
         fetch = _real_bundle.EdgarFetcher().get
         cik = _real_bundle.resolve_ticker(t, fetch)
@@ -3193,10 +3236,13 @@ def build_bundle(cik: str, docs: list[str], name: str) -> dict:
     Live filings require accession data and a controller workspace.
     Demo document IDs remain available in the in-memory demo mode.
     """
-    if not cik:
-        raise ValidationError("cik is required")
+    cik = _v(_san.cik, "cik", cik)
+    name = _v(_san.identifier, "name", name, required=False)
     if not docs:
         raise ValidationError("select at least one document to snapshot")
+    if len(docs) > 40:
+        raise ValidationError("select at most 40 documents")
+    docs = [_clean_doc_spec(i, d) for i, d in enumerate(docs)]
     if any(isinstance(d, dict) for d in docs):
         if not _using_real():
             raise ValidationError("Freezing SEC filings requires a controller workspace. Start CoverageFlow with launch.py.")
@@ -3238,6 +3284,26 @@ def build_bundle(cik: str, docs: list[str], name: str) -> dict:
                                   "documents": len(chosen),
                                   "offline_fallback": _using_real()})
     return manifest
+
+
+def _clean_doc_spec(i: int, d: Any) -> Any:
+    """A selected filing (dict from the EDGAR search) or a demo doc id."""
+    f = f"docs[{i}]"
+    if not isinstance(d, dict):
+        return _v(_san.identifier, f, d)
+    out = dict(d)
+    out["doc_id"] = _v(_san.identifier, f + ".doc_id", d.get("doc_id"))
+    out["accession"] = _v(_san.text, f + ".accession", d.get("accession"), max_len=20,
+                          charset=r"[0-9-]", injection=False, required=True)
+    out["cik"] = _v(_san.cik, f + ".cik", d.get("cik"))
+    out["form"] = _v(_san.text, f + ".form", d.get("form"), max_len=20,
+                     charset=r"[A-Za-z0-9/ -]", injection=False) or None
+    out["filed"] = _v(_san.iso_date, f + ".filed", d.get("filed"), required=False) or None
+    out["period"] = _v(_san.iso_date, f + ".period", d.get("period"), required=False) or None
+    out["primary_doc"] = _v(_san.filename, f + ".primary_doc", d.get("primary_doc"),
+                            required=False) or None
+    out["ticker"] = _v(_san.ticker, f + ".ticker", d.get("ticker"), required=False) or None
+    return out
 
 
 def _real_build_bundle(cik: str, docs, name: str) -> dict:

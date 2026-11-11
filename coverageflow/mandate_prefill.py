@@ -629,7 +629,10 @@ def finalize(proposed: dict, final: dict, by: str = "human",
     Raises PrefillError listing every problem.
     """
     from . import cli
-    out = copy.deepcopy(final)
+    from . import mandate_sanitize
+    out, bad = mandate_sanitize.sanitize_mandate(final, validate=False)
+    if bad:
+        raise PrefillError("mandate cannot be accepted:\n  - " + "\n  - ".join(bad))
     pa, fa = proposed.get("assumptions") or {}, out.get("assumptions") or {}
     if ((fa.get("wacc"), fa.get("terminal_growth")) != (pa.get("wacc"), pa.get("terminal_growth"))
             and fa.get("sensitivity") == pa.get("sensitivity")
