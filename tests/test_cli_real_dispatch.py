@@ -288,3 +288,14 @@ class TestBackendPinning:
         ws, case_id = self._ws(tmp_path)
         assert cli.main(["--workspace", str(ws), "run", "--stub-engines"]) == 0
         assert _load(ws, case_id)["backend"] == "stub (offline)"
+
+
+
+def test_case_stop_ends_a_case_as_stopped(tmp_path):
+    from coverageflow import statestore
+    case_id = _new_case(tmp_path)
+    rc = cli.main(["--workspace", str(tmp_path), "case", "stop", "--case", case_id,
+                   "--by", "Analyst", "--reason", "superseded by a new case"])
+    assert rc == 0
+    st = statestore.load_state(tmp_path / "cases" / case_id)
+    assert st["status"] == "STOPPED" and "superseded" in st["reason"]["message"]

@@ -647,6 +647,16 @@ def cmd_approve(args, ws: Path) -> int:
     return 0
 
 
+def cmd_case_stop(args, ws: Path) -> int:
+    """Human stop: end a case as STOPPED with a recorded reason (traced)."""
+    case_dir = _find_case(ws, args.case)
+    orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
+                        gate_engine=load_gate_engine(stub_engines=False,
+                                                      workspace=ws))
+    _print(orch.stop(by=args.by, reason=args.reason))
+    return 0
+
+
 def cmd_gates(args, ws: Path) -> int:
     case_dir = _find_case(ws, args.case)
     orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
@@ -865,6 +875,12 @@ def build_parser() -> argparse.ArgumentParser:
     accept.set_defaults(handler=cmd_case_accept)
     listing = case_sub.add_parser("list")
     listing.set_defaults(handler=cmd_case_list)
+    stop = case_sub.add_parser(
+        "stop", help="end a case as STOPPED (human decision, recorded in the trace)")
+    stop.add_argument("--case", required=True)
+    stop.add_argument("--by", required=True)
+    stop.add_argument("--reason", required=True)
+    stop.set_defaults(handler=cmd_case_stop)
 
     # run / resume
     run = add("run", cmd_run)
