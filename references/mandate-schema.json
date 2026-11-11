@@ -17,15 +17,20 @@
   "properties": {
     "mandate_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "maxLength": 80
     },
     "case_id": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "maxLength": 80
     },
     "ticker": {
       "type": "string",
-      "pattern": "^[A-Za-z][A-Za-z.\\-]{0,9}$"
+      "pattern": "^[A-Z0-9.-]{1,10}$",
+      "maxLength": 10
     },
     "cik": {
       "type": "string",
@@ -38,7 +43,9 @@
     "trigger_document": {
       "type": "string",
       "minLength": 1,
-      "description": "doc_id of the filing that triggered the update; set at case creation"
+      "description": "doc_id of the filing that triggered the update; set at case creation",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$",
+      "maxLength": 80
     },
     "report_policy": {
       "type": "object",
@@ -48,18 +55,22 @@
       ],
       "properties": {
         "note_type": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "maxLength": 40
         },
         "length_words": {
           "type": "array",
           "prefixItems": [
             {
               "type": "number",
-              "minimum": 0
+              "minimum": 100,
+              "maximum": 10000
             },
             {
               "type": "number",
-              "minimum": 0
+              "minimum": 100,
+              "maximum": 10000
             }
           ],
           "items": false,
@@ -69,9 +80,12 @@
         "sections": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9 &/.,()'-]{0,47}$",
+            "maxLength": 48
           },
-          "minItems": 1
+          "minItems": 1,
+          "maxItems": 20
         }
       }
     },
@@ -185,10 +199,14 @@
       "type": "array",
       "prefixItems": [
         {
-          "type": "number"
+          "type": "number",
+          "minimum": -0.5,
+          "maximum": 1.0
         },
         {
-          "type": "number"
+          "type": "number",
+          "minimum": -0.5,
+          "maximum": 1.0
         }
       ],
       "items": false,
@@ -200,10 +218,14 @@
       "type": "array",
       "prefixItems": [
         {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
         },
         {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
         }
       ],
       "items": false,
@@ -230,7 +252,9 @@
             "null"
           ],
           "x-human-owned": true,
-          "description": "discount rate, fraction (0.104 = 10.4%); wizard plausible band [0.01, 0.30]"
+          "description": "discount rate, fraction (0.104 = 10.4%); wizard plausible band [0.01, 0.30]",
+          "minimum": 0.01,
+          "maximum": 0.3
         },
         "terminal_growth": {
           "type": [
@@ -238,7 +262,9 @@
             "null"
           ],
           "x-human-owned": true,
-          "description": "must be below wacc"
+          "description": "must be below wacc",
+          "minimum": -0.02,
+          "maximum": 0.06
         },
         "exit_multiple_ebitda": {
           "type": [
@@ -246,7 +272,9 @@
             "null"
           ],
           "x-human-owned": true,
-          "description": "positive EV/EBITDA exit multiple"
+          "description": "positive EV/EBITDA exit multiple",
+          "minimum": 0,
+          "maximum": 200
         },
         "discount_convention": {
           "type": "string",
@@ -262,7 +290,9 @@
             "null"
           ],
           "x-human-owned": true,
-          "description": "required by the valuation engine (unlevered FCF)"
+          "description": "required by the valuation engine (unlevered FCF)",
+          "minimum": 0,
+          "maximum": 0.5
         },
         "forecast_bounds": {
           "type": "object",
@@ -272,7 +302,11 @@
               "additionalProperties": {
                 "$ref": "#/$defs/bounds_pair"
               },
-              "description": "segment -> [min, max] annual growth"
+              "description": "segment -> [min, max] annual growth",
+              "propertyNames": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9 &/.,()'-]{0,47}$"
+              },
+              "maxProperties": 30
             },
             "margin_floor_gross": {
               "type": [
@@ -342,7 +376,7 @@
               }
             },
             "note": {
-              "type": "string"
+              "$ref": "#/$defs/note_text"
             }
           }
         },
@@ -383,7 +417,7 @@
               "type": "number"
             },
             "note": {
-              "type": "string"
+              "$ref": "#/$defs/note_text"
             }
           },
           "description": "upside above buy = Buy, below sell = Sell, else Hold (defaults +0.15 / -0.10)"
@@ -402,10 +436,11 @@
                 "null"
               ],
               "exclusiveMinimum": 0,
-              "x-live-required": "positive USD price per share with as_of <= cutoff"
+              "x-live-required": "positive USD price per share with as_of <= cutoff",
+              "maximum": 1000000
             },
             "note": {
-              "type": "string"
+              "$ref": "#/$defs/note_text"
             }
           }
         },
@@ -428,7 +463,7 @@
               "$ref": "#/$defs/multiples_pair"
             },
             "note": {
-              "type": "string"
+              "$ref": "#/$defs/note_text"
             }
           }
         },
@@ -450,7 +485,7 @@
               "minItems": 1
             },
             "note": {
-              "type": "string"
+              "$ref": "#/$defs/note_text"
             }
           }
         }
@@ -464,25 +499,33 @@
       "properties": {
         "ticker": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^[A-Z0-9.-]{1,10}$",
+          "maxLength": 10
         },
         "ev_ebitda": {
           "type": [
             "number",
             "null"
-          ]
+          ],
+          "minimum": 0,
+          "maximum": 1000
         },
         "p_e_ttm": {
           "type": [
             "number",
             "null"
-          ]
+          ],
+          "minimum": 0,
+          "maximum": 1000
         },
         "p_s": {
           "type": [
             "number",
             "null"
-          ]
+          ],
+          "minimum": 0,
+          "maximum": 1000
         },
         "rev_growth_yoy": {
           "type": [
@@ -491,9 +534,13 @@
           ]
         },
         "notional_note": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/note_text"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       }
@@ -639,6 +686,12 @@
           }
         }
       }
+    },
+    "note_text": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^[^<>`{}\\\\\\[\\]|#\\u0000-\\u001f]{0,200}$",
+      "description": "free text that can reach a prompt: conservative charset, no angle brackets, backticks, braces, newlines"
     }
   }
 }

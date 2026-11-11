@@ -377,7 +377,7 @@ def _mandate_assumption_extras(wacc: float, terminal_growth: float,
                                  "null without a market price"},
         "market": {"as_of": as_of, "price": None,
                    "note": "REQUIRED for a live backend: human-owned market "
-                           "data, USD per share, as-of <= cutoff"},
+                           "data, USD per share, as-of on or before cutoff"},
         "own_band": {"as_of": as_of,
                      "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0],
                      "p_s": [2.5, 7.5],
@@ -416,7 +416,7 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
             },
 "peer_block": {"as_of": cutoff,
                            "peers": [], "note": "REQUIRED for a live backend: list of "
-                           "{ticker, ev_ebitda, p_e_ttm, p_s}"},
+                           "peers with ticker, ev_ebitda, p_e_ttm and p_s"},
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff),
         },

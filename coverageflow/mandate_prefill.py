@@ -182,7 +182,7 @@ def _peer_row(tk: str, cutoff: str, fetch: Fetch,
     growth = (f["history"]["revenue_growth"] or [(None, None)])[-1]
     row = {"ticker": tk, **{k: (None if v is None else _round(v, 2)) for k, v in mult.items()},
            "rev_growth_yoy": None if growth[1] is None else _round(growth[1], 4),
-           "notional_note": f"computed {px['date']} close with SEC companyfacts filed <= {cutoff}"}
+           "notional_note": f"computed {px['date']} close with SEC companyfacts filed on or before {cutoff}"}
     inputs = {"price": _src(px, value=px["price"], as_of=px["date"]),
               "companyfacts": _src(f, as_of=max((v["as_of"] for v in m.values()), default=None))}
     for k, v in m.items():
@@ -287,7 +287,7 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
     try:
         price = md.daily_close(ticker, cutoff, fetch)
         a["market"] = {"as_of": price["date"], "price": _round(price["price"], 4),
-                       "note": f"closing price from {price['source']}; as-of <= cutoff"}
+                       "note": f"closing price from {price['source']}; as-of on or before cutoff"}
         prov["assumptions.market.price"] = _entry(
             _round(price["price"], 4), price["source"],
             "Last close on or before the cutoff.", url=price["url"],

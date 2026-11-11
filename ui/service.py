@@ -503,7 +503,7 @@ def _mandate_assumption_extras(wacc: float, terminal_growth: float,
     return {
         "market": {"as_of": as_of, "price": None,
                    "note": "human-owned market data; fill at mandate "
-                           "creation (USD per share, as-of <= cutoff)"},
+                           "creation (USD per share, as-of on or before cutoff)"},
         "own_band": {"as_of": as_of,
                      "ev_ebitda": [10.0, 16.0], "p_e": [12.0, 26.0],
                      "p_s": [2.5, 7.5],
