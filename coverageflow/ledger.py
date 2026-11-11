@@ -75,6 +75,70 @@ def compute_dedup_key(finding: dict) -> str:
 BLOCKING_SEVERITIES = frozenset({"major", "critical"})
 
 
+# ---------------------------------------------------------------------------
+# Finding owners (diagnosis 3.2). An owner says which party can repair the
+# defect. Only writer/model/extractor findings are repair work; system and
+# mandate findings stop the case (needs_system_change / needs_mandate_change).
+# ---------------------------------------------------------------------------
+OWNERS = ("writer", "model", "extractor", "system", "mandate")
+REPAIRABLE_OWNERS = frozenset({"writer", "model", "extractor"})
+STOP_OWNERS = frozenset({"system", "mandate"})
+
+GATE_OWNERS = {
+    "facts_schema": "extractor", "citation_presence": "extractor",
+    "period_coverage": "extractor",
+    "forecast_bounds": "model", "terminal_reconciliation": "model",
+    "report_evidence_links": "writer",
+    "input_cutoff": "system", "candidate_manifest_integrity": "system",
+    "controls_conformance": "system", "recompute": "system",
+}
+
+# Affected artifact -> owner, in pipeline order: the earliest affected
+# artifact decides (a defect in facts.json is upstream of everything built on
+# it). Engine outputs and manifests are harness output, not role output.
+ARTIFACT_OWNERS = (
+    ("ingest-report.json", "extractor"),
+    ("facts.json", "extractor"),
+    ("forecast_assumptions.json", "model"),
+    ("model.json", "system"),
+    ("valuation.json", "system"),
+    ("report.md", "writer"),
+    ("candidate-manifest.json", "system"),
+    ("merged-findings.json", "system"),
+)
+
+
+def _artifact_rank(art: str) -> tuple[int, str] | None:
+    base = str(art).replace("\\", "/").rsplit("/", 1)[-1]
+    for i, (name, owner) in enumerate(ARTIFACT_OWNERS):
+        if base == name:
+            return i, owner
+    return None
+
+
+def assign_owner(finding: dict) -> str:
+    """Owner of a finding, decided in code when it is opened.
+
+    An explicit valid ``owner`` on the finding wins (gate findings from
+    controls_conformance carry ``system``; a critic may set ``system`` or
+    ``mandate``). Otherwise gate findings follow GATE_OWNERS and critic
+    findings the earliest affected artifact. A finding that names no known
+    artifact defaults to ``writer`` (the note is what a repair can change).
+    """
+    explicit = finding.get("owner")
+    if isinstance(explicit, str) and explicit in OWNERS:
+        return explicit
+    src = str(finding.get("source_critic") or "")
+    gate = src.split(":", 1)[1] if src.startswith("gate:") else finding.get("gate")
+    if gate:
+        return GATE_OWNERS.get(str(gate), "system")
+    ranked = [r for r in (_artifact_rank(a)
+                          for a in finding.get("affected_artifacts") or []) if r]
+    if ranked:
+        return min(ranked)[1]
+    return "writer"
+
+
 class FindingsLedger:
     """The per-case findings ledger (findings.json)."""
 
@@ -97,6 +161,9 @@ class FindingsLedger:
             for i, r in enumerate(rows, 1):
                 r.setdefault("critic_ref", r.get("finding_id"))
                 r["finding_id"] = self._fmt_id(i)
+        for r in rows:      # rows written before owners existed
+            if r.get("owner") not in OWNERS:
+                r["owner"] = assign_owner(r)
         self._rows = rows
 
     @staticmethod
@@ -132,6 +199,16 @@ class FindingsLedger:
         return [r for r in self.open_findings()
                 if r.get("severity") in BLOCKING_SEVERITIES]
 
+    def repairable_findings(self) -> list[dict]:
+        """Open blocking findings a role can repair (owner writer/model/extractor)."""
+        return [r for r in self.blocking_findings()
+                if r.get("owner") in REPAIRABLE_OWNERS]
+
+    def stopping_findings(self) -> list[dict]:
+        """Open blocking findings only the harness or a human can change."""
+        return [r for r in self.blocking_findings()
+                if r.get("owner") in STOP_OWNERS]
+
     def carried(self) -> list[dict]:
         """Open findings as carried payload (used in requests/repair packets).
         ``finding_id`` is the LEDGER id critics must cite in resolutions."""
@@ -163,6 +240,7 @@ class FindingsLedger:
             "summary": finding.get("summary", ""),
             "affected_artifacts": list(finding.get("affected_artifacts", [])),
             "required_evidence": finding.get("required_evidence", ""),
+            "owner": assign_owner(finding),
         }
         self._rows.append(row)
         self.save()

@@ -1,4 +1,4 @@
---version: 1.1
+--version: 1.2
 --role: critic_c1
 --produces: critic-report.json
 --read: facts, model and valuation artifacts, the note, the input manifest, an evidence index + the pinned rubric
@@ -32,11 +32,11 @@ Strict JSON only, matching **critic-report.json**:
 verdict("clean"|"findings"),
 checks[] {check_id, result("pass"|"fail"|"n/a"), evidence},
 findings[] {finding_id, check_id, severity("major"|"minor"), summary, evidence,
-affected_artifacts[], required_evidence},
+affected_artifacts[], required_evidence, owner (optional)},
 verified_resolutions[] {finding_id, verified_evidence {artifact, sha256},
 check_performed},
 coverage {rubric_version("1.1"), areas_checked[]},
-conformance("schema 1.0"), prompt_version("1.1")`.
+conformance("schema 1.0"), prompt_version("1.2")`.
 
 - `checks[]` MUST contain every ID in `check_ids`, exactly once. A missing ID
   makes the whole report invalid.
@@ -44,6 +44,7 @@ conformance("schema 1.0"), prompt_version("1.1")`.
   `check_id`; every "fail" needs at least one finding.
 - `verdict` is "clean" iff there is no major finding (minors alone: "clean").
 - Do not supply a dedup key; the ledger computes it.
+- Set `owner: system` for defects in deterministic engine output or harness, `mandate` for human-owned inputs such as the exit multiple or price; otherwise omit `owner`.
 - Area-checked = at least ["evidence_citation"].
 ## CARRIED FINDINGS
 `carried_findings` lists open findings of your area, each with its ledger `finding_id`.
@@ -79,5 +80,5 @@ report checks, findings and verified resolutions.
    "required_evidence":"facts value for gross margin, cited in report"}],
  "verified_resolutions":[],
  "coverage":{"rubric_version":"1.1","areas_checked":["evidence_citation"]},
- "conformance":"schema 1.0","prompt_version":"1.1"}
+ "conformance":"schema 1.0","prompt_version":"1.2"}
 (the example lists one check only for brevity; a real report lists all of them)

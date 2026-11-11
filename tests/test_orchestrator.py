@@ -1073,8 +1073,10 @@ class TestBudgetExhaustion:
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
         # dispatch burns 140+260 = 400 per call... bump tokens per call:
-        dispatch.tokens_in = 700
-        dispatch.tokens_out = 600  # 1300 per call > 1000 cap
+        # exactly the cap per call: the budget tracker stops at >= cap, while
+        # the controls_conformance gate (owner system) only fires above it
+        dispatch.tokens_in = 500
+        dispatch.tokens_out = 500
         orch.run()
         st = load_state(case_dir)
         assert st["status"] == "EXHAUSTED"
@@ -1084,7 +1086,7 @@ class TestBudgetExhaustion:
         # (the controls_conformance gate also flags the overshoot in R1, so
         # the first role the tracker stops is the one after the reused ones)
         assert st["reason"]["detail"]["role"] in ("extractor", "model")
-        assert st["reason"]["detail"]["tokens"] == 1300
+        assert st["reason"]["detail"]["tokens"] == 1000
         result = statestore.read_json(case_dir / "result.json")
         assert result["terminal"] == "EXHAUSTED"
 
@@ -1110,8 +1112,8 @@ class TestBudgetExhaustion:
         mandate["limits"]["stall_rounds"] = 0   # this test is about grants
         orch, dispatch, clk, case_dir = build_env(
             tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
-        dispatch.tokens_in = 700
-        dispatch.tokens_out = 600
+        dispatch.tokens_in = 500
+        dispatch.tokens_out = 500
         orch.run()
         st = load_state(case_dir)
         assert st["status"] == "EXHAUSTED"
@@ -1133,7 +1135,7 @@ class TestBudgetExhaustion:
         assert st["budget"]["role_tokens_max"] == 2000
         # the counters restarted from zero at grant time, so the allowance is
         # actually spendable (the snapshot proves it)
-        assert grants[0]["tokens_at_grant"]["ingest"] == 1300
+        assert grants[0]["tokens_at_grant"]["ingest"] == 1000
         # the grant reopens the run; it never launders exhaustion into
         # an approval
         assert st["status"] != "APPROVED"
@@ -1334,36 +1336,28 @@ class TestApprovalDeadline:
 
 
 class TestCutoffGateEndToEnd:
-    def test_post_cutoff_doc_rejected_by_gate_and_leads_to_repair(self, tmp_path):
+    def test_post_cutoff_doc_is_a_system_defect_and_blocks_the_case(self, tmp_path):
         import copy
         manifest = copy.deepcopy(casekit.MANIFEST)
         manifest["documents"].append(dict(manifest["documents"][0],
                                           doc_id="intc-10q-2026q4",
                                           filed="2026-11-15"))
-        mandate = json.loads(json.dumps(casekit.MANDATE))
-        mandate["limits"]["rounds_max"] = 2
-        orch, dispatch, clk, case_dir = build_env(tmp_path, mandate=mandate,
-                                                  manifest=manifest)
+        orch, dispatch, clk, case_dir = build_env(tmp_path, manifest=manifest)
         orch.run()
         st = load_state(case_dir)
-        # the cutoff gate failed deterministically each rebuild
         gates_report = json.loads((case_dir / "rounds" / "round-001" /
                                    "numerical" / "gates.json").read_text())
         assert not gates_report["passed"]
         failed = [g["gate"] for g in gates_report["results"] if not g["ok"]]
         assert "input_cutoff" in failed
-        # the finding was carried into a repair packet
-        packet = json.loads((case_dir / "rounds" / "round-001" /
-                             "repair-packet.json").read_text())
-        assert packet["open_findings"], "cutoff finding must be carried"
-        assert any("post-cutoff" in f["summary"] or "cutoff" in f["summary"]
-                   for f in packet["open_findings"])
-        assert "unchanged_criteria" in packet and "delta_scope" in packet
-        # and the ledger holds the cutoff finding open; case ended exhausted on rounds
+        # the harness owns the input set: no role can repair it, so there is
+        # no repair packet and no second round
+        assert st["status"] == "BLOCKED"
+        assert st["reason"]["code"] == "needs_system_change"
+        assert not list((case_dir / "rounds").glob("*/repair-packet.json"))
         led = ledger.FindingsLedger(case_dir)
-        assert any("intc-10q-2026q4" in f["summary"] for f in led.open_findings())
-        assert st["status"] == "EXHAUSTED"
-        assert st["reason"]["code"] == "rounds"
+        assert any("intc-10q-2026q4" in f["summary"] and f["owner"] == "system"
+                   for f in led.open_findings())
 
 
 class TestRepairPacketsFromCritics:

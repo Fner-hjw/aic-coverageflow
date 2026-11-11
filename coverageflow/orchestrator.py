@@ -84,6 +84,10 @@ STAGE_ROLE = {"ingest": "ingest", "extractor": "extractor", "model": "model",
 STAGE_ARTIFACT = {"ingest": "ingest-report.json", "extractor": "facts.json",
                   "model": "forecast_assumptions.json", "writer": "report.md",
                   "candidate": "candidate-manifest.json"}
+# BLOCKED reasons that are not "fix and re-run": the defect is in the harness
+# or in a human-owned input, so the case ends and feeds an evolution proposal.
+OWNER_BLOCK_CODES = ("needs_system_change", "needs_mandate_change")
+EVOLUTION_INPUT_FILE = "evolution-input.json"
 CRITIC_ROLES = tuple(f"critic_c{i}" for i in range(1, 5))
 RUBRIC_VERSION = "1.1"
 # Rubric v1.1 checklist IDs per critic area (references/critic-rubric-v1.1.md).
@@ -486,6 +490,18 @@ class Orchestrator:
             # the last verified stage; otherwise one transient backend
             # failure forces a brand-new case, and the workspace fills with
             # dead cases that all point at the same frozen bundle.
+            if code in OWNER_BLOCK_CODES:
+                # Not an instruction to re-run: a rebuild cannot repair a
+                # harness or mandate defect, so clearing the block would only
+                # re-open the same findings and stop again.
+                return self._summary(
+                    state, f"case blocked ({code}): the open blocking "
+                           f"finding(s) are owned by "
+                           f"{'the harness' if code == 'needs_system_change' else 'the mandate'}"
+                           f", not by a role. See {EVOLUTION_INPUT_FILE} "
+                           "(input for an evolution proposal) and state.reason."
+                           "detail; apply the change, then open a new case. "
+                           "Re-running this case does nothing.")
             if code == "missing_inputs":
                 missing = missing_input_documents(self.case_dir,
                                                   self.input_manifest())
@@ -1964,11 +1980,59 @@ class Orchestrator:
         }
 
     # ================================================================ repair
+    def _stop_for_owner(self, state: dict,
+                        led: ledger_mod.FindingsLedger) -> bool:
+        """End the case when an open blocking finding is not a role's to fix.
+
+        ``system`` (engine, slicer, harness) and ``mandate`` (human-owned
+        inputs) findings cannot be repaired by any rewrite; spending more
+        rounds on them is the loop the diagnosis measured. The case ends
+        BLOCKED with a distinct code and writes ``evolution-input.json``, the
+        input to an evolution proposal. True when the case was stopped.
+        """
+        stop = led.stopping_findings()
+        if not stop:
+            return False
+        code = ("needs_system_change"
+                if any(f["owner"] == "system" for f in stop)
+                else "needs_mandate_change")
+        cand_id = state["candidate"]["candidate_id"]
+        fields = ("finding_id", "owner", "severity", "summary", "source_critic",
+                  "affected_artifacts", "required_evidence", "dedup_key",
+                  "first_seen_round", "last_seen_round")
+        rows = [{k: f.get(k) for k in fields} for f in stop]
+        others = [f["finding_id"] for f in led.repairable_findings()]
+        statestore.atomic_write_json(self.case_dir / EVOLUTION_INPUT_FILE, {
+            "case_id": state["case_id"],
+            "candidate_id": cand_id,
+            "round": state["pending"]["round"],
+            "reason_code": code,
+            "findings": rows,
+            "other_open_blocking_finding_ids": others,
+            "note": ("input for an evolution proposal: each finding names a "
+                     "defect in the harness (system) or a human-owned input "
+                     "(mandate) that no role can repair"),
+        })
+        who = ", ".join(f"{r['finding_id']} ({r['owner']}): {r['summary']}"
+                        for r in rows)
+        self.blocked(
+            state, code,
+            f"{len(rows)} open blocking finding(s) cannot be repaired by a "
+            f"role and need a "
+            f"{'system' if code == 'needs_system_change' else 'mandate'} "
+            f"change: {who}. Written to {EVOLUTION_INPUT_FILE}.",
+            {"findings": rows, "candidate_id": cand_id,
+             "evolution_input": EVOLUTION_INPUT_FILE,
+             "other_open_blocking_finding_ids": others})
+        return True
+
     def _issue_repair_packet(self, state: dict, arts: Arts,
                              led: ledger_mod.FindingsLedger,
                              note: str = "") -> None:
         """Repair packet per contracts section 6; the next build is a full
         re-build (rounds budget consumed at build start)."""
+        if self._stop_for_owner(state, led):
+            return      # a role cannot repair it: no packet, no rebuild
         round_no = arts.round if arts.round else state["pending"]["round"]
         rel = f"rounds/round-{round_no:03d}/repair-packet.json"
         mandate = self.mandate()
@@ -1976,7 +2040,7 @@ class Orchestrator:
         # too fed every advisory nit back into the next round's prompts, so
         # the critics re-raised them verbatim and the ledger could never
         # drain -- the packet was manufacturing its own findings.
-        carried = led.blocking_findings()
+        carried = led.repairable_findings()
         advisory = [f for f in led.open_findings()
                     if f.get("severity") not in ledger_mod.BLOCKING_SEVERITIES]
         packet = {
@@ -2006,7 +2070,8 @@ class Orchestrator:
                     candidate_id=state["candidate"]["candidate_id"],
                     artifact=rel, artifact_sha256=sha,
                     detail={"open_findings": len(carried),
-                            "advisory_findings": len(advisory)})
+                            "advisory_findings": len(advisory),
+                            "owners": sorted({f.get("owner") for f in carried})})
         state["pending"]["role"] = "generator"
         state["pending"]["stage"] = None
         state["pending"]["retry_count"] = 0
@@ -2160,6 +2225,10 @@ class Orchestrator:
                         candidate_id=candidate_id, round=round_no,
                         role=f.get("source_critic"),
                         detail={"finding_id": fid, "summary": f.get("summary")})
+        # a defect only the harness or the mandate can fix ends the case here,
+        # before a clean streak or a stall verdict is even considered
+        if self._stop_for_owner(state, led):
+            return
         # No close-on-silence: a critic that fails to re-raise a finding has
         # NOT verified it fixed. It stays open until a critic returns a
         # verified_resolution for its ledger id.

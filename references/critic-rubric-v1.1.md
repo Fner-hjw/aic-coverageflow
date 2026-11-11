@@ -26,6 +26,12 @@ each carrying `check_id`. `verdict = "clean"` iff there are no major findings.
 A report missing a check ID is invalid and is retried at the same role. The
 finding identity (dedup key) is computed by the ledger from
 (critic, check_id, sorted affected_artifacts); the critic does not supply it.
+A finding may carry an optional `owner`: set `owner: system` for defects in
+deterministic engine output or harness, `mandate` for human-owned inputs such
+as the exit multiple or price. Otherwise the controller assigns the owner
+from the earliest affected artifact (facts.json: extractor,
+forecast_assumptions.json: model, report.md: writer; model.json,
+valuation.json and manifests: system).
 
 ## Resolutions
 For each carried open finding (cited by its ledger id) the critic returns

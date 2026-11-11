@@ -173,12 +173,13 @@ class TestControlsConformanceGate:
 
 
 class TestCards:
-    def test_critic_cards_are_v11_and_example_version_matches(self):
+    def test_critic_cards_are_v12_and_example_version_matches(self):
         root = pa.default_root()
         for role in ("critic_c1", "critic_c2", "critic_c3", "critic_c4"):
             text = (root / "prompts" / f"{role}.md").read_text("utf-8")
-            assert pa.parse_role_card(root / "prompts" / f"{role}.md")["version"] == "1.1"
-            assert set(re.findall(r'"prompt_version":"([^"]+)"', text)) == {"1.1"}
+            assert pa.parse_role_card(root / "prompts" / f"{role}.md")["version"] == "1.2"
+            assert set(re.findall(r'"prompt_version":"([^"]+)"', text)) == {"1.2"}
+            assert "`owner: system`" in text and "owner (optional)" in text
 
     def test_writer_example_version_equals_card_version(self):
         root = pa.default_root()
