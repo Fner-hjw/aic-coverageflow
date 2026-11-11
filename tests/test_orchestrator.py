@@ -1233,7 +1233,11 @@ class TestBudgetExhaustion:
 
 class TestStallRule:
     def _shrinking(self, counts):
-        """critic_c1 raises counts[i] distinct major findings in review i."""
+        """critic_c1 raises counts[i] distinct major findings in review i.
+
+        Each sits on its own rubric check: under rubric v1.1 the dedup key is
+        (critic, check_id, artifacts), so distinct objections need distinct checks.
+        """
         seen = {"n": 0}
 
         def c1(payload):
@@ -1242,8 +1246,20 @@ class TestStallRule:
             rep = _critic_findings()
             rep["findings"] = [dict(rep["findings"][0],
                                     summary=f"distinct objection number {k} {i}",
+                                    check_id=f"C1.{k + 1}",
                                     dedup_key=f"obj-{k}")
                                for k in range(counts[i])]
+            # rubric v1.1: silence on a carried finding is invalid, so the
+            # objections dropped this round are verified as resolved
+            raised = {f"c1.{k + 1}" for k in range(counts[i])}
+            arts = payload.get("candidate_artifacts") or {}
+            rep["verified_resolutions"] = [
+                {"finding_id": f["finding_id"],
+                 "verified_evidence": _stub._resolve_evidence(f, arts),
+                 "check_performed": "re-checked the repaired artifact"}
+                for f in payload.get("carried_findings", [])
+                if not any(c in str(f.get("dedup_key", "")).lower().split("|")
+                           for c in raised)]
             return rep
         return {"critic_c1": c1}
 
