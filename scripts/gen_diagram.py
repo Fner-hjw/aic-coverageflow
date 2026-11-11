@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Generate docs/workflow-diagram.png (owner: stream A5, docs & evidence).
+"""Generate docs/workflow-diagram.png, the figure in docs/design-note.md.
 
-Renders the CoverageFlow workflow figure embedded in docs/design-note.md:
-the lecture's slide-4 architecture adapted to this project (mandate ->
-Orchestrator -> Generator build team -> numerical gates -> Critic review
-team -> merge -> repair-packet loop -> 2-clean acceptance -> human
-approval -> published version), plus the evolution boundary (version
-registry) and the shared state / evidence layer.
+The figure shows one coverage update as a left-to-right flow across three
+swimlanes: the analyst, the Python controller, and the model calls (each in a
+fresh context). Controller steps are white boxes, model calls are teal,
+analyst steps are tan. After the gates, four critics review in parallel, the
+controller merges findings and decides: two clean reviews lead to analyst
+approval and publish, build-side findings loop back along the bottom to the
+earliest affected stage, engine/harness/mandate findings block, and a stalled
+run escalates to the analyst.
 
-Pure matplotlib (no exotic dependencies). Institutional look: serif type,
-restrained palette, thin rules. Deterministic output (no timestamps).
+Pure matplotlib, deterministic output, 2400x1350 px.
 
 Usage:  python scripts/gen_diagram.py [--out docs/workflow-diagram.png]
 """
@@ -20,363 +21,229 @@ import argparse
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib import font_manager  # noqa: E402
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle  # noqa: E402
+from matplotlib.patches import FancyBboxPatch, Polygon  # noqa: E402
 
-# ---------------------------------------------------------------- palette
-PAPER = "#FBFAF7"          # page background
-INK = "#1F2A36"            # primary text / rules
-NAVY = "#2E4A66"           # orchestrator / control accents
-STEEL = "#5C7186"          # secondary text
-FAINT = "#C9C3B8"          # hairlines
-GEN_FILL = "#F1EEE5"       # generator boxes
-GEN_EDGE = "#8C7A56"       # generator accent (bronze)
-CRI_FILL = "#ECEFF2"       # critic boxes
-CRI_EDGE = "#41586E"       # critic accent (steel blue)
-HUM_EDGE = "#7A4A3A"       # human gate accent (muted oxblood)
-EVO_FILL = "#F4F4F0"
-EVO_EDGE = "#6E7B66"       # evolution accent (muted olive)
+W, H, DPI = 2400, 1350, 200          # canvas in pixels; 1 data unit = 1 px
+PT = 72 / DPI                        # pixels -> points
 
-W, H = 15.0, 12.4          # canvas in inches (1 unit = 1 inch)
-XC = 9.0                   # main column center
-SERIF = "serif"            # resolved in main()
+INK = "#222222"
+GREY = "#777777"
+RULE = "#D9D9D9"
+CODE = dict(fc="#FFFFFF", ec="#444444")
+MODEL = dict(fc="#E6F0EE", ec="#2F6F68")
+ANALYST = dict(fc="#F6EFE6", ec="#8A5A2B")
+BLOCKED = dict(fc="#FFFFFF", ec="#9B3D3D")
+RED = "#9B3D3D"
+
+NAME_PX, SUB_PX, NOTE_PX = 20, 16, 15
+
+# Lane bands (top, bottom) and the row each lane's boxes sit on.
+LANES = {"analyst": (85, 360), "ctrl": (360, 700), "model": (700, 1100)}
+LANE_LABELS = {"analyst": "Analyst", "ctrl": "Controller (Python)",
+               "model": "Model calls\n(fresh context)"}
+Y_CTRL, Y_MODEL = 545, 890
+
+# Layout table: key -> (style, cx, cy, w, h, name, sub)
+BOXES = {
+    "prefill":  (CODE,    295, Y_CTRL, 200, 84, "Prefill mandate", "SEC filings, prices, peers"),
+    "review":   (ANALYST, 295, 225,    200, 84, "Review and accept", "edits recorded"),
+    "ingest":   (CODE,    505, Y_CTRL, 200, 84, "Ingest and slice", "filings"),
+    "extract":  (MODEL,   610, Y_MODEL, 200, 84, "Extractor", "facts with citations"),
+    "engine":   (CODE,    715, Y_CTRL, 200, 84, "Model engine", ""),
+    "role":     (MODEL,   820, Y_MODEL, 200, 84, "Model role", "growth, margin, capex"),
+    "valuation": (CODE,   925, Y_CTRL, 200, 84, "Valuation engine", "LTM base, DCF, target"),
+    "writer":   (MODEL,  1046, Y_MODEL, 224, 84, "Writer", "note with evidence markers"),
+    "gates":    (CODE,   1165, Y_CTRL, 230, 150, "Gates",
+                 "cutoff, schema, periods,\nbounds, recompute,\nterminal check,\nevidence links, controls"),
+    "merge":    (CODE,   1405, Y_CTRL, 200, 84, "Merge findings", "ledger, verified closures"),
+    "approve":  (ANALYST, 2010, 160,   200, 76, "Approve", ""),
+    "escalate": (ANALYST, 2010, 280,   200, 100, "Escalated", "publish with exceptions\nor reject"),
+    "publish":  (CODE,   2265, 445,    200, 84, "Publish", "note + clean export"),
+    "blocked":  (BLOCKED, 2010, Y_CTRL, 200, 84, "Blocked", "evolution input"),
+}
+CRITICS = ["C1 evidence", "C2 robustness", "C3 timing", "C4 controls"]
+CRIT_CX, CRIT_W, CRIT_H = 1310, 160, 52
+CRIT_Y = [791 + 66 * i for i in range(4)]
+DECIDE = (1600, Y_CTRL, 110, 100)    # diamond: cx, cy, w, h
+TRUNK_X = 1745
+Y_REPAIR = 1160
 
 
-def _serif() -> str:
-    """Prefer a real serif installed on the machine; fall back to DejaVu."""
-    prefer = ["Times New Roman", "Times", "STIXGeneral", "Nimbus Roman",
-              "Liberation Serif", "DejaVu Serif"]
-    available = {f.name for f in font_manager.fontManager.ttflist}
-    for name in prefer:
-        if name in available:
+def pick_font() -> str:
+    have = {f.name for f in font_manager.fontManager.ttflist}
+    for name in ("Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"):
+        if name in have:
             return name
-    return "serif"
+    return "DejaVu Sans"
 
 
-def box(ax, x, y, w, h, *, title, lines=(), edge, face, title_size,
-        line_size=None, lw=0.9, subtitle=None, title_color=None,
-        ls="solid"):
-    """Draw one labeled box (title optional when lines are given)."""
-    p = FancyBboxPatch((x, y), w, h, boxstyle="square,pad=0", linewidth=lw,
-                       edgecolor=edge, facecolor=face, linestyle=ls, zorder=2)
-    ax.add_patch(p)
-    line_size = line_size or max(6.4, title_size - 1.5)
-    tc = title_color or INK
-    cx = x + w / 2
-    ty = y + h - 0.27
-    ax.text(cx, ty, title, ha="center", va="center", fontsize=title_size,
-            family=SERIF, color=tc, fontweight="bold", zorder=3)
-    if subtitle:
-        ax.text(cx, ty - 0.21, subtitle, ha="center", va="center",
-                fontsize=line_size, family=SERIF, color=STEEL, style="italic",
-                zorder=3)
-        top = ty - 0.40
-    else:
-        top = ty - 0.24
-    for i, ln in enumerate(lines):
-        ax.text(cx, top - i * 0.175, ln, ha="center", va="center",
-                fontsize=line_size, family=SERIF, color=STEEL, zorder=3)
-    return p
+# ------------------------------------------------------------- primitives
+def edge(key, side, dx=0):
+    """Anchor on a box edge: side in top/bottom/left/right."""
+    _, cx, cy, w, h, *_ = BOXES[key]
+    return {"top": (cx + dx, cy - h / 2), "bottom": (cx + dx, cy + h / 2),
+            "left": (cx - w / 2, cy), "right": (cx + w / 2, cy)}[side]
 
 
-def arrow(ax, x1, y1, x2, y2, *, edge=INK, lw=1.1, ls="solid", alpha=1.0,
-          zorder=4):
-    a = FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=12,
-                        linewidth=lw, color=edge, shrinkA=2, shrinkB=2,
-                        linestyle=ls, alpha=alpha, zorder=zorder)
-    ax.add_patch(a)
-    return a
+class Fig:
+    def __init__(self, font: str):
+        self.font = font
+        self.fig = plt.figure(figsize=(W / DPI, H / DPI), dpi=DPI)
+        self.ax = self.fig.add_axes([0, 0, 1, 1])
+        self.ax.set_xlim(0, W)
+        self.ax.set_ylim(H, 0)
+        self.ax.axis("off")
+        self.fig.patch.set_facecolor("white")
+        self.fitted = []             # (label, text artists, box rect) for the overflow check
+
+    def text(self, x, y, s, px, color=INK, weight="normal", ha="center", va="center", **kw):
+        return self.ax.text(x, y, s, fontsize=px * PT, color=color, fontweight=weight,
+                            ha=ha, va=va, family=self.font, linespacing=1.25, **kw)
+
+    def rbox(self, cx, cy, w, h, style):
+        self.ax.add_patch(FancyBboxPatch(
+            (cx - w / 2, cy - h / 2), w, h, boxstyle="round,pad=0,rounding_size=4",
+            fc=style["fc"], ec=style["ec"], lw=1.2 * PT, zorder=3))
+
+    def box(self, cx, cy, w, h, style, name, sub="", name_color=INK):
+        self.rbox(cx, cy, w, h, style)
+        n_sub = sub.count("\n") + 1 if sub else 0
+        block = 28 + n_sub * 21
+        top = cy - block / 2
+        arts = [self.text(cx, top + 12, name, NAME_PX, name_color, 600, zorder=4)]
+        if sub:
+            arts.append(self.text(cx, top + 28 + n_sub * 10.5, sub, SUB_PX, "#444444", zorder=4))
+        self.fitted.append((name, arts, (cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2)))
+
+    def line(self, pts, color="#444444", dashed=False):
+        xs, ys = zip(*pts)
+        self.ax.plot(xs, ys, color=color, lw=1.3 * PT, solid_capstyle="butt",
+                     solid_joinstyle="miter", zorder=2, ls=(0, (4, 3)) if dashed else "-")
+
+    def arrow(self, pts, color="#444444", dashed=False):
+        """Orthogonal polyline with an arrowhead on the last segment."""
+        if len(pts) > 2:
+            self.line(pts[:-1], color, dashed)
+        (x0, y0), (x1, y1) = pts[-2:]
+        if dashed:                   # keep the head's own shaft short so the dashes show
+            d = max(abs(x1 - x0), abs(y1 - y0))
+            x0, y0 = x1 + (x0 - x1) * 12 / d, y1 + (y0 - y1) * 12 / d
+        self.ax.annotate("", xy=pts[-1], xytext=(x0, y0), zorder=2, arrowprops=dict(
+            arrowstyle="-|>,head_length=0.5,head_width=0.2", color=color, lw=1.3 * PT,
+            shrinkA=0, shrinkB=0, mutation_scale=9))
+        # straight line body for the final segment
+        self.line(pts[-2:], color, dashed)
+
+    def check_fit(self):
+        self.fig.canvas.draw()
+        r = self.fig.canvas.get_renderer()
+        inv = self.ax.transData.inverted()
+        for label, arts, (x0, x1, y0, y1) in self.fitted:
+            for a in arts:
+                bb = a.get_window_extent(r)
+                (ax0, ay0), (ax1, ay1) = inv.transform((bb.x0, bb.y0)), inv.transform((bb.x1, bb.y1))
+                if min(ax0, ax1) < x0 + 8 or max(ax0, ax1) > x1 - 8 or \
+                        min(ay0, ay1) < y0 + 4 or max(ay0, ay1) > y1 - 4:
+                    print(f"WARNING: text overflows box '{label}': {a.get_text()!r}")
 
 
-def note(ax, x, y, text, *, size=6.2, color=STEEL, ha="center", ma="center",
-         weight="normal", style="normal", mask=True, rotation=0):
-    ax.text(x, y, text, ha=ha, va="center", fontsize=size, family=SERIF,
-            color=color, zorder=6, fontweight=weight, style=style, rotation=rotation,
-            multialignment=ma,
-            bbox=(dict(facecolor=PAPER, edgecolor="none", pad=1.2,
-                       alpha=0.92) if mask else None))
+# ----------------------------------------------------------------- figure
+def draw(f: Fig) -> None:
+    # title and lanes
+    f.text(30, 42, "CoverageFlow: one coverage update", 26, INK, 600, ha="left")
+    for lane, (top, bot) in LANES.items():
+        f.line([(30, bot), (W - 30, bot)], RULE)
+        f.text(30, (top + bot) / 2 - (0 if lane != "analyst" else 0), LANE_LABELS[lane], 17, GREY, ha="left")
+    f.line([(30, LANES["analyst"][0]), (W - 30, LANES["analyst"][0])], RULE)
+
+    for k, (style, cx, cy, w, h, name, sub) in BOXES.items():
+        f.box(cx, cy, w, h, style, name, sub, RED if k == "blocked" else INK)
+
+    # critics (parallel, each fed only its own inputs)
+    for name, cy in zip(CRITICS, CRIT_Y):
+        f.box(CRIT_CX, cy, CRIT_W, CRIT_H, MODEL, name)
+    f.text(CRIT_CX, 1052, "run in parallel,\neach with only its own inputs", NOTE_PX, GREY)
+
+    # decision diamond
+    dx, dy, dw, dh = DECIDE
+    f.ax.add_patch(Polygon([(dx - dw / 2, dy), (dx, dy - dh / 2), (dx + dw / 2, dy), (dx, dy + dh / 2)],
+                           closed=True, fc="white", ec="#444444", lw=1.2 * PT, zorder=3))
+    f.text(dx, dy, "Decide", NAME_PX, INK, 600, zorder=4)
+
+    # mandate
+    f.arrow([edge("prefill", "top"), edge("review", "bottom")])
+    rx, ry = edge("review", "right")
+    f.arrow([(rx, ry), (505, ry), edge("ingest", "top")])
+
+    # build staircase: vertical arrows through the overlap of neighbouring boxes
+    f.arrow([edge("ingest", "bottom", 53), edge("extract", "top", -52)])
+    f.arrow([edge("extract", "top", 52), edge("engine", "bottom", -53)])
+    f.arrow([edge("engine", "bottom", 53), edge("role", "top", -52)])
+    f.arrow([edge("role", "top", 52), edge("valuation", "bottom", -53)])
+    f.arrow([edge("valuation", "bottom", 53), edge("writer", "top", 978 - 1046)])
+    f.arrow([edge("writer", "top", 44), edge("gates", "bottom", -75)])
+
+    # writer retry loop
+    wx, wy = edge("writer", "bottom")
+    f.line([(wx + 40, wy), (wx + 40, wy + 30), (wx - 30, wy + 30)])
+    f.arrow([(wx - 30, wy + 30), (wx - 30, wy)])
+    f.text(wx + 5, wy + 62, "unlinked number: writer retries\n(no round used)", NOTE_PX, GREY)
+
+    # gates -> critics (fan out) -> merge (fan in)
+    gx = 1190
+    f.line([(gx, edge("gates", "bottom")[1]), (gx, CRIT_Y[-1])])
+    cl, cr = CRIT_CX - CRIT_W / 2, CRIT_CX + CRIT_W / 2
+    for cy in CRIT_Y:
+        f.arrow([(gx, cy), (cl, cy)])
+        f.line([(cr, cy), (1415, cy)])
+    f.arrow([(1415, CRIT_Y[-1]), edge("merge", "bottom", 10)])
+
+    # merge -> decide
+    f.arrow([edge("merge", "right"), (dx - dw / 2, dy)])
+
+    # outcomes
+    f.line([(dx + dw / 2, dy), (TRUNK_X, dy)])
+    f.line([(TRUNK_X, 160), (TRUNK_X, Y_REPAIR), (455, Y_REPAIR)])
+    f.arrow([(TRUNK_X, 160), edge("approve", "left")])
+    f.arrow([(TRUNK_X, 280), edge("escalate", "left")])
+    f.arrow([(TRUNK_X, dy), edge("blocked", "left")])
+    ax_, ay_ = edge("approve", "right")
+    f.arrow([(ax_, ay_), (2265, ay_), edge("publish", "top")])
+    ex, ey = edge("escalate", "bottom")
+    px, py = edge("publish", "left")
+    f.arrow([(ex, ey), (ex, py), (px, py)], dashed=True)
+    f.text(ex + 12, py - 40, "with exceptions\nbanner", NOTE_PX, GREY, ha="left")
+    f.arrow([(455, Y_REPAIR), (455, edge("ingest", "bottom")[1])])
+
+    lx = TRUNK_X + 12
+    f.text(lx, 142, "2 clean reviews", NOTE_PX, GREY, ha="left")
+    f.text(lx, 262, "stalled or out\nof rounds", NOTE_PX, GREY, ha="left")
+    f.text(lx, dy - 24, "engine, harness or\nmandate findings", NOTE_PX, GREY, ha="left")
+    f.text(lx, 840, "writer, model or\nextractor findings", NOTE_PX, GREY, ha="left")
+    f.text(480, Y_REPAIR - 18, "repair from earliest affected stage", NOTE_PX, GREY, ha="left")
+
+    # footer
+    f.line([(30, 1255), (W - 30, 1255)], RULE)
+    f.text(30, 1292, "Every step is recorded in state.json, trace.jsonl and the findings ledger. "
+           "Prompt cards, mapping tables and engines change only through the evolution loop, "
+           "with human approval.", 17, GREY, ha="left")
 
 
-def render(out: Path) -> Path:
-    fig, ax = plt.subplots(figsize=(W, H), dpi=200)
-    fig.patch.set_facecolor(PAPER)
-    ax.set_xlim(0, W)
-    ax.set_ylim(0, H)
-    ax.axis("off")
-
-    # ---------------------------------------------------------------- title
-    ax.text(XC, H - 0.28, "CoverageFlow — Coverage-Update Workflow",
-            ha="center", va="center", fontsize=16, family=SERIF, color=INK,
-            fontweight="bold")
-    ax.text(XC, H - 0.58,
-            "Orchestrator = deterministic code · Generator / Critic = role "
-            "dispatches (fresh context per call) · repair loop · human "
-            "approval · evolution under regression testing",
-            ha="center", va="center", fontsize=7.4, family=SERIF, color=STEEL,
-            style="italic")
-
-    # ================================================================ mandate
-    y_mandate = 11.0
-    box(ax, XC - 2.7, y_mandate, 5.4, 0.70,
-        title="ANALYST MANDATE — human-owned, immutable per case",
-        edge=INK, face="#FFFFFF", title_size=8.0, lw=1.3)
-    note(ax, XC - 3.65, y_mandate + 0.35,
-         "company · information cutoff\n· report policy", size=6.2)
-    note(ax, XC + 3.65, y_mandate + 0.35,
-         "WACC · terminal growth ·\nforecast bounds · budgets", size=6.2)
-    arrow(ax, XC, y_mandate, XC, 10.68)
-
-    # ================================================================ orchestrator
-    y_orch = 9.25
-    box(ax, XC - 4.4, y_orch, 8.8, 1.43,
-        title="ORCHESTRATOR",
-        subtitle="pure Python, no LLM — coverageflow/orchestrator.py",
-        lines=[
-            "states: CREATED → RUNNING → PENDING_APPROVAL → APPROVED / REJECTED → CLOSED",
-            "dispatch + state + routing · numerical gates · budgets · checkpoints · resume",
-            "triggers: new dated doc · staleness check · human action",
-            "backends per dispatch: claude / codex / kimi CLI · "
-            "OpenAI-compatible API · offline replay",
-        ],
-        edge=NAVY, face="#E8EDF2", title_size=9.5, title_color=NAVY, lw=1.5,
-        line_size=6.6)
-    arrow(ax, XC, y_orch, XC, 8.93)
-
-    # ================================================================ generator
-    y_glead = 8.40
-    box(ax, XC - 2.1, y_glead, 4.2, 0.53,
-        title="GENERATOR LEAD — coordinates the build",
-        edge=GEN_EDGE, face=GEN_FILL, title_size=7.9, lw=1.1)
-    arrow(ax, XC, y_glead, XC, 8.10)
-
-    y_spec, bh, bw, bgap = 6.80, 1.30, 2.42, 0.24
-    total = 4 * bw + 3 * bgap
-    x0 = XC - total / 2
-    spec = [
-        ("1 · DATA & INGEST",
-         ["validate + classify doc;",
-          "deterministic slicing;",
-          "provenance manifest"]),
-        ("2 · EXTRACTION",
-         ["schema-bound facts;",
-          "every number carries a",
-          "citation to a document",
-          "slice (only LLM step)"]),
-        ("3 · MODEL & VALUATION",
-         ["deterministic engines",
-          "(pure Python) + specialist-",
-          "proposed bounded forecast"]),
-        ("4 · REPORT DRAFT",
-         ["report.md strictly from",
-          "the evidence ledger",
-          "([EV: ...] links)"]),
-    ]
-    for i, (t, ls) in enumerate(spec):
-        box(ax, x0 + i * (bw + bgap), y_spec, bw, bh, title=t, lines=ls,
-            edge=GEN_EDGE, face=GEN_FILL, title_size=7.0, line_size=6.1)
-    note(ax, XC, y_spec - 0.24,
-         "candidate manifest = artifact IDs + SHA-256 · engines: "
-         "model_engine@1.0 / valuation_engine@2.0", size=6.3)
-    arrow(ax, XC, y_spec - 0.40, XC, 6.08)
-
-    # ================================================================ gates
-    y_gates = 5.30
-    box(ax, XC - 3.6, y_gates, 7.2, 0.78,
-        title="NUMERICAL GATES — deterministic, rerun before every review",
-        lines=["cutoff · facts-schema · citations · forecast bounds · "
-               "manifest-integrity · recompute · report evidence links",
-               "gate fail → repair at the same role (no round consumed; "
-               "2nd invalid → BLOCKED)"],
-        edge=NAVY, face="#F5F7F8", title_size=7.6, line_size=6.0, lw=1.3)
-
-    # ================================================================ critics
-    y_clead = 4.42
-    box(ax, XC - 2.1, y_clead, 4.2, 0.53,
-        title="CRITIC LEAD — merges findings, keeps conflicts",
-        edge=CRI_EDGE, face=CRI_FILL, title_size=7.7, lw=1.1)
-    arrow(ax, XC, y_clead, XC, 4.19)
-
-    y_crit, ch, cw, cgap = 2.94, 1.25, 2.42, 0.24
-    totalc = 4 * cw + 3 * cgap
-    cx0 = XC - totalc / 2
-    crit = [
-        ("C1 · EVIDENCE\n& CITATION",
-         ["every cited number",
-          "traces to a slice; no",
-          "uncited number survives"]),
-        ("C2 · ROBUSTNESS",
-         ["independent recompute",
-          "of model + valuation;",
-          "forecast vs. history"]),
-        ("C3 · TIMING\n& CUTOFF",
-         ["nothing dated after",
-          "the information cutoff",
-          "leaks into outputs"]),
-        ("C4 · RISK &\nCONTROLS",
-         ["budgets, permissions,",
-          "scope; carried findings",
-          "verified or re-opened"]),
-    ]
-    for i, (t, ls) in enumerate(crit):
-        box(ax, cx0 + i * (cw + cgap), y_crit, cw, ch,
-            title=t, lines=ls, edge=CRI_EDGE, face=CRI_FILL,
-            title_size=6.8, line_size=5.9)
-    note(ax, XC, y_crit - 0.28,
-         "4 fresh reviewers every round — fresh context per dispatch "
-         "(stale request_id rejected)\n"
-         "a finding closes ONLY on critic-verified repair "
-         "(artifact + matching SHA-256)", size=6.3, ma="center")
-
-    # ================================================================ repair loop
-    x_loop = x0 + total + 0.42          # vertical loop lane (right margin)
-    arrow(ax, x0 + total, y_crit + ch * 0.62, x_loop, y_crit + ch * 0.62,
-          edge=CRI_EDGE, lw=1.0)
-    arrow(ax, x_loop, y_crit + ch * 0.62, x_loop, y_spec + bh * 0.55,
-          edge=CRI_EDGE, lw=1.0, alpha=0.9)
-    arrow(ax, x_loop, y_spec + bh * 0.55, x0 + total, y_spec + bh * 0.55,
-          edge=CRI_EDGE, lw=1.0)
-    note(ax, x_loop + 0.22, (y_crit + y_spec) / 2 + 0.4,
-         "REPAIR PACKET → full re-build (fresh eyes); any candidate change "
-         "resets the clean streak",
-         size=6.6, color=CRI_EDGE, rotation=90, ha="center")
-
-    # acceptance note sits on the arrow into the human gate
-    y_human = 1.36
-    arrow(ax, XC, y_crit - 0.68, XC, y_human + 0.68, lw=1.1)
-    note(ax, XC, y_crit - 0.68,
-         "ACCEPTANCE: all gates pass · 2 consecutive clean full reviews of "
-         "the same candidate\n"
-         "· all carried findings closed by critic-verified repairs",
-         size=6.4, weight="bold", ma="center")
-
-    # ================================================================ human gate
-    box(ax, XC - 2.7, y_human, 5.4, 0.68,
-        title="HUMAN APPROVAL GATE — pause; auditable record; 48h deadline",
-        subtitle="only the human approves; expiry → BLOCKED and "
-                 "re-approval restarts acceptance",
-        edge=HUM_EDGE, face="#FFFFFF", title_size=7.6, line_size=6.0, lw=1.4)
-    note(ax, XC + 3.60, y_human + 0.34,
-         "approve --decision APPROVED\n--by \"Gaetano Marco Chiantia\"",
-         size=5.9)
-    arrow(ax, XC, y_human, XC, 1.06)
-
-    # ================================================================ published
-    box(ax, XC - 3.1, 0.48, 6.2, 0.58,
-        title="PUBLISHED REPORT VERSION  vA-<candidate8>",
-        subtitle="report/ + export/ (model.xlsx · dossier.pdf · "
-                 "dossier.html) — one verified evidence record",
-        edge=INK, face="#FFFFFF", title_size=7.8, line_size=5.9, lw=1.2)
-
-    # ================================================================ shared state band
-    ax.add_patch(Rectangle((0.5, 0.02), W - 1.0, 0.42, facecolor="#F2F0EB",
-                           edgecolor=FAINT, lw=0.8, zorder=1))
-    ax.text(W / 2, 0.30, "SHARED STATE & EVIDENCE — JSON + JSONL, atomic "
-            "writes (docs/contracts/state-and-artifacts.md)",
-            ha="center", va="center", fontsize=7.2, family=SERIF,
-            color=INK, fontweight="bold", zorder=3)
-    ax.text(W / 2, 0.11,
-            "state.json (only the Orchestrator writes) · trace.jsonl "
-            "(append-only: REQUEST_BOUND → AGENT_DISPATCHED → GATE_RUN → "
-            "FINDING_OPENED → ... → APPROVAL_RECORDED) · findings.json "
-            "ledger · request IDs · candidate + artifact SHA-256 · "
-            "checkpoints (history/) · versions/registry.json",
-            ha="center", va="center", fontsize=5.9, family=SERIF,
-            color=STEEL, zorder=3)
-
-    # ================================================================ evolution panel (left)
-    ex, ey, ew, eh = 0.5, 2.94, 2.95, 6.2
-    ax.add_patch(FancyBboxPatch((ex, ey), ew, eh,
-                                boxstyle="round,pad=0.02,rounding_size=0.06",
-                                facecolor=EVO_FILL, edgecolor=EVO_EDGE, lw=1.1,
-                                linestyle=(0, (5, 3)), zorder=2))
-    ax.text(ex + ew / 2, ey + eh - 0.26, "EVOLUTION", ha="center", va="center",
-            fontsize=8.4, family=SERIF, color=EVO_EDGE, fontweight="bold")
-    ax.text(ex + ew / 2, ey + eh - 0.47, "version registry + human approval",
-            ha="center", va="center", fontsize=6.2, family=SERIF,
-            color=STEEL, style="italic")
-    evo_lines = [
-        "evolvable: prompt cards,",
-        "mapping tables, engine code",
-        "(regression must prove",
-        "unchanged outputs on the",
-        "frozen baseline cases),",
-        "report templates",
-        "",
-        "locked (never evolvable):",
-        "controller, gate thresholds,",
-        "acceptance rules, rubric —",
-        "a proposal cannot weaken",
-        "its own acceptance standard",
-        "",
-        "loop: evo-prepare → scoped",
-        "patch + tests → baseline",
-        "regression (offline replay,",
-        "never live tokens) → fresh-",
-        "critic review → registry",
-        "entry → human approve /",
-        "defer / reject → active",
-        "pointer swap",
-        "",
-        "rollback restores the prior",
-        "pointer; existing cases keep",
-        "their original version",
-        "",
-        "3-part evidence demo: pass",
-        "→ approve · over-broad scope",
-        "→ reject · rollback + verify",
-    ]
-    for i, ln in enumerate(evo_lines):
-        ax.text(ex + ew / 2, ey + eh - 0.88 - i * 0.172, ln,
-                ha="center", va="center", fontsize=6.0, family=SERIF,
-                color=STEEL if ln else "none", zorder=3)
-    arrow(ax, ex + ew / 2, ey, ex + ew / 2, 0.47, edge=EVO_EDGE, lw=0.9,
-          ls=(0, (3, 2)), alpha=0.8)
-
-    # ================================================================ legend (top-left)
-    lx, ly = 0.55, 12.05
-    ax.text(lx, ly, "LEGEND", fontsize=7.0, family=SERIF, color=INK,
-            fontweight="bold", ha="left", va="center")
-    legend = [
-        ("deterministic code (harness)", NAVY, "#E8EDF2"),
-        ("generator roles (LLM)", GEN_EDGE, GEN_FILL),
-        ("critic roles (LLM, fresh)", CRI_EDGE, CRI_FILL),
-        ("human gate", HUM_EDGE, "#FFFFFF"),
-        ("evolution boundary", EVO_EDGE, EVO_FILL),
-    ]
-    for i, (t, eg, fg) in enumerate(legend):
-        yy = ly - 0.34 - i * 0.30
-        ax.add_patch(Rectangle((lx, yy - 0.085), 0.36, 0.17, edgecolor=eg,
-                               facecolor=fg, lw=0.8, zorder=3))
-        ax.text(lx + 0.48, yy, t, fontsize=6.4, family=SERIF, color=STEEL,
-                va="center", ha="left")
-    ax.text(lx, ly - 1.95,
-            "Evidence runs (examples/) use the offline\n"
-            "replay / stub dispatch with the real deterministic\n"
-            "engines — every number below is produced by code,\n"
-            "never guessed. Live backends swap in via config.",
-            fontsize=6.1, family=SERIF, color=STEEL, va="top", ha="left")
-
-    fig.subplots_adjust(left=0.005, right=0.995, top=0.995, bottom=0.005)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=200, facecolor=PAPER)
-    plt.close(fig)
-    return out
-
-
-def main() -> int:
-    global SERIF
-    SERIF = _serif()
-    ap = argparse.ArgumentParser(description=__doc__)
-    repo = Path(__file__).resolve().parent.parent
-    ap.add_argument("--out", default=str(repo / "docs" / "workflow-diagram.png"))
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "docs" / "workflow-diagram.png"))
     args = ap.parse_args()
-    out = render(Path(args.out))
-    kb = out.stat().st_size / 1024
-    print(f"wrote {out} ({kb:.0f} KiB, serif={SERIF})")
-    return 0
+    f = Fig(pick_font())
+    draw(f)
+    f.check_fit()
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    f.fig.savefig(args.out, dpi=DPI, facecolor="white", metadata={"Software": None})
+    print(f"wrote {args.out}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
