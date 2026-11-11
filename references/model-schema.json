@@ -3,7 +3,11 @@
   "owner": "A1 runtime",
   "company": "Intel Corporation (canonical template applies to any coverage company)",
   "units": "USDmm (per-share fields in USD; share counts in millions)",
-  "period_types": ["FY", "Q"],
+  "forecast_proposal_optional": {
+  "operating_margin_path": "ratio[horizon_years]: EBIT / revenue per forecast year; default = last-twelve-months EBIT margin held flat; bounded by mandate forecast_bounds.operating_margin_floor/ceiling when declared",
+  "capex_pct_revenue_path": "ratio[horizon_years]: capex / revenue per forecast year; default = last-twelve-months ratio held flat; bounded by mandate forecast_bounds.capex_pct_bounds when declared"
+ },
+ "period_types": ["FY", "Q"],
   "period_labels": {"FY": "FY2024", "Q": "2026-Q3"},
   "line_naming": "Follows the supplied reference workbooks (Complete Quantitative Analysis, Statements Model, Stock Analysis Tool).",
   "statements": {

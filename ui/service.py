@@ -678,7 +678,7 @@ MODEL = {
 }
 
 VALUATION = {
-    "artifact": "valuation", "engine": "valuation_engine@1.0",
+    "artifact": "valuation", "engine": "valuation_engine@2.0",
     "input_facts_sha256": "sha256:e1c0" + "0" * 55,
     "candidate_id": "cand-a3f9c1", "cutoff": "2026-10-30",
     "mapping_tables": "1.0",

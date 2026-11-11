@@ -341,6 +341,56 @@ def gate_period_coverage(facts: dict, current_period: str,
 
 
 # ---------------------------------------------------------------------------
+# terminal value reconciliation (valuation_engine@2.0)
+# ---------------------------------------------------------------------------
+
+def gate_terminal_reconciliation(valuation: dict, mandate: dict) -> tuple[bool, list[dict]]:
+    """Exit-multiple and Gordon terminal values must agree within tolerance.
+
+    Fails when ``dcf.terminal.reconciliation.within`` is false. The tolerance
+    is the engine's (mandate ``terminal_tolerance``); the mandate argument is
+    used only to report it if the artifact lacks one.
+    """
+    term = ((valuation or {}).get("dcf") or {}).get("terminal") or {}
+    rec = term.get("reconciliation")
+    if not isinstance(rec, dict):
+        return False, [_finding(
+            "terminal_reconciliation", "terminal:reconciliation-missing",
+            "valuation.json carries no dcf.terminal.reconciliation block",
+            ["valuation.json"],
+            required_evidence="terminal reconciliation from valuation_engine@2.0")]
+    if rec.get("within"):
+        return True, []
+    tol = rec.get("tolerance")
+    if tol is None:
+        tol = ((mandate or {}).get("assumptions") or {}).get("terminal_tolerance", 0.35)
+    tv_exit = (term.get("exit_multiple") or {}).get("terminal_value")
+    tv_g = (term.get("gordon") or {}).get("terminal_value")
+    mult = (term.get("exit_multiple") or {}).get("multiple")
+    g = (term.get("gordon") or {}).get("terminal_growth")
+    imp_mult = term.get("implied_exit_multiple_from_gordon")
+    imp_g = term.get("implied_growth_from_exit")
+
+    def f(v, spec):
+        return "n/a" if v is None else format(v, spec)
+
+    ratio = rec.get("ratio")
+    return False, [_finding(
+        "terminal_reconciliation", "terminal:outside-tolerance",
+        f"exit-multiple terminal value {f(tv_exit, ',.0f')} (multiple {f(mult, '.1f')}x) "
+        f"and Gordon terminal value {f(tv_g, ',.0f')} (growth {f(g, '.2%')}) "
+        f"differ: ratio {f(ratio, '.2f')} outside tolerance {f(tol, '.0%')}; "
+        f"the Gordon value implies an exit multiple of {f(imp_mult, '.1f')}x and "
+        f"the exit multiple implies terminal growth of {f(imp_g, '.2%')}",
+        ["valuation.json"],
+        required_evidence="terminal assumptions (exit multiple, terminal growth, "
+                          "WACC) that reconcile within the mandate tolerance")]
+
+
+terminal_reconciliation = gate_terminal_reconciliation
+
+
+# ---------------------------------------------------------------------------
 # gate 4: forecast bounds vs mandate
 # ---------------------------------------------------------------------------
 
@@ -875,6 +925,13 @@ class GateEngine:
                 "recompute", "engine:model-fault",
                 f"model engine failed during recomputation: {exc}",
                 ["model.json"], required_evidence="a runnable model engine")])])
+        # period-end dates come from the input manifest, not the facts; carry
+        # the submitted ones so the recomputed discounting is the same
+        if (model_json or {}).get("period_ends"):
+            if isinstance(model, dict):
+                model["period_ends"] = dict(model_json["period_ends"])
+            elif hasattr(model, "period_ends"):
+                model.period_ends = dict(model_json["period_ends"])
         # series comparison
         submitted = (model_json or {}).get("series", {})
         recomputed = model.get("series", {}) if isinstance(model, dict) else {}

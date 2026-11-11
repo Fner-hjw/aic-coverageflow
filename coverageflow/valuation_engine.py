@@ -6,13 +6,16 @@ Contract (docs/contracts/interfaces.md section 4)::
 
     def value_company(model: Model, forecast: Forecast, assumptions: Assumptions) -> Valuation
 
-Implements design-decisions section 4:
-(a) DCF — FCF = OCF - capex from model facts as the base margin; 5-year
-    horizon driven by the forecast proposal (segment revenue growth blended
-    by latest segment mix + gross-margin glide path); terminal value BOTH
-    via exit multiple (primary) AND Gordon growth (cross-check); WACC and
-    terminal growth are human-owned mandate assumptions; year-end (or
-    mid-year, per assumptions) discounting; EV -> equity -> per diluted share.
+Implements design-decisions section 4, revised for valuation_engine@2.0:
+(a) DCF -- ONE base period (last twelve months: FY + current YTD - prior-year
+    YTD, or the FY when the latest filing is a 10-K); unlevered FCF built from
+    EBIT margin, D&A, capex, working capital and the mandate tax rate;
+    5-year horizon driven by the forecast proposal (segment growth blended by
+    LTM segment mix, optional operating-margin and capex paths); discounting
+    from the valuation date using the period-end dates; terminal value both
+    by exit multiple and Gordon growth, reconciled against each other; EV ->
+    equity (debt, cash, non-controlling interests) -> per diluted share;
+    target price and rating.
 (b) Relative valuation from the dated mandate peer block + own historical
     multiple band.
 (c) Sensitivity grid WACC x terminal growth (Gordon basis).
@@ -25,14 +28,18 @@ MissingFactError for out-of-bounds forecasts and missing base facts.
 
 from __future__ import annotations
 
+import re
 import statistics
+from datetime import date
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from coverageflow.model_engine import Model
 
-ENGINE_NAME = "valuation_engine@1.0"
+from coverageflow.model_engine import slugify
+
+ENGINE_NAME = "valuation_engine@2.0"
 
 
 class ValuationError(Exception):
@@ -47,7 +54,12 @@ class BoundsViolation(ValuationError):
     """The forecast or assumptions violate mandate bounds."""
 
 
+
+
 # ------------------------------------------------------------------ inputs
+
+DEFAULT_TERMINAL_TOLERANCE = 0.35
+DEFAULT_RATING_BANDS = {"buy": 0.15, "sell": -0.10}
 
 
 @dataclass(frozen=True)
@@ -56,6 +68,8 @@ class Forecast:
     horizon_years: int
     segments: tuple[tuple[str, tuple[float, ...]], ...]
     margin_glide: tuple[float, ...]
+    operating_margin_path: tuple[float, ...] | None = None
+    capex_pct_revenue_path: tuple[float, ...] | None = None
 
     @classmethod
     def from_payload(cls, payload: dict) -> "Forecast":
@@ -65,7 +79,14 @@ class Forecast:
             for s in payload.get("segments", [])
         )
         glide = tuple(float(x) for x in payload.get("margin_glide", {}).get("gross", []))
-        return cls(horizon_years=horizon, segments=segs, margin_glide=glide)
+
+        def path(key):
+            v = payload.get(key)
+            return None if v is None else tuple(float(x) for x in v)
+
+        return cls(horizon_years=horizon, segments=segs, margin_glide=glide,
+                   operating_margin_path=path("operating_margin_path"),
+                   capex_pct_revenue_path=path("capex_pct_revenue_path"))
 
 
 @dataclass(frozen=True)
@@ -81,13 +102,21 @@ class Assumptions:
     market_price: float | None
     forecast_bounds: dict | None
     sensitivity_points: tuple[list[float], list[float]]
+    tax_rate: float = 0.0
+    nwc_pct_incremental: float = 0.0
+    terminal_tolerance: float = DEFAULT_TERMINAL_TOLERANCE
+    rating_bands: dict | None = None
     candidate_id: str | None = None
     cutoff: str | None = None
+    valuation_date: str | None = None
 
     @classmethod
     def from_payload(cls, p: dict) -> "Assumptions":
         if "wacc" not in p or "terminal_growth" not in p or "exit_multiple_ebitda" not in p:
             raise ValuationError("assumptions must include wacc, terminal_growth, exit_multiple_ebitda")
+        if p.get("tax_rate") is None:
+            raise MissingFactError(
+                "mandate assumption tax_rate is missing; unlevered FCF cannot be built")
         sens = p.get("sensitivity", {})
         return cls(
             wacc=float(p["wacc"]),
@@ -99,8 +128,14 @@ class Assumptions:
             own_band=p.get("own_band"),
             market_price=(p.get("market") or {}).get("price"),
             forecast_bounds=p.get("forecast_bounds"),
+            tax_rate=float(p["tax_rate"]),
+            nwc_pct_incremental=float(p.get("nwc_pct_incremental") or 0.0),
+            terminal_tolerance=float(
+                p.get("terminal_tolerance", DEFAULT_TERMINAL_TOLERANCE)),
+            rating_bands=p.get("rating_bands"),
             candidate_id=p.get("candidate_id"),
             cutoff=p.get("cutoff") or p.get("as_of"),
+            valuation_date=p.get("as_of") or p.get("cutoff"),
             sensitivity_points=(
                 list(sens.get("wacc_points") or cls._around(float(p["wacc"]), 0.02)),
                 list(sens.get("terminal_growth_points") or cls._around(float(p["terminal_growth"]), 0.01)),
@@ -131,12 +166,27 @@ class Valuation:
 # ------------------------------------------------------------------ helpers
 
 
+def _model_get(model, name: str, default=None):
+    if isinstance(model, dict):
+        return model.get(name, default)
+    return getattr(model, name, default)
+
+
 def _series_values(model: "Model | dict", fld: str) -> dict[str, float]:
     """Period->value map from a Model or its to_dict() view (growth keys ignored)."""
-    series = model.series if hasattr(model, "series") else model.get("series", {})
+    series = _model_get(model, "series", {}) or {}
     entry = series.get(fld, {})
     return {k: v for k, v in entry.items()
-            if k not in ("yoy", "qoq", "yoy_computed") and isinstance(v, (int, float))}
+            if k not in ("yoy", "qoq", "yoy_computed", "growth_status")
+            and isinstance(v, (int, float)) and not isinstance(v, bool)}
+
+
+def _merged(model, names: tuple[str, ...]) -> dict[str, float]:
+    """First series in *names* that has a period wins for that period."""
+    out: dict[str, float] = {}
+    for n in reversed(names):
+        out.update(_series_values(model, n))
+    return out
 
 
 def _latest(values: dict[str, float]) -> tuple[str, float] | None:
@@ -147,50 +197,50 @@ def _latest(values: dict[str, float]) -> tuple[str, float] | None:
 
 
 def _period_key(period: str) -> tuple[int, int, int]:
-    if period.startswith("FY"):
-        return int(period[2:]), 5, 0
-    if period.isdigit():
-        return int(period), 5, 0
-    p, ytd = period, 0
-    if p.endswith("-YTD"):
-        # a year-to-date column ends at the same quarter as the quarter column
-        # but covers more time; rank it just below so flows still come from
-        # the quarter and only the margin fallback reaches for it
-        p, ytd = p[:-4], 1
-    year, q = p.split("-Q")
-    return int(year), int(q), -ytd
+    """Sort key; an unparseable label sorts before every real period."""
+    try:
+        if period.startswith("FY"):
+            return int(period[2:]), 5, 0
+        if period.isdigit():
+            return int(period), 5, 0
+        p, ytd = period, 0
+        if p.endswith("-YTD"):
+            # a year-to-date column ends at the same quarter as the quarter
+            # column but covers more time; rank it just below the quarter
+            p, ytd = p[:-4], 1
+        year, q = p.split("-Q")
+        return int(year), int(q), -ytd
+    except ValueError:
+        return -1, 0, 0
 
 
 def _latest_period(values: dict[str, float]) -> str:
     return max(values, key=_period_key)
 
 
-def _span_quarters(period: str) -> int:
-    """How many quarters of activity a period label covers."""
-    if period.startswith("FY") or period.isdigit():
-        return 4
-    q = int(period.split("-Q")[1][0])
-    return q if period.endswith("-YTD") else 1
+_YTD_RE = re.compile(r"^(\d{4})-Q([1-4])-YTD$")
+_Q1_RE = re.compile(r"^(\d{4})-Q1$")
 
 
-def _annualizer(period: str) -> float:
-    """Factor that turns one period's flow into an annual run-rate."""
-    return 4.0 / _span_quarters(period)
+def _ytd_parse(label: str) -> tuple[int, int] | None:
+    """(year, quarter) for a year-to-date label; a Q1 quarter is its own YTD."""
+    m = _YTD_RE.match(label)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = _Q1_RE.match(label)
+    if m:
+        return int(m.group(1)), 1
+    return None
 
 
-def _pick(series: dict[str, float], period: str):
-    """(value, period) preferring *period*, else its year-to-date column.
+def _ytd_labels(year: int, q: int) -> tuple[str, ...]:
+    return (f"{year}-Q{q}-YTD",) + ((f"{year}-Q1",) if q == 1 else ())
 
-    A 10-Q prints the cash flow statement year-to-date only, so a quarterly
-    base period has no cash-flow line of its own. The year-to-date column that
-    ends at the same quarter is the same activity over a longer span, which
-    ``_annualizer`` corrects for.
-    """
-    if period in series:
-        return series[period], period
-    ytd = f"{period}-YTD"
-    if ytd in series:
-        return series[ytd], ytd
+
+def _ytd_value(series: dict[str, float], year: int, q: int):
+    for lab in _ytd_labels(year, q):
+        if lab in series:
+            return series[lab], lab
     return None, None
 
 
@@ -200,17 +250,34 @@ def _require(value, what: str) -> float:
     return float(value)
 
 
-def _validate_forecast(forecast: Forecast, assumptions: Assumptions) -> None:
+def _seg_bound(bounds: dict, seg: str):
+    for k, v in (bounds.get("segments") or {}).items():
+        if slugify(k) == slugify(seg):
+            return v
+    return None
+
+
+def _check_path(name: str, path, h: int, lo, hi) -> None:
+    if len(path) != h:
+        raise BoundsViolation(f"{name} has {len(path)} points, horizon is {h}")
+    for v in path:
+        if lo is not None and v < float(lo) - 1e-12:
+            raise BoundsViolation(f"{name} value {v} below mandate floor {lo}")
+        if hi is not None and v > float(hi) + 1e-12:
+            raise BoundsViolation(f"{name} value {v} above mandate ceiling {hi}")
+
+
+def _validate_forecast(forecast: Forecast, assumptions: Assumptions) -> dict:
+    """Validate against mandate bounds; returns what was bounded."""
     h = forecast.horizon_years
     if h <= 0:
         raise BoundsViolation(f"horizon years must be positive, got {h}")
+    bounds = assumptions.forecast_bounds or {}
     for seg, growth in forecast.segments:
         if len(growth) != h:
             raise BoundsViolation(
                 f"forecast horizon mismatch: segment {seg} has {len(growth)} growth points, horizon is {h}")
-        bounds = assumptions.forecast_bounds or {}
-        seg_bounds = (bounds.get("segments") or {}).get(seg.upper()) or \
-                     (bounds.get("segments") or {}).get(seg)
+        seg_bounds = _seg_bound(bounds, seg)
         if seg_bounds is not None:
             lo, hi = float(seg_bounds[0]), float(seg_bounds[1])
             for g in growth:
@@ -219,17 +286,292 @@ def _validate_forecast(forecast: Forecast, assumptions: Assumptions) -> None:
     if len(forecast.margin_glide) != h:
         raise BoundsViolation(
             f"margin glide has {len(forecast.margin_glide)} points, horizon is {h}")
-    if assumptions.forecast_bounds:
-        floor = assumptions.forecast_bounds.get("margin_floor_gross")
-        ceil = assumptions.forecast_bounds.get("margin_ceiling_gross")
-        for m in forecast.margin_glide:
-            if floor is not None and m < float(floor) - 1e-12:
-                raise BoundsViolation(f"margin glide {m} below mandate floor {floor}")
-            if ceil is not None and m > float(ceil) + 1e-12:
-                raise BoundsViolation(f"margin glide {m} above mandate ceiling {ceil}")
+    floor, ceil = bounds.get("margin_floor_gross"), bounds.get("margin_ceiling_gross")
+    for m in forecast.margin_glide:
+        if floor is not None and m < float(floor) - 1e-12:
+            raise BoundsViolation(f"margin glide {m} below mandate floor {floor}")
+        if ceil is not None and m > float(ceil) + 1e-12:
+            raise BoundsViolation(f"margin glide {m} above mandate ceiling {ceil}")
+    status = {"operating_margin_path": "absent", "capex_pct_revenue_path": "absent"}
+    if forecast.operating_margin_path is not None:
+        lo, hi = bounds.get("operating_margin_floor"), bounds.get("operating_margin_ceiling")
+        _check_path("operating_margin_path", forecast.operating_margin_path, h, lo, hi)
+        status["operating_margin_path"] = "bounded" if (lo, hi) != (None, None) else "unbounded"
+    if forecast.capex_pct_revenue_path is not None:
+        cb = bounds.get("capex_pct_bounds")
+        lo, hi = (cb[0], cb[1]) if cb else (None, None)
+        _check_path("capex_pct_revenue_path", forecast.capex_pct_revenue_path, h, lo, hi)
+        status["capex_pct_revenue_path"] = "bounded" if cb else "unbounded"
     if float(assumptions.terminal_growth) >= float(assumptions.wacc):
         raise BoundsViolation(
             f"terminal growth {assumptions.terminal_growth} must be below WACC {assumptions.wacc}")
+    return status
+
+
+# --------------------------------------------------------------------- base
+
+_NI_KEYS = ("income_statement.net_income_attributable",
+            "income_statement.net_income_attributable_to_parent",
+            "income_statement.net_income_attributable_to_company",
+            "income_statement.net_income")
+_FLOWS = {  # name -> (series candidates, required)
+    "revenue": (("income_statement.revenue",), True),
+    "ebit": (("income_statement.operating_income",), True),
+    "da": (("cash_flow.depreciation_amortization",
+            "income_statement.depreciation_and_amortization"), True),
+    "ocf": (("cash_flow.operating_cash_flow",), True),
+    "capex": (("cash_flow.capital_expenditure",), True),
+    "gross_profit": (("income_statement.gross_profit",), False),
+    "net_income": (_NI_KEYS, False),
+}
+_FLOW_LABEL = {"revenue": "revenue", "ebit": "operating income (EBIT)",
+               "da": "depreciation and amortization", "ocf": "operating cash flow",
+               "capex": "capital expenditure", "gross_profit": "gross profit",
+               "net_income": "net income"}
+
+
+def _latest_fy(rev: dict[str, float]) -> str | None:
+    fy = [p for p in rev if p.startswith("FY")]
+    return max(fy, key=_period_key) if fy else None
+
+
+def _ltm_flows(flows: dict[str, dict[str, float]], fy: str, cur: tuple[int, int],
+               prior: tuple[int, int]):
+    """(values, missing) with LTM = FY + YTD_cur - YTD_prior for every flow."""
+    out, missing = {}, []
+    for name, series in flows.items():
+        c, _ = _ytd_value(series, *cur)
+        p, _ = _ytd_value(series, *prior)
+        f = series.get(fy)
+        if None in (c, p, f):
+            missing.append(name)
+        else:
+            out[name] = f + c - p
+    return out, missing
+
+
+def _resolve_base(model) -> dict:
+    """The single base window for every flow, plus balance items."""
+    flows = {n: _merged(model, c) for n, (c, _) in _FLOWS.items()}
+    rev = flows["revenue"]
+    if not rev:
+        raise MissingFactError("revenue missing from the model; cannot value")
+    fy = _latest_fy(rev)
+    ytds = [(k, lab) for lab in rev if (k := _ytd_parse(lab))]
+    ytd = max(ytds)[0] if ytds else None
+    fy_year = int(fy[2:]) if fy else None
+
+    method, reason, window, values = None, None, {}, {}
+    if ytd and (fy is None or ytd[0] > fy_year):
+        cur, prior = ytd, (ytd[0] - 1, ytd[1])
+        fy_last = f"FY{ytd[0] - 1}"
+        required = {n: flows[n] for n, (_, req) in _FLOWS.items() if req}
+        got, missing = _ltm_flows(required, fy_last, cur, prior)
+        if not missing:
+            opt = {n: flows[n] for n, (_, req) in _FLOWS.items() if not req}
+            more, _ = _ltm_flows(opt, fy_last, cur, prior)
+            values = {**got, **more}
+            method = "ltm"
+            window = {"fy": fy_last,
+                      "ytd_current": _ytd_value(rev, *cur)[1],
+                      "ytd_prior": _ytd_value(rev, *prior)[1]}
+            end_label = window["ytd_current"]
+        else:
+            what = ", ".join(_FLOW_LABEL[m] for m in missing)
+            labels = []
+            for lab, get in (
+                    (fy_last, lambda sr: sr.get(fy_last)),
+                    (f"{cur[0]}-Q{cur[1]}-YTD", lambda sr: _ytd_value(sr, *cur)[0]),
+                    (f"{prior[0]}-Q{prior[1]}-YTD", lambda sr: _ytd_value(sr, *prior)[0])):
+                if any(get(required[m]) is None for m in missing):
+                    labels.append(lab)
+            reason = (f"cannot build last-twelve-months to {cur[0]}-Q{cur[1]}: "
+                      f"{', '.join(labels)} missing for {what}")
+            if fy is None:
+                raise MissingFactError(
+                    f"no fiscal year and no complete year-to-date pair: {reason}")
+    if method is None:
+        if fy is None:
+            raise MissingFactError("no fiscal-year revenue in the model; cannot value")
+        values = {n: flows[n].get(fy) for n in flows}
+        for n, (_, req) in _FLOWS.items():
+            if req and values[n] is None:
+                raise MissingFactError(
+                    f"{_FLOW_LABEL[n]} for {fy} missing from the model; cannot value")
+        newer = sorted((k for k in (rev) if not k.startswith("FY")
+                        and _period_key(k)[0] > fy_year))
+        if reason is None and newer:
+            reason = (f"no year-to-date columns to build last-twelve-months "
+                      f"(newest period {newer[-1]} is a single quarter)")
+        method = "fiscal_year" if reason is None else "fiscal_year_fallback"
+        window = {"fy": fy, "ytd_current": None, "ytd_prior": None}
+        end_label = fy
+
+    revenue = values["revenue"]
+    if not revenue or revenue <= 0:
+        raise MissingFactError(f"base revenue is not positive ({revenue}); cannot value")
+    ebit, da = values["ebit"], values["da"]
+    capex, ocf = values["capex"], values["ocf"]
+    base = {
+        "method": method,
+        "window": window,
+        "reason": reason,
+        "end_label": end_label,
+        "revenue": revenue,
+        "gross_profit": values.get("gross_profit"),
+        "gross_margin": (values["gross_profit"] / revenue
+                         if values.get("gross_profit") is not None else None),
+        "ebit": ebit, "ebit_margin": ebit / revenue,
+        "da": da, "da_pct_revenue": da / revenue,
+        "ebitda": ebit + da, "ebitda_margin": (ebit + da) / revenue,
+        "ocf": ocf,
+        "capex": capex, "capex_pct_revenue": capex / revenue,
+        "fcf": ocf - capex, "fcf_margin": (ocf - capex) / revenue,
+        "net_income": values.get("net_income"),
+    }
+    return base
+
+
+def _balance(model) -> dict:
+    """Bridge lines from the latest balance-sheet date."""
+    def ser(n):
+        return _series_values(model, n)
+
+    st, lt = ser("balance_sheet.short_term_debt"), ser("balance_sheet.long_term_debt")
+    cash, sti = ser("balance_sheet.cash_and_equivalents"), ser("balance_sheet.short_term_investments")
+    common = set(st) & set(lt) & set(cash)
+    out: dict = {"period": None, "short_term_debt": None, "long_term_debt": None,
+                 "total_debt": None, "cash_and_equivalents": None,
+                 "short_term_investments": None, "cash_total": None}
+    if common:
+        p = max(common, key=_period_key)
+        s_i = sti.get(p) or 0.0
+        out.update(period=p, short_term_debt=st[p], long_term_debt=lt[p],
+                   total_debt=st[p] + lt[p], cash_and_equivalents=cash[p],
+                   short_term_investments=s_i, cash_total=cash[p] + s_i)
+        net_debt = out["total_debt"] - out["cash_total"]
+    else:
+        nd = _latest(ser("derived.net_debt"))
+        if nd is None:
+            raise MissingFactError(
+                "debt and cash missing from the model (no balance-sheet period "
+                "carries short-term debt, long-term debt and cash); cannot value")
+        out["period"] = nd[0]
+        out["components_absent"] = True
+        net_debt = nd[1]
+    nci_series = _merged(model, ("balance_sheet.noncontrolling_interests",
+                                 "balance_sheet.noncontrolling_interest",
+                                 "balance_sheet.minority_interest"))
+    nci_p = out["period"] if out["period"] in nci_series else (
+        max(nci_series, key=_period_key) if nci_series else None)
+    if nci_p is not None:
+        out["nci"], out["nci_source"], out["nci_period"] = nci_series[nci_p], "balance_sheet", nci_p
+    else:
+        out["nci"], out["nci_source"], out["nci_period"] = 0.0, "absent", None
+    out["net_debt"] = net_debt
+    out["net_claims"] = net_debt + out["nci"]
+    return out
+
+
+# ----------------------------------------------------------------- discount
+
+
+def _add_years(d: date, n: int) -> date:
+    try:
+        return d.replace(year=d.year + n)
+    except ValueError:  # 29 Feb
+        return d.replace(year=d.year + n, day=28)
+
+
+def _discount_plan(model, base: dict, assumptions: Assumptions, horizon: int):
+    conv = assumptions.discount_convention
+    if conv not in ("year_end", "year-end", "mid_year", "mid-year"):
+        raise BoundsViolation(f"unknown discount convention {conv!r}")
+    mid = conv in ("mid_year", "mid-year")
+    ends = _model_get(model, "period_ends", {}) or {}
+    end_label = base["end_label"]
+    end_s = ends.get(end_label)
+    if end_label.endswith("-YTD") and not end_s:
+        end_s = ends.get(end_label[:-4])
+    val_s = assumptions.valuation_date
+    plan = {"convention": conv, "valuation_date": val_s, "ltm_end": end_s}
+    try:
+        end_d = date.fromisoformat(end_s) if end_s else None
+        val_d = date.fromisoformat(val_s) if val_s else None
+    except ValueError:
+        end_d = val_d = None
+    if end_d is None or val_d is None:
+        plan["discount_timing"] = "integer_fallback"
+        exps = [t - (0.5 if mid else 0.0) for t in range(1, horizon + 1)]
+        dates = [None] * horizon
+    else:
+        plan["discount_timing"] = "dated"
+        exps, dates = [], []
+        for t in range(1, horizon + 1):
+            cf = _add_years(end_d, t)
+            e = (cf - val_d).days / 365.25 - (0.5 if mid else 0.0)
+            exps.append(max(e, 0.0))
+            dates.append(cf.isoformat())
+    plan["exponents"] = exps
+    plan["cash_flow_dates"] = dates
+    return plan
+
+
+# ------------------------------------------------------------------ segments
+
+
+def _segment_blend(model, forecast: Forecast, base: dict) -> tuple[list[float], dict]:
+    slugs = list(_model_get(model, "segment_slugs", []) or [])
+    growth_map = {slugify(k): v for k, v in forecast.segments}
+    h = forecast.horizon_years
+    seg_series = {s: _series_values(model, f"segments.{s}.revenue") for s in slugs}
+    with_data = {s: v for s, v in seg_series.items() if v}
+    info: dict = {"segment_slugs": slugs,
+                  "segments_without_data": [s for s in slugs if s not in with_data]}
+
+    weights, method, period = None, None, None
+    if with_data:
+        w = base["window"]
+        if base["method"] == "ltm":
+            cur = _ytd_parse(w["ytd_current"])
+            prior = _ytd_parse(w["ytd_prior"])
+            got, missing = _ltm_flows(
+                {s: v for s, v in with_data.items()}, w["fy"], cur, prior)
+            if not missing:
+                weights, method, period = got, "ltm_segments", w
+        elif base["method"] in ("fiscal_year", "fiscal_year_fallback"):
+            fy = w["fy"]
+            if all(fy in v for v in with_data.values()):
+                weights = {s: v[fy] for s, v in with_data.items()}
+                method, period = "fiscal_year_segments", fy
+        if weights is None:
+            common = set.intersection(*(set(v) for v in with_data.values()))
+            if common:
+                p = max(common, key=_period_key)
+                weights = {s: v[p] for s, v in with_data.items()}
+                method, period = "latest_common_period", p
+
+    if weights and sum(max(x, 0.0) for x in weights.values()) > 0:
+        missing_seg = [s for s in slugs if s not in growth_map]
+        if missing_seg:
+            raise BoundsViolation(
+                "proposal omits segment " + ", ".join(missing_seg)
+                + " (every segment in segment_slugs needs a growth path)")
+        total = sum(max(x, 0.0) for x in weights.values())
+        blended = [sum(max(weights[s], 0.0) * growth_map[s][t] for s in weights) / total
+                   for t in range(h)]
+        info.update(method=method, period=period,
+                    weights={s: max(x, 0.0) / total for s, x in weights.items()})
+        extra = sorted(set(growth_map) - set(slugs))
+        if extra:
+            info["ignored_proposal_segments"] = extra
+        return blended, info
+    g = growth_map.get("total")
+    if g is None:
+        raise MissingFactError(
+            "no usable segment revenue in the model and no 'total' growth in the forecast")
+    info.update(method="total_growth", period=None, weights={})
+    return list(g), info
 
 
 # ------------------------------------------------------------------- engine
@@ -245,121 +587,147 @@ def value_company(
         forecast = Forecast.from_payload(forecast)
     if not isinstance(assumptions, Assumptions):
         assumptions = Assumptions.from_payload(assumptions)
-    _validate_forecast(forecast, assumptions)
+    path_status = _validate_forecast(forecast, assumptions)
 
-    base_period, base = _resolve_base(model)
-    revenue0 = _require(base["revenue"], "latest annual revenue")
-    gross0 = _require(base["gross_margin"], "gross margin")
-    ebitda_m0 = _require(base["ebitda_margin"], "EBITDA margin")
-    fcf_base = _require(base["fcf"], "FCF (OCF - capex)")
-    fcf_m0 = base.get("fcf_margin")
-    if fcf_m0 is None:
-        fcf_m0 = fcf_base / revenue0
-    net_debt = _require(base["net_debt"], "net debt")
-    shares = _require(base["shares"], "diluted shares")
-
-    blended = _blended_growth(model, forecast, base_period)
-    w, g = assumptions.wacc, assumptions.terminal_growth
-    conv = assumptions.discount_convention
-    exponent = _exponents(forecast.horizon_years, conv)
+    base = _resolve_base(model)
+    bridge = _balance(model)
+    shares_t = _latest(_series_values(
+        model, "income_statement.diluted_shares_outstanding"))
+    shares = _require(shares_t[1] if shares_t else None, "diluted shares")
+    h = forecast.horizon_years
+    blended, blend = _segment_blend(model, forecast, base)
+    plan = _discount_plan(model, base, assumptions, h)
+    w, g, tax = assumptions.wacc, assumptions.terminal_growth, assumptions.tax_rate
+    nwc_pct = assumptions.nwc_pct_incremental
 
     years = []
-    revenue = revenue0
-    for t in range(1, forecast.horizon_years + 1):
-        revenue = revenue * (1.0 + blended[t - 1])
-        gross_t = forecast.margin_glide[t - 1]
-        fcf_m_t = fcf_m0 + (gross_t - gross0)
-        ebitda_m_t = ebitda_m0 + (gross_t - gross0)
-        fcf_t = revenue * fcf_m_t
-        df = (1.0 + w) ** -exponent[t - 1]
+    prev_rev = base["revenue"]
+    for t in range(1, h + 1):
+        revenue = prev_rev * (1.0 + blended[t - 1])
+        ebit_m = (forecast.operating_margin_path[t - 1]
+                  if forecast.operating_margin_path is not None else base["ebit_margin"])
+        capex_pct = (forecast.capex_pct_revenue_path[t - 1]
+                     if forecast.capex_pct_revenue_path is not None
+                     else base["capex_pct_revenue"])
+        ebit = revenue * ebit_m
+        da = revenue * base["da_pct_revenue"]
+        capex = revenue * capex_pct
+        nwc_change = nwc_pct * (revenue - prev_rev)
+        nopat = ebit * (1.0 - tax)
+        ufcf = nopat + da - capex - nwc_change
+        e = plan["exponents"][t - 1]
+        df = (1.0 + w) ** -e
         years.append({
-            "year": t,
-            "revenue": revenue,
-            "gross_margin": gross_t,
-            "fcf_margin": fcf_m_t,
-            "ebitda_margin": ebitda_m_t,
-            "fcf": fcf_t,
-            "discount_factor": df,
-            "pv": fcf_t * df,
+            "year": t, "revenue": revenue, "growth": blended[t - 1],
+            "gross_margin": forecast.margin_glide[t - 1],
+            "ebit_margin": ebit_m, "ebit": ebit,
+            "da": da, "ebitda": ebit + da, "ebitda_margin": ebit_m + base["da_pct_revenue"],
+            "capex": capex, "capex_pct_revenue": capex_pct,
+            "nwc_change": nwc_change, "nopat": nopat,
+            "ufcf": ufcf, "fcf": ufcf, "fcf_margin": ufcf / revenue,
+            "date": plan["cash_flow_dates"][t - 1],
+            "exponent": e, "discount_factor": df, "pv": ufcf * df,
         })
+        prev_rev = revenue
     pv_sum = sum(y["pv"] for y in years)
 
-    fcf_final = years[-1]["fcf"]
-    ebitda_final = years[-1]["revenue"] * years[-1]["ebitda_margin"]
+    ufcf_final, ebitda_final = years[-1]["ufcf"], years[-1]["ebitda"]
     df_final = years[-1]["discount_factor"]
     tv_exit = ebitda_final * assumptions.exit_multiple_ebitda
-    tv_exit_pv = tv_exit * df_final
-    tv_gordon = fcf_final * (1.0 + g) / (w - g)
-    tv_gordon_pv = tv_gordon * df_final
+    tv_gordon = ufcf_final * (1.0 + g) / (w - g)
+    implied_multiple = tv_gordon / ebitda_final if ebitda_final else None
+    denom = tv_exit + ufcf_final
+    implied_g = (tv_exit * w - ufcf_final) / denom if denom else None
+    ratio = tv_exit / tv_gordon if tv_gordon > 0 else None
+    within = ratio is not None and abs(ratio - 1.0) <= assumptions.terminal_tolerance
+    reconciliation = {"ratio": ratio, "tolerance": assumptions.terminal_tolerance,
+                      "within": bool(within)}
 
-    ev = {"exit_multiple": pv_sum + tv_exit_pv, "gordon": pv_sum + tv_gordon_pv}
-    equity = {k: v - net_debt for k, v in ev.items()}
+    ev = {"exit_multiple": pv_sum + tv_exit * df_final,
+          "gordon": pv_sum + tv_gordon * df_final}
+    equity = {k: v - bridge["net_claims"] for k, v in ev.items()}
     per_share = {k: v / shares for k, v in equity.items()}
 
-    dcf_upside = (per_share["exit_multiple"] / assumptions.market_price - 1.0) \
-        if assumptions.market_price else None
+    if within:
+        target = (per_share["exit_multiple"] + per_share["gordon"]) / 2.0
+        target_basis = "mean_exit_multiple_and_gordon"
+    else:
+        target = per_share["gordon"]
+        target_basis = "gordon_only_terminal_values_disagree"
+    price = assumptions.market_price
+    upside = (target / price - 1.0) if price else None
+    bands = {**DEFAULT_RATING_BANDS, **(assumptions.rating_bands or {})}
+    rating = None
+    if upside is not None:
+        rating = ("Buy" if upside > bands["buy"]
+                  else "Sell" if upside < bands["sell"] else "Hold")
 
-    comps = _relative_valuation(model, assumptions, base_period, base, net_debt, shares)
+    comps = _relative_valuation(assumptions, base, bridge["net_claims"], shares)
     dcf_payload = {
         "base": {
-            "period": base_period,
-            "revenue": revenue0,
-            "gross_margin": gross0,
-            "ebitda_margin": ebitda_m0,
-            "ebitda_margin_period": base["ebitda_margin_period"],
-            "fcf": fcf_base,
-            "fcf_period": base["fcf_period"],
-            "fcf_margin": fcf_m0,
-            # A 10-Q prints revenue for the quarter but cash flow only
-            # year-to-date, so the two flows are annualised from different
-            # spans. Both are run-rates, but the artifact has to say so or a
-            # reader sees "4x a quarter against 12/9x nine months" and cannot
-            # tell a convention from an error.
-            "annualisation": {
-                "revenue": {"period": base_period,
-                            "span_quarters": _span_quarters(base_period),
-                            "factor": _annualizer(base_period)},
-                "fcf": {"period": base["fcf_period"],
-                        "span_quarters": _span_quarters(base["fcf_period"]),
-                        "factor": _annualizer(base["fcf_period"])},
-                "net_income": {"period": base["net_income_period"],
-                               "span_quarters": _span_quarters(
-                                   base["net_income_period"]),
-                               "factor": _annualizer(base["net_income_period"])},
-                "margins": "span-independent; used as reported",
-                "note": ("each flow is annualised from the span the filing "
-                         "reports it over, so every base figure is an annual "
-                         "run-rate"),
-            },
+            "method": base["method"],
+            "window": base["window"],
+            "reason": base["reason"],
+            "period_end": plan["ltm_end"],
+            "revenue": base["revenue"],
+            "gross_profit": base["gross_profit"], "gross_margin": base["gross_margin"],
+            "ebit": base["ebit"], "ebit_margin": base["ebit_margin"],
+            "da": base["da"], "da_pct_revenue": base["da_pct_revenue"],
+            "ebitda": base["ebitda"], "ebitda_margin": base["ebitda_margin"],
+            "ocf": base["ocf"],
+            "capex": base["capex"], "capex_pct_revenue": base["capex_pct_revenue"],
+            "fcf": base["fcf"], "fcf_margin": base["fcf_margin"],
+            "net_income": base["net_income"],
         },
+        "cash_flow_build": {
+            "tax_rate": tax, "nwc_pct_incremental": nwc_pct,
+            "ebit_margin_source": ("proposal.operating_margin_path"
+                                   if forecast.operating_margin_path is not None
+                                   else "ltm_flat"),
+            "capex_source": ("proposal.capex_pct_revenue_path"
+                             if forecast.capex_pct_revenue_path is not None
+                             else "ltm_flat"),
+            "proposal_paths": path_status,
+        },
+        "blend": blend,
         "blended_growth": blended,
         "years": years,
         "pv_sum": pv_sum,
+        "discounting": plan,
         "terminal": {
             "exit_multiple": {
                 "ebitda_final": ebitda_final,
                 "multiple": assumptions.exit_multiple_ebitda,
-                "terminal_value": tv_exit,
-                "pv": tv_exit_pv,
+                "terminal_value": tv_exit, "pv": tv_exit * df_final,
             },
             "gordon": {
-                "wacc": w, "terminal_growth": g,
-                "terminal_value": tv_gordon, "pv": tv_gordon_pv,
+                "wacc": w, "terminal_growth": g, "ufcf_final": ufcf_final,
+                "terminal_value": tv_gordon, "pv": tv_gordon * df_final,
             },
+            "implied_exit_multiple_from_gordon": implied_multiple,
+            "implied_growth_from_exit": implied_g,
+            "reconciliation": reconciliation,
         },
         "ev": ev,
+        "bridge": bridge,
         "equity_value": equity,
         "per_diluted_share": per_share,
-        "net_debt": net_debt,
-        "net_debt_period": base.get("net_debt_period"),
+        "target_price": target,
+        "target_basis": target_basis,
+        "target_flag": None if within else "terminal_values_outside_tolerance",
+        "upside": upside,
+        "rating": rating,
+        "rating_bands": bands,
+        "net_debt": bridge["net_debt"],
+        "net_debt_period": bridge["period"],
         "diluted_shares": shares,
-        "shares_period": base.get("shares_period"),
-        "discount_convention": conv,
+        "shares_period": shares_t[0],
+        "discount_convention": assumptions.discount_convention,
         "wacc": w,
-        "dcf_upside": dcf_upside,
+        "dcf_upside": upside,
     }
 
-    sensitivity = _sensitivity_grid(years, pv_sum, assumptions, net_debt, shares)
+    sensitivity = _sensitivity_grid(years, assumptions, bridge["net_claims"], shares)
 
     comps_upside = comps["comps_upside"]
     within_tolerance = None
@@ -377,21 +745,21 @@ def value_company(
             + subject + " not set, so neither a DCF upside nor a comps upside "
               "can be computed. The own-band implied prices are reported for "
               "reference only; they are not a cross-check.")
-    if dcf_upside is not None and comps_upside is not None:
-        delta = dcf_upside - comps_upside
+    if upside is not None and comps_upside is not None:
+        delta = upside - comps_upside
         within_tolerance = abs(delta) <= assumptions.dcf_comps_tolerance
         if within_tolerance:
             note = "DCF and relative valuation agree within mandate tolerance."
         else:
             note = (
-                f"DCF upside ({dcf_upside:+.1%}) and comps upside ({comps_upside:+.1%}) "
+                f"DCF upside ({upside:+.1%}) and comps upside ({comps_upside:+.1%}) "
                 f"disagree by {delta:+.1%}, beyond mandate tolerance "
                 f"{assumptions.dcf_comps_tolerance:.0%}: escalated to the human approver "
                 f"and critic C2 for review of forecast drivers, peer block and multiples."
             )
 
-    facts_sha = getattr(model, "facts_sha", None) or (model or {}).get("input_facts_sha256")
-    candidate_id = assumptions.candidate_id or getattr(model, "candidate_id", None)
+    facts_sha = _model_get(model, "facts_sha", None) or _model_get(model, "input_facts_sha256", None)
+    candidate_id = assumptions.candidate_id or _model_get(model, "candidate_id", None)
     payload = {
         "artifact": "valuation",
         "engine": ENGINE_NAME,
@@ -401,7 +769,10 @@ def value_company(
         "assumptions": {
             "wacc": w, "terminal_growth": g,
             "exit_multiple_ebitda": assumptions.exit_multiple_ebitda,
-            "discount_convention": conv,
+            "discount_convention": assumptions.discount_convention,
+            "tax_rate": tax, "nwc_pct_incremental": nwc_pct,
+            "terminal_tolerance": assumptions.terminal_tolerance,
+            "valuation_date": assumptions.valuation_date,
             "peer_block_as_of": assumptions.peer_block.get("as_of"),
         },
         "dcf": dcf_payload,
@@ -414,161 +785,25 @@ def value_company(
     return Valuation(payload)
 
 
-def _resolve_base(model: "Model | dict") -> tuple[str, dict[str, float]]:
-    """(period, base-dict) anchored on the latest annual period.
-
-    Base flows: latest FY if present; else latest quarter (flows
-    annualized x4, margins used as-is). Balance items (net debt, shares)
-    come from the latest period of any kind."""
-    rev_series = _series_values(model, "income_statement.revenue")
-    fy = [p for p in rev_series if p.startswith("FY")]
-    if fy:
-        p = max(fy, key=_period_key)
-    else:
-        if not rev_series:
-            raise MissingFactError("revenue missing from the model; cannot value")
-        # Anchor every flow on ONE period. A 10-Q prints revenue for the
-        # quarter but cash flow only year-to-date, so anchoring revenue on the
-        # quarter and FCF on the YTD column put two different spans in one base
-        # block: both were run-rates, but a reader could not tell a convention
-        # from an error. Prefer the latest period that carries both, so one
-        # annualiser applies to the whole base.
-        fcf_series = _series_values(model, "derived.fcf")
-        both = [q for q in rev_series if _pick(fcf_series, q)[0] is not None]
-        p = _latest_period(both) if both else _latest_period(rev_series)
-    ann = _annualizer(p)
-    revenue = rev_series[p] * ann
-    gm, _ = _pick(_series_values(model, "derived.gross_margin"), p)
-    # EBITDA margin needs D&A, and a 10-Q reports D&A only in the year-to-date
-    # cash flow statement, so the latest quarter often has no margin of its
-    # own. Fall back to the year-to-date column, then to the most recent period
-    # that has one, and record which period was used rather than refusing to
-    # value the company. A margin is span-independent, so no annualisation.
-    em_series = _series_values(model, "derived.ebitda_margin")
-    em, em_period = _pick(em_series, p)
-    if em is None and em_series:
-        em_period, em = _latest(em_series)
-    fcf, fcf_period = _pick(_series_values(model, "derived.fcf"), p)
-    if fcf is None:
-        ocf, ocf_period = _pick(
-            _series_values(model, "cash_flow.operating_cash_flow"), p)
-        capex, capex_period = _pick(
-            _series_values(model, "cash_flow.capital_expenditure"), p)
-        if None not in (ocf, capex) and ocf_period == capex_period:
-            fcf, fcf_period = ocf - capex, ocf_period
-    if fcf is not None:
-        fcf = fcf * _annualizer(fcf_period)
-    # A loss-making fiscal year is not a base. FY2025 capex put FCF at -4,949
-    # while the nine months to 2026-Q3 ran at +2,968; projecting from the trough
-    # year made every forecast year negative and collapsed the Gordon terminal
-    # value to a fraction of the exit-multiple one. When the base year's FCF is
-    # negative and a later period is cash-generative, that run-rate is the base.
-    # A positive base year is left alone: a single quarter's capex timing is
-    # noisier than a full year, so it only wins when the year is unusable.
-    latest_fcf = _latest(_series_values(model, "derived.fcf"))
-    if (latest_fcf and fcf_period and fcf is not None and fcf < 0
-            and latest_fcf[1] > 0
-            and _period_key(latest_fcf[0]) > _period_key(fcf_period)):
-        fcf_period, fcf = latest_fcf[0], latest_fcf[1] * _annualizer(latest_fcf[0])
-    fcf_margin = None
-    if fcf is not None:
-        rev_same = _series_values(model, "income_statement.revenue").get(fcf_period)
-        denom = rev_same * _annualizer(fcf_period) if rev_same else revenue
-        if denom:
-            fcf_margin = fcf / denom
-    net_debt = _latest(_series_values(model, "derived.net_debt"))
-    nd = net_debt[1] if net_debt else None
-    if nd is None:
-        st = _latest(_series_values(model, "balance_sheet.short_term_debt"))
-        lt = _latest(_series_values(model, "balance_sheet.long_term_debt"))
-        cash = _latest(_series_values(model, "balance_sheet.cash_and_equivalents"))
-        if None not in (st, lt, cash):
-            nd = st[1] + lt[1] - cash[1]
-    shares = _latest(_series_values(model, "income_statement.diluted_shares_outstanding"))
-    net_income, ni_period = _pick(
-        _series_values(model, "income_statement.net_income"), p)
-    if net_income is not None:
-        net_income = net_income * _annualizer(ni_period)
-    return p, {
-        "revenue": revenue,
-        "gross_margin": gm,
-        "ebitda_margin": em,
-        "ebitda_margin_period": em_period,
-        "fcf": fcf,
-        "fcf_period": fcf_period,
-        "fcf_margin": fcf_margin,
-        "net_debt": nd,
-        "net_debt_period": net_debt[0] if net_debt else None,
-        "shares": shares[1] if shares else None,
-        "shares_period": shares[0] if shares else None,
-        "net_income": net_income,
-        "net_income_period": ni_period,
-    }
-
-
-SEGMENT_SLUGS = ("ccg", "dcai", "nex", "foundry", "altera", "mobileye")
-
-
-def _blended_growth(model, forecast: Forecast, base_period: str) -> list[float]:
-    """Revenue-weighted blend of per-segment growth on the base-period mix."""
-    seg_rev = {}
-    for seg in SEGMENT_SLUGS:
-        vals = _series_values(model, f"segments.{seg}.revenue")
-        if base_period in vals:
-            seg_rev[seg] = vals[base_period]
-        elif vals:
-            # the mix is a share, so any period carrying the segment works;
-            # refusing to blend because the base period is a YTD column would
-            # drop every segment and silently fall back to a single rate
-            latest = max(vals, key=_period_key)
-            seg_rev[seg] = vals[latest]
-    total = sum(v for v in seg_rev.values() if v > 0) or None
-    # The proposal names segments as the filing does ("CCG", "DCAI"); the model
-    # series are lowercase slugs. Matching them case-sensitively gave every
-    # segment a zero growth path, so the blend collapsed to whichever names
-    # happened to be lowercase -- the largest segment carried no weight.
-    growth_map = {str(k).strip().lower(): v for k, v in forecast.segments}
-    blended = []
-    for t in range(forecast.horizon_years):
-        if total and seg_rev:
-            num = sum(max(seg_rev.get(s, 0.0), 0.0) * growth_map.get(s, (0.0,) * forecast.horizon_years)[t]
-                      for s in seg_rev)
-            blended.append(num / total)
-        else:
-            g = growth_map.get("total")
-            if g is None:
-                raise MissingFactError(
-                    "no segment revenue in the model and no 'total' growth in the forecast")
-            blended.append(g[t])
-    return blended
-
-
-def _exponents(horizon: int, convention: str) -> list[float]:
-    if convention in ("year_end", "year-end"):
-        return [float(t) for t in range(1, horizon + 1)]
-    if convention in ("mid_year", "mid-year"):
-        return [t - 0.5 for t in range(1, horizon + 1)]
-    raise BoundsViolation(f"unknown discount convention {convention!r}")
-
-
-def _relative_valuation(model, assumptions: Assumptions, base_period, base,
-                        net_debt, shares) -> dict:
-    """Peer multiples applied to own base metrics; own historical band."""
+def _relative_valuation(assumptions: Assumptions, base: dict,
+                        net_claims: float, shares: float) -> dict:
+    """Peer multiples applied to own LTM metrics; own historical band."""
     peers = assumptions.peer_block.get("peers", [])
     ev_ebitda = [float(p["ev_ebitda"]) for p in peers if p.get("ev_ebitda") is not None]
     p_e = [float(p["p_e_ttm"]) for p in peers if p.get("p_e_ttm") is not None]
     p_s = [float(p["p_s"]) for p in peers if p.get("p_s") is not None]
 
-    ebitda = base["revenue"] * base["ebitda_margin"] if base["ebitda_margin"] is not None else None
+    ebitda = base["ebitda"]
     ni = base.get("net_income")
+    revenue = base["revenue"]
 
     applied: dict[str, dict] = {}
-    if ev_ebitda and ebitda is not None:
+    if ev_ebitda:
         med = statistics.median(ev_ebitda)
         applied["ev_ebitda"] = {
             "peer_median": med, "own_metric": ebitda,
             "implied_ev": med * ebitda,
-            "implied_price": (med * ebitda - net_debt) / shares,
+            "implied_price": (med * ebitda - net_claims) / shares,
         }
     if p_e and ni is not None:
         med = statistics.median(p_e)
@@ -579,8 +814,8 @@ def _relative_valuation(model, assumptions: Assumptions, base_period, base,
     if p_s:
         med = statistics.median(p_s)
         applied["p_s"] = {
-            "peer_median": med, "own_metric": base["revenue"],
-            "implied_price": base["revenue"] / shares * med,
+            "peer_median": med, "own_metric": revenue,
+            "implied_price": revenue / shares * med,
         }
     prices = [a["implied_price"] for a in applied.values()]
     comps_price = statistics.median(prices) if prices else None
@@ -589,11 +824,14 @@ def _relative_valuation(model, assumptions: Assumptions, base_period, base,
 
     band_out: dict[str, dict] = {}
     if assumptions.own_band:
-        for key, lo, hi, compute in (
-            ("ev_ebitda", *assumptions.own_band["ev_ebitda"], (lambda m: (m * ebitda - net_debt) / shares)),
-            ("p_e", *assumptions.own_band["p_e"], (lambda m: ni / shares * m)),
-            ("p_s", *assumptions.own_band["p_s"], (lambda m: base["revenue"] / shares * m)),
+        for key, compute in (
+            ("ev_ebitda", lambda m: (m * ebitda - net_claims) / shares),
+            ("p_e", lambda m: ni / shares * m),
+            ("p_s", lambda m: revenue / shares * m),
         ):
+            if key not in assumptions.own_band:
+                continue
+            lo, hi = assumptions.own_band[key]
             try:
                 lo_p, hi_p = compute(lo), compute(hi)
             except TypeError:  # metric missing -> band not computable
@@ -610,10 +848,10 @@ def _relative_valuation(model, assumptions: Assumptions, base_period, base,
     }
 
 
-def _sensitivity_grid(years, pv_sum, assumptions: Assumptions, net_debt, shares) -> dict:
+def _sensitivity_grid(years, assumptions: Assumptions, net_claims, shares) -> dict:
     wacc_points, g_points = assumptions.sensitivity_points
-    fcf_final = years[-1]["fcf"]
-    n = len(years)
+    ufcf_final = years[-1]["ufcf"]
+    e_final = years[-1]["exponent"]
     grid = []
     for w in wacc_points:
         row = []
@@ -621,10 +859,10 @@ def _sensitivity_grid(years, pv_sum, assumptions: Assumptions, net_debt, shares)
             if g >= w:  # Gordon undefined; mark cell as None
                 row.append(None)
                 continue
-            pv_flows = sum(y["fcf"] / (1.0 + w) ** (t + 1) for t, y in enumerate(years))
-            tv = fcf_final * (1.0 + g) / (w - g)
-            ev = pv_flows + tv / (1.0 + w) ** n
-            row.append((ev - net_debt) / shares)
+            pv_flows = sum(y["ufcf"] / (1.0 + w) ** y["exponent"] for y in years)
+            tv = ufcf_final * (1.0 + g) / (w - g)
+            ev = pv_flows + tv / (1.0 + w) ** e_final
+            row.append((ev - net_claims) / shares)
         grid.append(row)
     return {
         "basis": "gordon",

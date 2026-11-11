@@ -178,7 +178,7 @@ def render(out: Path) -> Path:
             edge=GEN_EDGE, face=GEN_FILL, title_size=7.0, line_size=6.1)
     note(ax, XC, y_spec - 0.24,
          "candidate manifest = artifact IDs + SHA-256 · engines: "
-         "model_engine@1.0 / valuation_engine@1.0", size=6.3)
+         "model_engine@1.0 / valuation_engine@2.0", size=6.3)
     arrow(ax, XC, y_spec - 0.40, XC, 6.08)
 
     # ================================================================ gates
