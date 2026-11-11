@@ -9,6 +9,8 @@ always yield the same outcomes (quality bar #2). The gate set:
                           tests inject a minimal fixture schema)
   citation_presence       every fact carries a full citation; cited docs must
                           be in the input manifest
+  period_coverage         every statement present in facts carries the trigger
+                          filing's current period
   forecast_bounds         per-segment growth bounds + margin floor/ceiling
                           vs mandate.assumptions.forecast_bounds
   candidate_manifest_integrity  listed artifacts exist and hashes match
@@ -39,6 +41,7 @@ GATE_ORDER = (
     "input_cutoff",
     "facts_schema",
     "citation_presence",
+    "period_coverage",
     "forecast_bounds",
     "candidate_manifest_integrity",
     "recompute",
@@ -294,7 +297,8 @@ def gate_citation_presence(facts: dict, manifest: dict | None = None) -> tuple[b
 # ---------------------------------------------------------------------------
 
 PERIOD_COVERAGE_STATEMENTS = (
-    "income_statement", "balance_sheet", "cash_flow_statement", "segments",
+    "income_statement", "balance_sheet", "cash_flow", "cash_flow_statement",
+    "segments",
 )
 
 
@@ -672,6 +676,9 @@ class CandidateContext:
     # lead echoes it into the manifest, but an echo is not a source of truth:
     # a truncated echo made every marker in a correct report look unknown.
     evidence_index: dict | None = None
+    # Trigger filing's period label as the extractor emits it ("2026-Q3", or
+    # "2025" for an annual trigger); None disables the period_coverage gate.
+    current_period: str | None = None
 
 
 def _num_close(a: float, b: float, tol: float = 1e-6) -> bool:
@@ -815,6 +822,8 @@ class GateEngine:
             return self._schema_findings(ctx.facts)
         if gate == "citation_presence":
             return gate_citation_presence(ctx.facts, manifest=ctx.input_manifest)
+        if gate == "period_coverage":
+            return gate_period_coverage(ctx.facts, ctx.current_period or "")
         if gate == "forecast_bounds":
             return gate_forecast_bounds(
                 ctx.forecast, mandate["assumptions"]["forecast_bounds"])

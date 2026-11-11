@@ -51,7 +51,7 @@ import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -1356,7 +1356,8 @@ class Orchestrator:
         with none of them, and the same "header incomplete" finding every round.
         """
         from . import _prompt_assembly as pa
-        from . import __version__ as engine_version
+        from .model_engine import ENGINE_NAME as model_engine_name
+        from .valuation_engine import ENGINE_NAME as valuation_engine_name
 
         inputs = self.input_manifest()
         mandate = self.mandate()
@@ -1376,7 +1377,9 @@ class Orchestrator:
             "prompt_versions": prompt_versions,
             "engine_versions": {
                 "mapping": model.get("mapping_tables") or "1.0",
-                "engine": engine_version,
+                # the engines' own identifiers, as stamped in their artifacts
+                "model_engine": model_engine_name,
+                "valuation_engine": valuation_engine_name,
             },
             "scope_statement": self._scope_statement(arts),
         })
@@ -1760,7 +1763,39 @@ class Orchestrator:
             case_dir=self.case_dir,
             mapping_version=state["config_versions"]["mapping_tables"],
             evidence_index=self._evidence_index(arts),
+            current_period=self._current_period(),
         )
+
+    def _current_period(self) -> str | None:
+        """The trigger filing's period label in the extractor's format.
+
+        ``YYYY-QN`` for a 10-Q, ``YYYY`` for a 10-K. The doc id carries it
+        (``intc-10q-2026q3``, ``intc-10k-fy2025``); failing that, the period
+        end date does (fiscal quarters end within days of a calendar quarter
+        end, so the date is shifted back before taking the quarter).
+        """
+        scope = [d for d in self._extraction_scope() if d.get("role") == "trigger"]
+        if not scope:
+            return None
+        trig = scope[0]
+        doc_id = str(trig.get("doc_id") or "").lower()
+        is_q = str(trig.get("form") or "") == "10-Q"
+        m = re.search(r"(20\d{2})q([1-4])", doc_id)
+        if m and is_q:
+            return f"{m.group(1)}-Q{m.group(2)}"
+        m = re.search(r"fy(20\d{2})", doc_id)
+        if m and not is_q:
+            return m.group(1)
+        end = None
+        for d in self.input_manifest().get("documents") or []:
+            if isinstance(d, dict) and d.get("doc_id") == trig.get("doc_id"):
+                end = str(d.get("period") or "")
+        try:
+            dt = datetime.strptime(end or "", "%Y-%m-%d") - timedelta(days=15)
+        except ValueError:
+            return None
+        return (f"{dt.year}-Q{(dt.month - 1) // 3 + 1}" if is_q
+                else str(dt.year))
 
     # ================================================================ repair
     def _issue_repair_packet(self, state: dict, arts: Arts,

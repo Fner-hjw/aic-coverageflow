@@ -917,7 +917,11 @@ class TestManifestHeader:
         # every role that produced an artifact is pinned to a card version
         for role in ("ingest", "extractor", "model", "writer"):
             assert manifest["prompt_versions"][role]
-        assert manifest["engine_versions"]["engine"]
+        from coverageflow.model_engine import ENGINE_NAME as ME
+        from coverageflow.valuation_engine import ENGINE_NAME as VE
+        assert manifest["engine_versions"]["model_engine"] == ME
+        assert manifest["engine_versions"]["valuation_engine"] == VE
+        assert "0.1.0" not in json.dumps(manifest["engine_versions"])
         assert manifest["engine_versions"]["mapping"]
 
     def test_scope_statement_reports_reuse_instead_of_claiming_a_full_rebuild(
@@ -2072,3 +2076,54 @@ class TestBudgetFindingsAreNotRepairWork:
         from coverageflow.orchestrator import _growth_aliases
         assert _growth_aliases({"series": {
             "balance_sheet.total_assets": {"FY2025": 211429.0}}}) == []
+
+
+class TestCostWiring:
+    def test_reported_cost_is_accumulated_and_cap_reaches_the_call(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["call_cost_usd_max"] = 5.0
+        orch, dispatch, clk, case_dir = build_env(tmp_path, mandate=mandate)
+        dispatch.cost_usd = 0.25
+        orch.run()
+        st = load_state(case_dir)
+        assert st["budget"]["used"]["cost_usd"] == pytest.approx(
+            0.25 * len(dispatch.calls))
+        assert all(c.budget["cost_usd_max"] == 5.0 for c in dispatch.calls)
+
+    def test_case_cost_cap_exhausts_the_case(self, tmp_path):
+        mandate = json.loads(json.dumps(casekit.MANDATE))
+        mandate["limits"]["case_cost_usd_max"] = 0.6
+        orch, dispatch, clk, case_dir = build_env(tmp_path, mandate=mandate)
+        dispatch.cost_usd = 0.25
+        orch.run()
+        st = load_state(case_dir)
+        assert st["status"] == "EXHAUSTED"
+        assert st["reason"]["code"] == "case_cost"
+
+    def test_unreported_cost_stays_zero(self, tmp_path):
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        assert load_state(case_dir)["budget"]["used"]["cost_usd"] == 0.0
+
+
+class TestPeriodCoverageWiring:
+    def test_current_period_is_derived_from_the_trigger_filing(self, tmp_path):
+        orch, *_ = build_env(tmp_path)
+        assert orch._current_period() == "2026-Q3"
+
+    def test_period_falls_back_to_the_period_end_date(self, tmp_path):
+        manifest = json.loads(json.dumps(casekit.MANIFEST))
+        for d in manifest["documents"]:
+            d["doc_id"] = d["doc_id"].replace("2026q3", "latest")
+            d["period"] = "2026-09-26"
+        orch, *_ = build_env(tmp_path, manifest=manifest)
+        assert orch._current_period() == "2026-Q3"
+
+    def test_gate_runs_in_the_pipeline_and_fails_on_a_missing_period(self, tmp_path):
+        assert "period_coverage" in gates.GATE_ORDER
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        orch.run()
+        rep = statestore.read_json(case_dir / "rounds/round-001/numerical/gates.json")
+        names = [r["gate"] for r in rep["results"]]
+        assert names.index("period_coverage") == names.index("citation_presence") + 1
+        assert all(r["ok"] for r in rep["results"] if r["gate"] == "period_coverage")
