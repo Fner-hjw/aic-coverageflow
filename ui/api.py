@@ -139,6 +139,18 @@ def create_app() -> FastAPI:
     def case_delete(case_id: str, confirm: str = "") -> dict:
         return service.delete_case(case_id, confirm)
 
+    @app.get("/api/deleted-cases")
+    def deleted_cases() -> dict:
+        return service.list_deleted_cases()
+
+    @app.post("/api/deleted-cases/{name}/restore")
+    def deleted_case_restore(name: str) -> dict:
+        return service.restore_deleted_case(name)
+
+    @app.delete("/api/deleted-cases/{name}")
+    def deleted_case_purge(name: str, confirm: str = "") -> dict:
+        return service.purge_deleted_case(name, confirm)
+
     @app.get("/api/cases/{case_id}/trace")
     def case_trace(case_id: str, request: Request):
         frm = _int_query(request, "from", 0)

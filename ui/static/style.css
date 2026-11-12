@@ -2407,3 +2407,11 @@ button.btn:disabled[aria-busy="true"] { opacity: .8; cursor: progress; }
 /* form inputs: shadow text is clearly lighter than entered text */
 input::placeholder, textarea::placeholder { color: var(--ink-3); opacity: .8; }
 input.invalid { border-color: var(--major); background: var(--major-wash); }
+
+/* deleted cases (dashboard) */
+.deleted-cases { margin-top: 2rem; }
+.deleted-cases[hidden] { display: none; }
+.deleted-cases h2 { margin: 0 0 .25rem; font-size: 1rem; }
+.deleted-case-row { display: flex; align-items: center; gap: .75rem; padding: .5rem 0;
+  border-top: 1px solid var(--line, rgba(0,0,0,.12)); flex-wrap: wrap; }
+.deleted-case-row .spacer { flex: 1; }

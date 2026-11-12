@@ -1931,6 +1931,78 @@ def delete_case(case_id: str, confirm: str) -> dict:
     return {"deleted": case_id, "moved_to": None}
 
 
+_DELETED_RE = re.compile(r"^(?P<case>[A-Za-z0-9][A-Za-z0-9._-]*)-(?P<stamp>\d{8}T\d{6}Z)$")
+
+
+def _deleted_dir(name: str) -> tuple[Path, re.Match]:
+    """The folder of one soft-deleted case, validated against path tricks."""
+    m = _DELETED_RE.match(str(name or ""))
+    if not m:
+        raise ValidationError("not a deleted case folder name",
+                              errors=["name: <case id>-<UTC timestamp>"])
+    d = _rws() / "deleted" / name
+    if not d.is_dir():
+        raise NotFound(f"no deleted case {name}")
+    return d, m
+
+
+def list_deleted_cases() -> dict:
+    """GET /api/deleted-cases: cases moved to ``deleted/``, newest first."""
+    if not _using_real():
+        return {"deleted": []}
+    root = _rws() / "deleted"
+    out: list[dict] = []
+    for d in (sorted(root.iterdir()) if root.is_dir() else []):
+        m = _DELETED_RE.match(d.name)
+        if not d.is_dir() or not m:
+            continue
+        status = ticker = None
+        try:
+            st = json.loads((d / "state.json").read_text(encoding="utf-8"))
+            status = st.get("status")
+        except (OSError, ValueError):
+            pass
+        try:
+            ticker = json.loads((d / "mandate.json").read_text(
+                encoding="utf-8")).get("ticker")
+        except (OSError, ValueError):
+            pass
+        stamp = datetime.strptime(m["stamp"], "%Y%m%dT%H%M%SZ").replace(
+            tzinfo=timezone.utc)
+        out.append({"name": d.name, "case_id": m["case"], "ticker": ticker,
+                    "status": status, "deleted_at": stamp.isoformat(),
+                    "restorable": not (_rws() / "cases" / m["case"]).exists()})
+    out.sort(key=lambda r: r["deleted_at"], reverse=True)
+    return {"deleted": out}
+
+
+def restore_deleted_case(name: str) -> dict:
+    """POST /api/deleted-cases/{name}/restore: move a deleted case back."""
+    if not _using_real():
+        raise ConflictError("nothing to restore in demo mode")
+    d, m = _deleted_dir(name)
+    dest = _rws() / "cases" / m["case"]
+    if dest.exists():
+        raise ConflictError(
+            f"a case named {m['case']} already exists; delete or rename it first",
+            case_id=m["case"])
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(d), str(dest))
+    return {"restored": m["case"]}
+
+
+def purge_deleted_case(name: str, confirm: str) -> dict:
+    """DELETE /api/deleted-cases/{name}: erase a deleted case for good."""
+    if not _using_real():
+        raise ConflictError("nothing to erase in demo mode")
+    if str(confirm or "").strip() != name:
+        raise ValidationError("type the folder name to confirm erasing it",
+                              errors=["confirm: must equal the folder name"])
+    d, _m = _deleted_dir(name)
+    shutil.rmtree(d)
+    return {"erased": name}
+
+
 def get_case(case_id: str) -> dict:
     """GET /api/cases/{id} — state, rounds, findings, budget summary."""
     if _using_real():

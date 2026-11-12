@@ -131,6 +131,33 @@ class TestControllerMode:
         monkeypatch.setattr(service, "_REAL_SELECTED_BACKEND", "auto")
         assert controller.get("/api/health").json()["active_backend"] == "replay"
 
+    def test_deleted_case_can_be_listed_restored_and_erased(self, controller, real_ws):
+        cid = "intc-fy2026q3-20261030"
+        r = controller.delete(f"/api/cases/{cid}?confirm={cid}")
+        assert r.status_code == 200, r.text
+        rows = controller.get("/api/deleted-cases").json()["deleted"]
+        assert rows[0]["case_id"] == cid and rows[0]["restorable"]
+        name = rows[0]["name"]
+        assert controller.post(f"/api/deleted-cases/{name}/restore").status_code == 200
+        assert (real_ws / "cases" / cid / "state.json").is_file()
+        assert controller.get("/api/deleted-cases").json()["deleted"] == []
+        # erase needs the typed name and cannot reach outside deleted/
+        controller.delete(f"/api/cases/{cid}?confirm={cid}")
+        name = controller.get("/api/deleted-cases").json()["deleted"][0]["name"]
+        assert controller.delete(f"/api/deleted-cases/{name}").status_code == 422
+        assert controller.delete(
+            f"/api/deleted-cases/{name}?confirm={name}").status_code == 200
+        assert controller.get("/api/deleted-cases").json()["deleted"] == []
+        assert controller.post("/api/deleted-cases/..%2Fcases/restore").status_code in (404, 422)
+
+    def test_restore_refuses_to_overwrite_a_live_case(self, controller, real_ws):
+        import shutil
+        cid = "intc-fy2026q3-20261030"
+        controller.delete(f"/api/cases/{cid}?confirm={cid}")
+        name = controller.get("/api/deleted-cases").json()["deleted"][0]["name"]
+        (real_ws / "cases" / cid).mkdir(parents=True)
+        assert controller.post(f"/api/deleted-cases/{name}/restore").status_code == 409
+
     def test_only_a_running_case_has_a_live_clock(self, controller, real_ws, monkeypatch):
         # a stale clock start on a finished case must not keep the timer going
         case_dir = real_ws / "cases" / "intc-fy2026q3-20261030"

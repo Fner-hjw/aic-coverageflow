@@ -648,11 +648,63 @@ Views.dashboard = async function (view) {
       h("a", { class: "btn primary", href: "#/new" }, icon("briefcase"), "Start coverage")),
     dashboardOverview(rows, ordered),
     coverageQueue(ordered),
+    deletedCasesSection(),
     h("div", { class: "desk-provider" }, icon("pulse"),
       h("span", null, "Selected provider: ", h("strong", null, data.health?.active_backend || "Not set")),
       h("a", { href: "#/backends" }, "Model routing")),
   );
 };
+
+/* Deleted cases: soft-deleted folders under <workspace>/deleted/. Restore
+ * moves one back into the workspace; erase removes it for good (typed
+ * confirmation). Hidden when there is nothing deleted. */
+function deletedCasesSection() {
+  const box = h("section", { class: "deleted-cases", hidden: "" });
+  const paint = async () => {
+    const r = await guard(() => Api.get("/api/deleted-cases"));
+    const rows = r.ok ? (r.data.deleted || []) : [];
+    box.hidden = !rows.length;
+    if (!rows.length) { box.replaceChildren(); return; }
+    const row = d => {
+      const status = h("span", { class: "chip minor" }, d.status || "unknown");
+      const restore = h("button", { class: "btn small", type: "button", disabled: d.restorable ? null : "",
+        title: d.restorable ? "" : "A case with this ID already exists" }, "Restore");
+      restore.addEventListener("click", async () => {
+        restore.disabled = true;
+        const res = await guard(() => Api.post(`/api/deleted-cases/${encodeURIComponent(d.name)}/restore`), "Could not restore case");
+        if (!res.ok) { restore.disabled = !d.restorable; return; }
+        toast("Case restored", d.case_id);
+        Views.dashboard($("#view"));
+      });
+      const erase = h("button", { class: "btn small danger", type: "button" }, "Erase…");
+      erase.addEventListener("click", () => {
+        const input = h("input", { type: "text", placeholder: d.name, autocomplete: "off", spellcheck: "false",
+                                   "aria-label": "Type the folder name to erase it" });
+        const go = h("button", { class: "btn small danger", type: "button", disabled: "" }, "Erase for good");
+        input.addEventListener("input", () => { go.disabled = input.value.trim() !== d.name; });
+        go.addEventListener("click", async () => {
+          go.disabled = true;
+          const res = await guard(() => Api.del(`/api/deleted-cases/${encodeURIComponent(d.name)}?confirm=${encodeURIComponent(input.value.trim())}`), "Could not erase case");
+          if (!res.ok) { go.disabled = false; return; }
+          toast("Case erased", d.case_id);
+          paint();
+        });
+        erase.replaceWith(input, go);
+        input.focus();
+      });
+      return h("div", { class: "deleted-case-row" },
+        h("strong", null, d.case_id), status,
+        h("span", { class: "sub" }, `deleted ${new Date(d.deleted_at).toLocaleString()}`),
+        h("span", { class: "spacer" }), restore, erase);
+    };
+    box.replaceChildren(
+      h("h2", null, "Deleted cases"),
+      h("p", { class: "sub" }, "Kept in the workspace's deleted/ folder. Restore one to put it back on the desk."),
+      ...rows.map(row));
+  };
+  paint();
+  return box;
+}
 
 function dashboardOverview(rows, ordered) {
   const groups = [
