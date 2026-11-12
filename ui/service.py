@@ -1499,18 +1499,30 @@ def get_backends() -> dict:
     """GET /api/backends — detected backends + per-role usage vs caps."""
     if _using_real():
         ws = _rws()
+        # The cap is per case and per role, so the meter shows the heaviest
+        # case for each role against the cap that case runs under. (Summing
+        # across cases against one number made 547k look like a breach of a
+        # 250k cap the cases never had.) "engines" is deterministic code and
+        # never spends tokens, so it is not a row.
         usage_by_role: dict[str, int] = {}
+        caps_seen: list[dict] = []
         cases = (ws / "cases").is_dir() and sorted(
             (ws / "cases").iterdir()) or []
         for d in cases:
             if not (d / "state.json").is_file():
                 continue
             st = _real_statestore.load_state(d) or {}
-            for role, tok in ((st.get("budget") or {}).get("used")
-                              or {}).get("tokens_by_role", {}).items():
-                usage_by_role[role] = usage_by_role.get(role, 0) + tok
-        caps = {"role_tokens_max": 250_000, "case_minutes": 45,
-                "rounds_max": 6, "retries_max": 3}
+            b = st.get("budget") or {}
+            caps_seen.append(b)
+            for role, tok in (b.get("used") or {}).get("tokens_by_role", {}).items():
+                if role != "engines":
+                    usage_by_role[role] = max(usage_by_role.get(role, 0), tok)
+        from coverageflow.budget import DEFAULT_LIMITS as _DL
+        pick = lambda k: max((b.get(k) or 0 for b in caps_seen), default=0) or _DL[k]
+        caps = {"role_tokens_max": pick("role_tokens_max"),
+                "case_minutes": pick("case_minutes"),
+                "rounds_max": pick("rounds_max"),
+                "retries_max": pick("retries_max")}
         return {"backends": _realt_backend_rows(),
                 "usage_by_role": usage_by_role,
                 "caps": caps, "selected": _selected_real_backend(),
