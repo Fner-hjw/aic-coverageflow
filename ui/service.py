@@ -1336,6 +1336,31 @@ _BACKENDS: list[dict] = [
 # controller-mode selection (made via POST /api/backends/select); the demo
 # store keeps its own 'selected' flags on _BACKENDS above
 _REAL_SELECTED_BACKEND = "auto"
+_SELECTION_FILE = ".backend-selection.json"
+
+
+def _selected_real_backend() -> str:
+    """The backend picked on the Backends page, surviving a server restart.
+
+    The choice is saved in the workspace; the in-memory value is the fallback
+    when nothing was saved (or the saved name is no longer usable).
+    """
+    try:
+        saved = json.loads((_rws() / _SELECTION_FILE).read_text(encoding="utf-8"))
+        name = saved.get("backend")
+        if isinstance(name, str) and name:
+            return name
+    except (OSError, ValueError, ServiceError, AttributeError):
+        pass
+    return _REAL_SELECTED_BACKEND
+
+
+def _save_selected_backend(name: str) -> None:
+    try:
+        (_rws() / _SELECTION_FILE).write_text(
+            json.dumps({"backend": name}), encoding="utf-8")
+    except OSError:
+        pass    # the in-memory choice still holds for this server run
 
 _EDGAR_DB: dict[str, list[dict]] = {
     "INTC": [
@@ -1407,7 +1432,7 @@ def health() -> dict:
         return {
             "status": "ok", "mode": "controller",
             "workspace": str(ws),
-            "active_backend": _REAL_SELECTED_BACKEND,
+            "active_backend": _selected_real_backend(),
             "cases": len(cases),
             "active_runs": len(live),
             "interrupted_runs": len(running) - len(live),
@@ -1442,7 +1467,7 @@ def _realt_backend_rows() -> list[dict]:
     rows = []
     for tmpl in _BACKENDS:
         row = dict(tmpl)
-        row["selected"] = row["name"] == _REAL_SELECTED_BACKEND
+        row["selected"] = row["name"] == _selected_real_backend()
         if row["name"] in ("replay", "stub"):
             rows.append(row)  # always-available rows stand as-is
             continue
@@ -1488,7 +1513,7 @@ def get_backends() -> dict:
                 "rounds_max": 6, "retries_max": 3}
         return {"backends": _realt_backend_rows(),
                 "usage_by_role": usage_by_role,
-                "caps": caps, "selected": _REAL_SELECTED_BACKEND,
+                "caps": caps, "selected": _selected_real_backend(),
                 "mode": "controller"}
     usage_by_role = {}
     for c in _CASES.values():
@@ -1553,6 +1578,7 @@ def select_backend(name: str) -> dict:
                     "(coverageflow.backends detection); use replay or auto")
         global _REAL_SELECTED_BACKEND
         _REAL_SELECTED_BACKEND = name
+        _save_selected_backend(name)
         _emit("*", "BACKEND_SELECTED", {"backend": name})
         return get_backends()
     match = next((b for b in _BACKENDS if b["name"] == name), None)
@@ -2125,8 +2151,8 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False,
         run_backend = "replay" if replay else (backend or "auto")
         # an explicitly selected backend (Backends page) wins over "auto"
         # so runs launched from the case page use the operator's choice
-        if run_backend == "auto" and _REAL_SELECTED_BACKEND not in ("", "auto"):
-            run_backend = _REAL_SELECTED_BACKEND
+        if run_backend == "auto" and _selected_real_backend() not in ("", "auto"):
+            run_backend = _selected_real_backend()
         try:
             dispatch, backend_name = _rdispatch_for(case_id, run_backend)
         except ConflictError:
@@ -2206,7 +2232,7 @@ def resume_case(case_id: str) -> dict:
             raise ConflictError(
                 f"case {case_id} in status {state['status']} has no "
                 "pending work to resume")
-        selected = _REAL_SELECTED_BACKEND
+        selected = _selected_real_backend()
         try:
             dispatch, backend_name = _rdispatch_for(case_id, selected)
         except ConflictError:
@@ -2296,7 +2322,7 @@ def record_approval(case_id: str, decision: str, by: str,
         if not (by or "").strip():
             raise ValidationError("'by' (approver name) is required")
         dispatch, _bn = _rdispatch_for(case_id,
-                                      _REAL_SELECTED_BACKEND)
+                                      _selected_real_backend())
         orch = _real_orchestrator.Orchestrator(
             cd, dispatch=dispatch,
             gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
@@ -2515,7 +2541,7 @@ def _real_demo_action(case_id: str, action: str,
                 "resume_hint": f"POST /api/cases/{case_id}/resume "
                                "re-dispatches the pending role only"}
     if action == "perturb":
-        dispatch, _bn = _rdispatch_for(case_id, _REAL_SELECTED_BACKEND)
+        dispatch, _bn = _rdispatch_for(case_id, _selected_real_backend())
         orch = _real_orchestrator.Orchestrator(
             cd, dispatch=dispatch,
             gate_engine=_real_cli.load_gate_engine(workspace=_rws()))

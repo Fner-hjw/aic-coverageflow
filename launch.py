@@ -366,7 +366,11 @@ def main() -> int:
         return 1
 
     backend = cfg.get("backend", "auto")
-    if backend not in ("", "auto"):
+    # a backend picked on the Backends page is saved in the workspace and wins
+    # over the launcher's first-run answer, which only seeds a fresh workspace
+    if (ws / ".backend-selection.json").is_file():
+        say("· keeping the backend last selected in the UI")
+    elif backend not in ("", "auto"):
         select_backend(port, backend)
 
     url = f"http://127.0.0.1:{port}"

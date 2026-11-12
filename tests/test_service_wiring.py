@@ -123,6 +123,14 @@ class TestControllerMode:
         row = controller.get("/api/cases").json()["cases"][0]
         assert row["case_clock_started"] == "2026-11-10T12:00:00Z"
 
+    def test_backend_choice_survives_a_server_restart(self, controller, real_ws, monkeypatch):
+        r = controller.post("/api/backends/select", json={"backend": "replay"})
+        assert r.status_code == 200, r.text
+        assert (real_ws / ".backend-selection.json").is_file()
+        # a restarted server has the in-memory default again
+        monkeypatch.setattr(service, "_REAL_SELECTED_BACKEND", "auto")
+        assert controller.get("/api/health").json()["active_backend"] == "replay"
+
     def test_only_a_running_case_has_a_live_clock(self, controller, real_ws, monkeypatch):
         # a stale clock start on a finished case must not keep the timer going
         case_dir = real_ws / "cases" / "intc-fy2026q3-20261030"
