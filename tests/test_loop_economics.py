@@ -4,6 +4,7 @@ writer retries, schema-bound extraction units, and a booked case clock."""
 import json
 
 import casekit
+from coverageflow import statestore
 from tests.test_orchestrator import build_env, load_state
 
 from coverageflow import extraction, gates
@@ -103,3 +104,42 @@ def test_settle_clock_books_minutes_and_marks_the_case_started(tmp_path):
     assert state["budget"]["used"]["elapsed_minutes"] == 13.0
     assert state["pending"]["case_clock_started"] is None
     assert state["pending"]["clock_paused"] is True
+
+
+def test_mechanical_rounds_are_counted_apart():
+    from coverageflow import budget as budget_mod
+    b = budget_mod.BudgetTracker({"mechanical_rounds_max": 2})
+    assert b.try_mechanical_round() and b.try_mechanical_round()
+    assert not b.try_mechanical_round()
+    assert b.used_rounds() == 0
+    assert b.used_state()["mechanical_rounds"] == 2
+
+
+def test_writer_only_gate_failure_does_not_spend_a_review_round(tmp_path):
+    from tests.test_orchestrator import TestEvidenceLinkFailureIsASubmissionRepair as T
+    from coverageflow._dispatch_test_stub import DEFAULT_REPORT_MD
+    from tests.test_orchestrator import _writer_output
+    bad = _writer_output(DEFAULT_REPORT_MD + "\nRevenue was 12.7 billion.\n")
+    orch, dispatch, clk, case_dir = build_env(
+        tmp_path, scripts={"writer": [bad] * 60})
+    orch.run()
+    st = load_state(case_dir)
+    used = st["budget"]["used"]
+    # every attempt fails the evidence gate; the rebuilds only re-run the
+    # writer, so they spend the mechanical allowance, not review rounds
+    assert used["mechanical_rounds"] == st["budget"]["mechanical_rounds_max"]
+    builds = sum(1 for e in statestore.read_trace(case_dir)
+                 if (e.get("detail") or {}).get("round_start"))
+    assert used["rounds"] == st["budget"]["rounds_max"]
+    assert builds == used["rounds"] + used["mechanical_rounds"]
+
+
+def test_evidence_retry_payload_is_slim(tmp_path):
+    from tests.test_orchestrator import TestEvidenceLinkFailureIsASubmissionRepair as T
+    orch, dispatch, clk, case_dir = build_env(tmp_path, scripts={"writer": [T.BAD]})
+    orch.run()
+    first, second = dispatch.calls_of("writer")[:2]
+    assert "prior_artifacts" in first.payload
+    assert "prior_artifacts" not in second.payload
+    assert second.payload["previous_draft"] and second.payload["evidence_keys"]
+    assert "PATCH ONLY" in second.payload["submission_feedback"]

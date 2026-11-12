@@ -795,10 +795,16 @@ class Orchestrator:
                     raise RuntimeError("orchestrator loop guard tripped")
                 p = state["pending"]
                 if p["role"] == "generator" and p["stage"] is None:
-                    ok, reason = budget.check_new_round()
+                    # a rebuild that only re-runs the writer for gate findings
+                    # (unmarked numbers) is not a review round
+                    mechanical = (self._only_mechanical_repair(p)
+                                  and budget.try_mechanical_round())
+                    ok, reason = ((True, None) if mechanical
+                                  else budget.check_new_round())
                     self._trace(event="BUDGET_CHECK", detail={
                         "check": "new_round", "ok": bool(ok),
-                        "rounds_used": budget.used_rounds()},
+                        "rounds_used": budget.used_rounds(),
+                        "mechanical": bool(mechanical)},
                         round=p["round"])
                     if not ok:
                         # A case that has burned its rounds on the same
@@ -815,7 +821,8 @@ class Orchestrator:
                             return self._summary(state, "escalated to review")
                         self.exhausted(state, budget, reason)
                         return self._summary(state, "budgets exhausted")
-                    budget.note_round()
+                    if not mechanical:
+                        budget.note_round()
                     # a build always enters a FRESH round dir (round numbers
                     # are monotonic; budget rounds are counted separately)
                     latest = self._latest_round_dir()
@@ -1250,6 +1257,12 @@ class Orchestrator:
                 self._note_writer_evidence_retry(state, budget, err)
                 prev_draft = result.parsed["report_md"]
                 flagged_lines = flagged_line_numbers(err)
+                # the retry needs the draft and the citable keys, not the
+                # whole facts ledger again (~70k tokens per attempt)
+                payload = {k: payload[k] for k in
+                           ("case_id", "round", "mandate", "bundle")
+                           if k in payload}
+                payload["evidence_keys"] = sorted(self._evidence_index(arts))
                 payload["previous_draft"] = prev_draft
                 err = (err + "\nPATCH ONLY: `previous_draft` is your last note. "
                        "Return it with only the flagged line(s) "
@@ -2174,6 +2187,19 @@ class Orchestrator:
                                 "finding_count": len(report.finding_dicts)})
             self._issue_repair_packet(state, arts, led,
                                       note="numerical gate failures")
+
+    def _only_mechanical_repair(self, pending: dict) -> bool:
+        """Is the next rebuild just the writer fixing numerical-gate findings?
+
+        True when it restarts at the writer and every open repairable finding
+        comes from a gate (no critic objection, no engine error): nothing has
+        been reviewed, so there is nothing to count as a review round.
+        """
+        if pending.get("rebuild_from") != "writer":
+            return False
+        rows = self.ledger().repairable_findings()
+        return bool(rows) and all(
+            str(r.get("source_critic") or "").startswith("gate:") for r in rows)
 
     def _repair_did_not_move(self, round_no: int, gate: str, f: dict,
                              rel_tol: float = 0.02) -> bool:
