@@ -32,8 +32,9 @@ UNIT_KINDS = ("income_statement", "balance_sheet", "cash_flow", "segments")
 _KIND_ALIASES = {"cash_flow_statement": "cash_flow"}
 
 CANONICAL_UNITS = ("USDmm", "USD", "shares_mm", "ratio")
-# YYYY-QN, YYYY-QN-YTD, YYYY
-PERIOD_RE = re.compile(r"^\d{4}(-Q[1-4](-YTD)?)?$")
+# YYYY-QN, YYYY-QN-YTD, or a fiscal year as FYYYYY (also accepted as YYYY and
+# normalised to FYYYYY, the label the model and valuation engines use).
+PERIOD_RE = re.compile(r"^(FY\d{4}|\d{4}(-Q[1-4](-YTD)?)?)$")
 _NUMBER_RE = re.compile(r"^-?\d+(\.\d+)?([eE][-+]?\d+)?$")
 _SEGMENT_FIELD_RE = re.compile(r"^segments\.[^|]+\.(revenue|operating_income)$")
 _SEGMENT_RESIDUALS = ("segments.all_other_revenue",
@@ -161,7 +162,9 @@ def parse_row(row: Any, catalogue: dict) -> tuple[dict | None, str | None]:
                       "segments.<name as reported>.revenue|operating_income)")
     if not PERIOD_RE.match(period):
         return None, (f"period {period!r} is not canonical: use YYYY-QN, "
-                      "YYYY-QN-YTD or YYYY")
+                      "YYYY-QN-YTD or FYYYYY")
+    if re.fullmatch(r"\d{4}", period):
+        period = f"FY{period}"
     if not _NUMBER_RE.match(value.replace(" ", "")):
         return None, (f"value {value!r} is not a plain number (no commas, "
                       "currency signs, parentheses or text; negatives use '-')")

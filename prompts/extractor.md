@@ -27,7 +27,7 @@ conformance("schema 1.0"), prompt_version("1.6")`. Echo `request_id`,
 - `field`: an id from `fields`; segments:
   `segments.<name as reported>.revenue|operating_income` and the residuals
   `segments.all_other_revenue` / `segments.all_other_operating_income`.
-- `period`: `YYYY-QN`, `YYYY-QN-YTD`, or `YYYY`.
+- `period`: `YYYY-QN`, `YYYY-QN-YTD`, or a fiscal year as `FYYYYY`.
 - `value`: a plain number as printed, already in the unit (`13500`, `-650.5`):
   no separators, currency signs, parentheses or text.
 - `unit`: `USDmm`, `USD` (per share), `shares_mm`, or `ratio`.
@@ -42,8 +42,8 @@ absent); `notes[]` are short strings.
 **Columns.** Extract every printed column under its true span. A 10-Q income
 statement prints three-month (`2026-Q3`) and nine-month (`2026-Q3-YTD`)
 columns. A 10-Q cash flow prints only the nine-month column, so every
-cash-flow row is `2026-Q3-YTD`. Never label a year-to-date column `YYYY`. A
-10-K prints fiscal years: `2025`, `2024`, `2023`, one row per column.
+cash-flow row is `2026-Q3-YTD`. Never label a year-to-date column as a fiscal year. A
+10-K prints fiscal years: `FY2025`, `FY2024`, `FY2023`, one row per column.
 
 **Attribution and non-operating lines.**
 - "Net income attributable to <issuer>" goes under

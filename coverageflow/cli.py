@@ -1023,7 +1023,7 @@ def clean_args(args, ws: Path) -> None:
             setattr(args, flag, run(san.note, "--" + flag, g(flag)))
     if g("scope") is not None:
         args.scope = run(san.text, "--scope", args.scope, max_len=100,
-                         charset=r"[A-Za-z0-9 ._/&()-]")
+                         charset=r"[A-Za-z0-9 ._/&()',:-]")
     if g("version"):
         args.version = run(san.identifier, "--version", args.version)
     if g("stage"):

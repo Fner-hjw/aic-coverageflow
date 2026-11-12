@@ -93,7 +93,7 @@ class TestRowParsing:
     @pytest.mark.parametrize("row,needle", [
         ("income_statement.revenue|2026-Q3|13500|USDmm", "expected 5"),
         ("revenue|2026-Q3|13500|USDmm|l1", "unknown field 'revenue'"),
-        ("income_statement.revenue|FY2026|13500|USDmm|l1", "not canonical"),
+        ("income_statement.revenue|2026Q3|13500|USDmm|l1", "not canonical"),
         ("income_statement.revenue|2026Q3|13500|USDmm|l1", "not canonical"),
         ("income_statement.revenue|2026-Q3|13,500|USDmm|l1", "not a plain number"),
         ("income_statement.revenue|2026-Q3|(650)|USDmm|l1", "not a plain number"),
@@ -450,7 +450,7 @@ class TestPerUnitRepair:
 
     def test_only_the_invalid_unit_is_re_requested_with_feedback(self, tmp_path):
         script = self._flaky(f"{K_DOC}/cash_flow",
-                             ["cash_flow.net_income|FY2025|10|USDmm|l1",
+                             ["cash_flow.net_income|2025Q4|10|USDmm|l1",
                               "cash_flow.net_income|2025|1,000|USDmm|l1"])
         orch, dispatch, clk, case_dir = env(tmp_path, scripts={"extractor": script})
         orch.run()
@@ -523,3 +523,10 @@ class TestReuseAcrossRounds:
         orch, dispatch, clk, case_dir = env(tmp_path, scripts=scripts)
         orch.run()
         assert len(dispatch.calls_of("extractor")) == 16
+
+
+def test_fiscal_year_rows_use_the_engine_label():
+    for raw in ("income_statement.revenue|FY2025|52853|USDmm|l3",
+                "income_statement.revenue|2025|52853|USDmm|l3"):
+        fact, err = ex.parse_row(raw, CAT)
+        assert err is None and fact["period"] == "FY2025"
