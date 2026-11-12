@@ -132,7 +132,8 @@ def build_bound_request(call: RoleCall) -> dict:
         "candidate_id": call.candidate_id,
         "output_schema": call.output_schema,
         "write_scope": list(call.write_scope),
-        "budget": dict(call.budget),
+        # json_schema goes to the CLI as --output-schema, not into the prompt
+        "budget": {k: v for k, v in call.budget.items() if k != "json_schema"},
         "payload": call.payload,
     }
 

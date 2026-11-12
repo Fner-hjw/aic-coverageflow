@@ -895,6 +895,8 @@ class Orchestrator:
         if effort:
             # absent = the backend's own default effort
             call_budget["reasoning_effort"] = effort
+        if role == "extractor":
+            call_budget["json_schema"] = extraction.UNIT_JSON_SCHEMA
         call = RoleCall(role=role, request_id=req_id, candidate_id=candidate_id,
                         # version/sha are resolved from the card on disk by
                         # dispatch, so the trace records what actually ran

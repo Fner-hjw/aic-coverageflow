@@ -46,6 +46,40 @@ CONFIDENCE = 1.0      # rows carry no confidence; located rows are expanded as 1
 _MODEL_SCHEMA = Path(__file__).resolve().parent.parent / "references" / "model-schema.json"
 
 
+# Strict (OpenAI structured-output style) schema for one unit's answer, handed
+# to the Codex CLI as ``--output-schema`` so a missing envelope key is a
+# decoding impossibility, not a retry. Every property is required and nothing
+# else is allowed; ``period`` in ``missing`` is nullable for that reason.
+# ``unit`` is the unit's name: the harness never reads it back.
+UNIT_JSON_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["role", "request_id", "candidate_id", "unit", "rows",
+                 "missing", "notes", "conformance", "prompt_version"],
+    "properties": {
+        "role": {"type": "string", "enum": ["extractor"]},
+        "request_id": {"type": "string"},
+        "candidate_id": {"type": ["string", "null"]},
+        "unit": {"type": "string"},
+        "rows": {"type": "array", "items": {"type": "string"}},
+        "missing": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["field", "reason", "period"],
+                "properties": {"field": {"type": "string"},
+                               "reason": {"type": "string"},
+                               "period": {"type": ["string", "null"]}},
+            },
+        },
+        "notes": {"type": "array", "items": {"type": "string"}},
+        "conformance": {"type": "string"},
+        "prompt_version": {"type": "string"},
+    },
+}
+
+
 def normalize_kind(kind: Any) -> str:
     k = str(kind or "")
     return _KIND_ALIASES.get(k, k)
