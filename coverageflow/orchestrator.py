@@ -173,7 +173,10 @@ _EVIDENCE_FEEDBACK_PREFIX = "evidence-link gate: every number needs an [EV:<key>
 # Role-scoped views (rubric v1.1): each critic reads only what its checklist
 # needs. C3 and C4 read the note plus small headers/manifests, not the ledger.
 CRITIC_ARTIFACTS = {
-    "critic_c1": ("facts.json", "report.md", "model.json", "valuation.json"),
+    # forecast_assumptions.json: the note describes the forecast proposal, and
+    # a critic that cannot read it can only call every such claim unsupported
+    "critic_c1": ("facts.json", "report.md", "model.json", "valuation.json",
+                  "forecast_assumptions.json"),
     "critic_c2": ("forecast_assumptions.json", "model.json", "valuation.json",
                   "report.md"),
     "critic_c3": ("report.md",),
@@ -1460,7 +1463,7 @@ class Orchestrator:
         the gate then fails the round in the normal way.
         """
         ok, findings = gates.gate_report_evidence_links(
-            report_md, self._evidence_index(arts))
+            report_md, self._evidence_index(arts), self._evidence_values(arts))
         if ok:
             return None
         used = int((budget.used.get("retries_by_role") or {})
@@ -1910,12 +1913,74 @@ class Orchestrator:
         # valuation number unciteable, so the note could not state a value.
         for key in _dotted_paths(valuation):
             idx.setdefault(key, valuation_rel)
+        # the forecast proposal the note describes, citable as [EV:forecast.*]
+        # (segment growth paths, margin glide, terminal basis)
+        forecast = self._lazy(arts, arts.rel("generator",
+                                             "forecast_assumptions.json")) or {}
+        forecast_rel = arts.rel("generator", "forecast_assumptions.json")
+        for key in _dotted_paths(forecast, "forecast"):
+            idx.setdefault(key, forecast_rel)
         # the previous publication's headline values, citable as [EV:prior.*]
         prior = self._prior_publication()
         if prior:
             for key in _dotted_paths(prior["valuation"], "prior"):
                 idx.setdefault(key, f"{PRIOR_DIR}/{PRIOR_VALUATION_FILE}")
         return idx
+
+    def _evidence_values(self, arts: Arts) -> dict[str, list[float]]:
+        """For each evidence key, the numbers it holds (every period of a fact
+        or series, every leaf under a path). Mirrors ``_evidence_index``."""
+        vals: dict[str, list[float]] = {}
+
+        def leaves(obj: Any, out: list[float], depth: int = 0) -> list[float]:
+            if depth > 8:
+                return out
+            if isinstance(obj, bool):
+                return out
+            if isinstance(obj, (int, float)):
+                out.append(float(obj))
+            elif isinstance(obj, dict):
+                for v in obj.values():
+                    leaves(v, out, depth + 1)
+            elif isinstance(obj, list):
+                for v in obj:
+                    leaves(v, out, depth + 1)
+            return out
+
+        def paths(obj: Any, prefix: str) -> None:
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    path = f"{prefix}.{k}" if prefix else str(k)
+                    vals.setdefault(path, leaves(v, []))
+                    paths(v, path)
+            elif isinstance(obj, list):
+                for i, v in enumerate(obj):
+                    path = f"{prefix}.{i}"
+                    vals.setdefault(path, leaves(v, []))
+                    paths(v, path)
+
+        facts = self._lazy(arts, arts.rel("generator", "facts.json")) or {}
+        model = self._lazy(arts, arts.rel("generator", "model.json")) or {}
+        valuation = self._lazy(arts, arts.rel("generator", "valuation.json")) or {}
+        forecast = self._lazy(arts, arts.rel("generator", "forecast_assumptions.json")) or {}
+        for f in facts.get("facts", []):
+            if f.get("field") and isinstance(f.get("value"), (int, float)):
+                vals.setdefault(f["field"], []).append(float(f["value"]))
+        for key, entry in (model.get("series") or {}).items():
+            vals.setdefault(key, leaves(entry, []))
+        for key, entry in (model.get("series") or {}).items():
+            if isinstance(entry, dict):
+                short = key.rsplit(".", 1)[-1]
+                for span in ("yoy", "qoq"):
+                    if isinstance(entry.get(span), dict) and entry[span]:
+                        vals.setdefault(f"derived.{short}_{span}",
+                                        leaves(entry[span], []))
+        paths(valuation, "")
+        paths(forecast, "forecast")
+        prior = self._prior_publication()
+        if prior:
+            paths(prior["valuation"], "prior")
+        return vals
 
     # --------------------------------------------------------- prior note
     def _prior_publication(self) -> dict | None:
@@ -2561,6 +2626,7 @@ class Orchestrator:
             case_dir=self.case_dir,
             mapping_version=state["config_versions"]["mapping_tables"],
             evidence_index=self._evidence_index(arts),
+            evidence_values=self._evidence_values(arts),
             current_period=self._current_period(),
             controls=self._controls_facts(state, arts),
         )

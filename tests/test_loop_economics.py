@@ -143,3 +143,41 @@ def test_evidence_retry_payload_is_slim(tmp_path):
     assert "prior_artifacts" not in second.payload
     assert second.payload["previous_draft"] and second.payload["evidence_keys"]
     assert "PATCH ONLY" in second.payload["submission_feedback"]
+
+
+def _values():
+    idx = {k: "valuation.json" for k in (
+        "assumptions.terminal_growth", "assumptions.exit_multiple_ebitda",
+        "dcf.wacc", "dcf.terminal.gordon.terminal_value", "dcf.upside")}
+    vals = {"assumptions.terminal_growth": [0.025],
+            "assumptions.exit_multiple_ebitda": [21.5], "dcf.wacc": [0.10],
+            "dcf.terminal.gordon.terminal_value": [162809.4],
+            "dcf.upside": [-0.84]}
+    return idx, vals
+
+
+def test_value_check_flags_a_number_cited_to_the_wrong_key():
+    idx, vals = _values()
+    note = ("## Valuation\nThe Gordon case uses a 10.0% WACC and 2.5% terminal "
+            "growth with a terminal value of USD 162,809mm [EV:dcf.wacc] "
+            "[EV:dcf.terminal.gordon.terminal_value].\n")
+    ok, f = gates.gate_report_evidence_links(note, idx, vals)
+    assert not ok and len(f) == 1
+    assert "2.5" in f[0]["summary"] and "assumptions.terminal_growth" in f[0]["summary"]
+    # citing the key that holds it clears the finding
+    fixed = note.replace("[EV:dcf.wacc]", "[EV:dcf.wacc] [EV:assumptions.terminal_growth]")
+    assert gates.gate_report_evidence_links(fixed, idx, vals)[0]
+
+
+def test_value_check_leaves_derived_figures_and_unverifiable_cites_alone():
+    idx, vals = _values()
+    # 13.7 is held by no key: derived, a critic's job
+    derived = "## V\nThe spread is 13.7 points [EV:dcf.upside].\n"
+    assert gates.gate_report_evidence_links(derived, idx, vals)[0]
+    # a cited key with no number cannot be compared
+    idx["dcf.empty"] = "valuation.json"; vals["dcf.empty"] = []
+    assert gates.gate_report_evidence_links(
+        "## V\nExit multiple 21.5 [EV:dcf.empty].\n", idx, vals)[0]
+    # no values supplied: check is off
+    assert gates.gate_report_evidence_links(
+        "## V\nterminal growth 2.5 [EV:dcf.wacc].\n", idx)[0]

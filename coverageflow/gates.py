@@ -702,18 +702,58 @@ def _evidence_key(key: str, evidence_index: dict) -> str | None:
     return None
 
 
+def _num_matches(num: float, decimals: int, value: float) -> bool:
+    """Does the stated ``num`` (shown to ``decimals`` places) state ``value``?
+
+    Notes state a figure as the ledger holds it, as a percentage of a ratio,
+    or in thousands/millions of the ledger unit; rounding to the shown
+    decimals is allowed.
+    """
+    tol = 0.5 * 10 ** (-decimals) + 1e-9
+    return any(abs(num - c) <= tol * max(1.0, 1.0)
+               for c in (value, value * 100.0, value / 1e3, value / 1e6,
+                         value / 1e9))
+
+
+_KEY_STOPWORDS = frozenset({
+    "dcf", "base", "derived", "years", "segments", "assumptions", "forecast",
+    "income", "statement", "balance", "sheet", "cash", "flow", "comps",
+    "prior", "total", "value", "per", "and", "the", "of"})
+
+
+def _token_number(tok: str) -> tuple[float, int] | None:
+    try:
+        text = tok.replace(",", "")
+        return float(text), (len(text.split(".")[1]) if "." in text else 0)
+    except ValueError:
+        return None
+
+
 def gate_report_evidence_links(report_md: str,
-                               evidence_index: dict | None = None) -> tuple[bool, list[dict]]:
+                               evidence_index: dict | None = None,
+                               evidence_values: dict | None = None
+                               ) -> tuple[bool, list[dict]]:
     """Every numeric token in report.md carries an evidence reference.
 
     Rule (deterministic): each standalone numeric token (not glued to word
     characters, e.g. Q3/FY26 are exempt) must be followed by an [EV:<key>]
     marker on the same line before the next numeric token. When an
     *evidence_index* is supplied, the marker key must exist in it.
+
+    With *evidence_values* (key -> the numbers that key holds) a stated number
+    must also be one of the values of the keys its sentence cites, when some
+    other key does hold it: the writer then has a better key to cite. A number
+    no key holds is a derived figure and is left to the critics.
     """
     findings: list[dict] = []
     if not report_md:
         return True, findings
+    # a container key ("comps") holds every number beneath it, so it would
+    # "match" almost anything: only leaf keys are offered as the better cite
+    leaf_keys: set[str] = set()
+    if evidence_values and evidence_index is not None:
+        parents = {k.rsplit(".", 1)[0] for k in evidence_values if "." in k}
+        leaf_keys = {k for k in evidence_values if k not in parents}
     lines = report_md.splitlines()
     header_end = _provenance_header_end(lines)
     for ln, line in enumerate(lines, start=1):
@@ -760,13 +800,52 @@ def gate_report_evidence_links(report_md: str,
         # into a previous sentence's claim.
         marker_starts = [s for s, _, _ in markers]
         covered: set[int] = set()
-        for ms in marker_starts:
+        cited: dict[int, set[str]] = {}
+        for (ms, _me, mkey) in markers:
             # a thousands separator is not a clause break
             start = _clause_start(line, ms, marker_spans + exempt_spans
                                   + [(ts, te) for ts, te, _ in tokens])
             for i, (ts, _, _) in enumerate(tokens):
                 if start <= ts < ms:
                     covered.add(i)
+                    cited.setdefault(i, set()).add(mkey)
+        if evidence_values and evidence_index is not None:
+            for i in sorted(covered):
+                ts, te, tok = tokens[i]
+                parsed = _token_number(tok)
+                if parsed is None or ("." not in tok and abs(parsed[0]) < 100):
+                    continue    # counts and small integers are not figures
+                num, dec = parsed
+                keys = {_evidence_key(k, evidence_index) or k for k in cited[i]}
+                held = [v for k in keys for v in evidence_values.get(k, ())]
+                if not held:
+                    continue    # the cited keys hold no number to compare with
+                if any(_num_matches(num, dec, v) for v in held):
+                    continue
+                words = set(re.findall(r"[a-z]+", line.lower()))
+                scored = []
+                for k, vals in evidence_values.items():
+                    if k not in leaf_keys or k in keys:
+                        continue
+                    if not any(_num_matches(num, dec, v) for v in vals):
+                        continue
+                    toks = {t for t in re.split(r"[._]", k.lower())
+                            if t.isalpha() and t not in _KEY_STOPWORDS}
+                    score = len(toks & words)
+                    if score:       # the sentence is about what that key holds
+                        scored.append((-score, len(k), k))
+                better = [k for _s, _l, k in sorted(scored)]
+                if not better:
+                    continue
+                findings.append(_finding(
+                    "report_evidence_links", f"value-mismatch:{ln}:{ts}:{tok}",
+                    f'numeric token "{tok}" on line {ln} is cited to '
+                    f'{", ".join("[EV:" + k + "]" for k in sorted(keys))}, none of '
+                    f'which holds that value; [EV:{better[0]}] does'
+                    + (f' (also {", ".join(better[1:3])})' if len(better) > 1 else ""),
+                    [REPORT_ARTIFACT],
+                    required_evidence=f'a marker for the key that holds "{tok}", '
+                                      f'such as {better[0]}'))
         for i, (ts, te, tok) in enumerate(tokens):
             if i in covered:
                 continue
@@ -947,6 +1026,8 @@ class CandidateContext:
     # lead echoes it into the manifest, but an echo is not a source of truth:
     # a truncated echo made every marker in a correct report look unknown.
     evidence_index: dict | None = None
+    # key -> the numbers that key holds, for the cited-value check; None = off
+    evidence_values: dict | None = None
     # Trigger filing's period label as the extractor emits it ("2026-Q3", or
     # "FY2025" for an annual trigger); None disables the period_coverage gate.
     current_period: str | None = None
@@ -1120,6 +1201,7 @@ class GateEngine:
                 evidence_index=(ctx.evidence_index
                                 if ctx.evidence_index is not None
                                 else ctx.candidate_manifest.get("evidence_index")),
+                evidence_values=ctx.evidence_values,
             )
         if gate == "controls_conformance":
             return gate_controls_conformance(

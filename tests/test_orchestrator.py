@@ -953,7 +953,7 @@ class TestManifestHeader:
         orch, dispatch, clk, case_dir = build_env(tmp_path)
         orch.run()
         want = {"critic_c1": {"facts.json", "report.md", "model.json",
-                              "valuation.json"},
+                              "valuation.json", "forecast_assumptions.json"},
                 "critic_c2": {"forecast_assumptions.json", "model.json",
                               "valuation.json", "report.md"},
                 "critic_c3": {"report.md"},
