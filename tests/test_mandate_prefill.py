@@ -229,3 +229,10 @@ def test_draft_location(tmp_path):
     f = case / "mandate.proposed.json"
     (case / "mandate.json").write_text("{}")
     assert mp.accepted_path(f).name == "mandate.accepted.json"
+
+
+def test_segment_bounds_follow_the_ticker_mapping():
+    from coverageflow import mandate_prefill as mp
+    assert mp._mapping_segments("AMD") == ["Data Center", "Client and Gaming", "Embedded"]
+    assert "CCG" in mp._mapping_segments("INTC")
+    assert mp._mapping_segments("ZZZZ") == []

@@ -57,9 +57,29 @@ KNOWN_SEGMENT_BOUNDS = {
     "INTC": {"CCG": [-0.10, 0.12], "DCAI": [-0.05, 0.25], "NEX": [-0.05, 0.20],
              "Foundry": [-0.05, 0.30], "Altera": [-0.10, 0.15],
              "Mobileye": [-0.05, 0.20]},
-    "AMD": {"Data Center": [-0.05, 0.35], "Client": [-0.10, 0.20],
-            "Embedded": [-0.20, 0.05], "Gaming": [-0.15, 0.10]},
+    "AMD": {"Data Center": [-0.05, 0.35], "Client and Gaming": [-0.10, 0.20],
+            "Client": [-0.10, 0.20], "Embedded": [-0.20, 0.05],
+            "Gaming": [-0.15, 0.10]},
 }
+GENERIC_SEGMENT_BOUNDS = [-0.10, 0.20]
+
+
+def _mapping_segments(ticker: str) -> list[str]:
+    """Segment names the model engine will use for *ticker* (its mapping file).
+
+    The bounds must name exactly these segments: a bound for a segment the
+    mapping does not have (AMD's old "Client" and "Gaming") or a mapped
+    segment without a bound leaves the model role proposing growth that the
+    forecast gate cannot check.
+    """
+    from . import model_engine
+    try:
+        mapping = model_engine.load_mapping("v1", ticker=ticker)
+    except Exception:
+        return []
+    if str(mapping.get("ticker") or "").upper() not in ("", ticker.upper()):
+        return []
+    return list((mapping.get("canonical_series") or {}).get("segments") or [])
 
 Fetch = Callable[[str], bytes]
 
@@ -439,7 +459,9 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
             prov[f"assumptions.forecast_bounds.{k}"] = _entry(
                 fb[k], "default", "Existing default. Gross margin history is not available "
                 "in SEC filings data, so review it.")
-    segs = KNOWN_SEGMENT_BOUNDS.get(ticker)
+    known = KNOWN_SEGMENT_BOUNDS.get(ticker, {})
+    names = _mapping_segments(ticker) or list(known)
+    segs = {n: list(known.get(n, GENERIC_SEGMENT_BOUNDS)) for n in names}
     growth = hist.get("revenue_growth") or []
     ctx = (f" Consolidated fiscal-year revenue growth ranged from "
            f"{pt.pct(min(g for _, g in growth), 1)} to {pt.pct(max(g for _, g in growth), 1)} "
@@ -447,9 +469,11 @@ def propose_mandate(ticker: str, cutoff: str, fetch: Fetch | None = None,
     if segs:
         fb["segments"] = copy.deepcopy(segs)
         for name, b in segs.items():
+            origin = (f"Existing default bounds for {ticker}." if name in known
+                      else f"Generic default ({pt.pct(b[0], 0)} to {pt.pct(b[1], 0)}); "
+                           f"no {ticker}-specific bound for this segment.")
             prov[f"assumptions.forecast_bounds.segments.{name}"] = _entry(
-                b, "default", f"Existing default bounds for {ticker}. Segment history is not "
-                f"in SEC filings data.{ctx}")
+                b, "default", f"{origin} Segment history is not in SEC filings data.{ctx}")
     else:
         fb["segments"] = {}
         miss("assumptions.forecast_bounds.segments",
