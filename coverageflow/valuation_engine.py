@@ -723,6 +723,9 @@ def value_company(
         "target_basis": target_basis,
         "target_flag": None if within else "terminal_values_outside_tolerance",
         "upside": upside,
+        # citable as [EV:dcf.market_price]: the note states the price the
+        # upside and rating are measured against, and had no key for it
+        "market_price": assumptions.market_price,
         "rating": rating,
         "rating_bands": bands,
         "net_debt": bridge["net_debt"],
