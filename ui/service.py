@@ -286,7 +286,10 @@ def _rcase_summary(cd: Path) -> dict:
         "rounds_used": used.get("rounds", 0),
         "rounds_max": budget.get("rounds_max"),
         "elapsed_minutes": used.get("elapsed_minutes", 0.0),
-        "case_clock_started": pending.get("case_clock_started"),
+        # only a RUNNING case has a live clock; BLOCKED/EXHAUSTED/STOPPED
+        # cases keep their booked elapsed_minutes and stop counting
+        "case_clock_started": (pending.get("case_clock_started")
+                               if status == "RUNNING" else None),
         "case_minutes": budget.get("case_minutes"),
         "tokens_max_role": (max(tokens_by_role.values())
                             if tokens_by_role else 0),
@@ -1578,7 +1581,8 @@ def _case_summary(c: Case) -> dict:
         "rounds_used": st["budget"]["used"]["rounds"],
         "rounds_max": st["budget"]["rounds_max"],
         "elapsed_minutes": st["budget"]["used"]["elapsed_minutes"],
-        "case_clock_started": st["pending"].get("case_clock_started"),
+        "case_clock_started": (st["pending"].get("case_clock_started")
+                               if st["status"] == "RUNNING" else None),
         "case_minutes": st["budget"]["case_minutes"],
         "tokens_max_role": (max(tokens_by_role.values())
                             if tokens_by_role else 0),

@@ -88,7 +88,9 @@ class TestDemoModeDefault:
         rows = demo.get("/api/cases").json()["cases"]
         row = next(r for r in rows if r["case_id"] == "intc-fy2026q3-20261030")
         state = demo.get(f"/api/cases/{row['case_id']}").json()["state"]
-        assert row["case_clock_started"] == state["pending"]["case_clock_started"]
+        live = state["status"] == "RUNNING"
+        assert row["case_clock_started"] == (
+            state["pending"]["case_clock_started"] if live else None)
 
     def test_invalid_workspace_env_falls_back_to_demo(self, tmp_path,
                                                       monkeypatch):
@@ -116,9 +118,20 @@ class TestControllerMode:
         case_dir = real_ws / "cases" / "intc-fy2026q3-20261030"
         state = statestore.load_state(case_dir)
         state["pending"]["case_clock_started"] = "2026-11-10T12:00:00Z"
+        state["status"] = "RUNNING"
         monkeypatch.setattr(service, "_rstate", lambda _: state)
         row = controller.get("/api/cases").json()["cases"][0]
         assert row["case_clock_started"] == "2026-11-10T12:00:00Z"
+
+    def test_only_a_running_case_has_a_live_clock(self, controller, real_ws, monkeypatch):
+        # a stale clock start on a finished case must not keep the timer going
+        case_dir = real_ws / "cases" / "intc-fy2026q3-20261030"
+        state = statestore.load_state(case_dir)
+        state["pending"]["case_clock_started"] = "2026-11-10T12:00:00Z"
+        state["status"] = "EXHAUSTED"
+        monkeypatch.setattr(service, "_rstate", lambda _: state)
+        row = controller.get("/api/cases").json()["cases"][0]
+        assert row["case_clock_started"] is None
 
     def test_create_and_get_case_roundtrip_via_orchestrator(self, controller):
         r = controller.post("/api/cases", json=WIZARD)

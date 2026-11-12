@@ -728,7 +728,7 @@ function coverageQueue(rows) {
   rows.forEach(c => {
     const clock = h("span", { class: "queue-case-time" });
     let started = Date.parse(c.case_clock_started || "");
-    const runningClock = !c.interrupted && ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(c.status);
+    const runningClock = !c.interrupted && c.status === "RUNNING";
     let clockPending = runningClock && c.case_clock_started === undefined;
     let clockUnavailable = runningClock && !clockPending && !Number.isFinite(started);
     const updateClock = () => {
@@ -906,7 +906,7 @@ function renderCaseOverview(body, c) {
     const panel = labeledPanel(name, ...content); panel.classList.add(className); return panel;
   };
   const started = Date.parse(st.pending.case_clock_started || "");
-  const clockActive = Number.isFinite(started) && !c.interrupted && ["RUNNING", "BLOCKED", "EXHAUSTED"].includes(st.status);
+  const clockActive = Number.isFinite(started) && !c.interrupted && st.status === "RUNNING";
   const clockBox = h("div", { class: "case-progress-clock" });
   const updateClock = () => {
     const elapsed = Number(b.used.elapsed_minutes || 0) + (clockActive ? Math.max(0, Date.now() - started) / 60000 : 0);
