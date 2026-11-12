@@ -15,7 +15,7 @@ implementation decision. Changes require a new numbered decision entry.
 - **Demo companies:** Intel Corporation (primary, 12 verified EDGAR documents) and Advanced Micro Devices (second bundle for held-out / generality evidence). Bundles are frozen, hashed snapshots of EDGAR filings; the system accepts any company via the EDGAR bundle builder.
 - **Recurring triggers:** (1) new dated document arrival; (2) scheduled staleness check (report older than N days vs. newest available document); (3) human action (approve/reject/rollback/evolution deployment).
 - **Permitted sources & cutoffs:** only the frozen document bundle; no web/news/transcripts. Information cutoff stamped into the mandate; every artifact records cutoff + input manifest (doc IDs + SHA-256). No-leakage is proven by perturbation test.
-- **Work products:** model artifacts (facts/model/valuation JSON+CSV+xlsx), versioned research note (report.md → LaTeX PDF dossier + HTML snapshot), evidence trace, finding ledger, human approval record.
+- **Work products:** model artifacts (facts/model/valuation JSON+CSV+xlsx), versioned research note (report.md → LaTeX PDF research note + HTML snapshot), evidence trace, finding ledger, human approval record.
 - **Why persistent, not one-shot:** event-driven across days; interruption survival; repeated evaluation; carried-state revision loop; human approval pause/resume; evolvable system under regression testing.
 
 ## 2. Architecture (Requirement 2)
@@ -101,13 +101,14 @@ on submission; stale request_id rejected. No in-LLM tool calling in v1.
 
 ## 3. Loop design (Round B)
 
-- **Case states:** CREATED → RUNNING → PENDING_APPROVAL → APPROVED/REJECTED → CLOSED; terminal: BLOCKED, EXHAUSTED, STOPPED. EXHAUSTED never grants acceptance. ESCALATED (a fully reviewed candidate with objections the machine could not settle) waits for a human: PUBLISHED_WITH_EXCEPTIONS or REJECTED.
+- **Case states:** CREATED → RUNNING → PENDING_APPROVAL → APPROVED/REJECTED → CLOSED; terminal: BLOCKED, EXHAUSTED, STOPPED. EXHAUSTED never grants acceptance. ESCALATED (a fully reviewed candidate with objections the machine could not settle) waits for a human: PUBLISHED_WITH_EXCEPTIONS, REVISION_REQUESTED or REJECTED.
 - **Human decisions:** APPROVED (PENDING_APPROVAL only), PUBLISHED_WITH_EXCEPTIONS (ESCALATED only), REJECTED, and REVISION_REQUESTED (ESCALATED or PENDING_APPROVAL). REJECTED, PUBLISHED_WITH_EXCEPTIONS and REVISION_REQUESTED need written reasoning (at least 15 characters after trimming); APPROVED keeps it optional.
+- **Non-waivable findings:** PUBLISHED_WITH_EXCEPTIONS is refused while a finding from rubric checks C1.1, C1.2, C1.3, C2.1, C2.2, C3.1 or C3.2 (`ledger.NON_WAIVABLE_CHECKS`), or any gate finding, is open; the human must request a revision or reject. Judgment calls (C1.4, C2.3-C2.6, C4.x, human findings) stay waivable.
 - **Request revision:** the one non-terminal decision, for an approver who disagrees with the critics or an escalation. It carries human findings (owner writer/model/extractor, severity major/critical; system and mandate owners are refused and follow the needs_system_change / needs_mandate_change route) into the ledger as source `human`. They are repaired and verified like critic findings and never close on silence. It returns the case to RUNNING with the clean streak and stall history reset, the approval deadline cleared, and a recorded grant of 2 extra rounds. Rebuild starts at the earliest stage the findings' owners name. At most 2 per case; then the human publishes with exceptions or rejects.
 - **Acceptance:** all numerical gates pass; 2 consecutive clean full critic reviews of the same candidate (any change resets the streak); all carried findings closed by critic-verified repairs; human approval.
 - **Invalid submissions:** repair at the same role (new request, no round consumed); the repair budget (`retries_max`) bounds it, and exhausting it → EXHAUSTED.
 - **Blocks are re-runnable:** BLOCKED is terminal for the run, not the case. A re-run clears the block, resets the blocked role's repair budget and resumes from the last verified stage; only APPROVAL_EXPIRED requires a fresh decision. EXHAUSTED stays terminal — the budget is a hard safety control.
-- **Budgets:** 4 revision rounds; 3 retries per specialist dispatch; 45-minute case clock; per-role token cap (configurable). Checked at every dispatch; breach → EXHAUSTED with precise record.
+- **Budgets:** 6 review rounds plus 4 mechanical rounds; 3 retries per specialist dispatch; 120-minute case clock; per-role token cap, 1.2M by default (configurable; the original offline-demo values were 4 rounds, 45 minutes, 60k tokens, see `docs/live-run-hardening.md`). Checked at every dispatch; breach → EXHAUSTED with precise record.
 - **State-first transitions:** validate → write state + checkpoint atomically → trace. Only the Orchestrator writes control state. A conversation's last line never establishes completion — only verified artifact + written checkpoint does.
 - **Resume:** on startup, inspect identity + hashes; discard unverified partial output; re-dispatch pending role only; completed verified stages return saved artifacts; a completed case returns its saved result untouched.
 - **Stale approval:** approval deadline (48h, mandate-configurable); expiry → BLOCKED (APPROVAL_EXPIRED); re-approval restarts acceptance from zero. **Decision: restart acceptance (strict).**
@@ -167,10 +168,10 @@ through the controller — the UI never bypasses Orchestrator gates. No auth (lo
 
 ```
 report.md (master)
-  → model.xlsx   (openpyxl; Statements Model / DCF / Company Comparison / Ratios tabs,
+  → <case_id>-<version>-model.xlsx   (openpyxl; Statements Model / DCF / Company Comparison / Ratios tabs,
                   per supplied template conventions)
-  → dossier.pdf  (GS/MS-style LaTeX research note; pdflatex headless; TeX Live present)
-  → dossier.html (self-contained snapshot for browser/printing)
+  → <case_id>-<version>-dossier.pdf  (5-page LaTeX research note built from report_doc.py via render_note_tex.py; pdflatex headless; TeX Live present)
+  → <case_id>-<version>-dossier.html (self-contained snapshot, same report_doc via render_note_html.py)
 ```
 All renderers consume the same JSON evidence; exports cannot drift from the verified record.
 

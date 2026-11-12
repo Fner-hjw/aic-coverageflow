@@ -14,7 +14,7 @@ cases/<case_id>/
   request.json            rounds/round-NNN/{generator,numerical,critic}/...
   findings.json           state.json   trace.jsonl   result.json
   approvals/<decision-id>.json
-  report/v<N>-<candidate8>.md          export/{model.xlsx,dossier.pdf,dossier.html}
+  report/v<N>-<candidate8>.md          export/<case_id>-<version>-{model.xlsx,dossier.pdf,dossier.html,note.clean.md} (+ -DRAFT before approval)
   engine/                 replay/                 history/
 versions/registry.json    prompts/ (cards)       references/ (pinned knowledge)
 ```
@@ -228,6 +228,7 @@ open findings + required evidence + unchanged criteria + delta-scope statement.
  "ts":"...","reasoning":"...","expected_evidence_refs": [...]}
 ```
 `reasoning` is required (at least 15 characters) for every decision except APPROVED.
+PUBLISHED_WITH_EXCEPTIONS is refused while a non-waivable finding is open (rubric checks C1.1, C1.2, C1.3, C2.1, C2.2, C3.1, C3.2 and any gate finding).
 REVISION_REQUESTED is not terminal and writes no `result.json`; its record adds
 `finding_ids` (the human findings, ledger rows with `source_critic: "human"` and
 `raised_by`), `budget_grant` (+2 rounds), `revision_request` (1 or 2) and

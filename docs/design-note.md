@@ -11,7 +11,7 @@
 
 ![CoverageFlow coverage-update workflow](workflow-diagram.png)
 
-*(regenerate with `python scripts/gen_diagram.py`; pure matplotlib, no network).*
+*(regenerate with `python scripts/gen_diagram.py --svg`; pure matplotlib, no network; `workflow-diagram.svg` is the vector version).*
 
 One **coverage case** turns a dated, frozen, SHA-256-hashed EDGAR document bundle
 plus an **information cutoff** (Intel demo: 12 filings, cutoff `2026-10-30`;
@@ -95,7 +95,8 @@ terminal `BLOCKED`, `EXHAUSTED`, `STOPPED`. Exhaustion never grants acceptance.
 A candidate that passed every gate and was fully reviewed but could not settle
 its objections is `ESCALATED` for a human instead. The human gate has four
 decisions: `APPROVED` (only from `PENDING_APPROVAL`), `PUBLISHED_WITH_EXCEPTIONS`
-(only from `ESCALATED`), `REJECTED`, and `REVISION_REQUESTED`, which is the one
+(only from `ESCALATED`, and never over a non-waivable finding, see Human approval),
+`REJECTED`, and `REVISION_REQUESTED`, which is the one
 decision that is not terminal: it sends an `ESCALATED` or `PENDING_APPROVAL`
 case back to `RUNNING` (see Human approval below).
 
@@ -145,7 +146,7 @@ finding ledger (`ledger.py`) is append-only; closures require verified
 evidence; a critic that claims a resolution with a wrong hash cannot close
 anything (`tests/test_orchestrator.py::test_unverified_closure_does_not_close_finding`).
 
-**Bounded revision.** Revision is a budgeted loop, not a spiral: ≤ 4 rounds,
+**Bounded revision.** Revision is a budgeted loop, not a spiral: ≤ 6 review rounds (plus 4 mechanical),
 ≤ 3 retries/role, one write-scope per role, and a candidate-id that changes on
 *any* candidate artifact change, resetting the clean streak so the two-clean
 rule cannot be gamed by interleaving edits.
@@ -153,9 +154,11 @@ rule cannot be gamed by interleaving edits.
 **Human approval.** Acceptance never publishes: the case pauses in
 `PENDING_APPROVAL` with a deadline, and only a recorded human decision
 (who/when/what — `approvals/apr-NNNN.json`) produces the published report
-version `vA-<candidate8>` plus exports (`model.xlsx`,
-`dossier.pdf` via `coverageflow/export_dossier.py` + `references/dossier-template.tex`,
-`dossier.html`) from the *same* verified JSON — exports cannot drift from the
+version `vA-<candidate8>` plus exports named
+`<case_id>-<version>-<kind>[-DRAFT].<ext>` (`...-model.xlsx`,
+`...-dossier.pdf` and `...-dossier.html`: one structured document, `report_doc.py`, rendered by
+`render_note_tex.py` + `references/note-template.tex` and by `render_note_html.py`, wired by
+`note_build.py` and `export_dossier.py`) from the *same* verified JSON — exports cannot drift from the
 record.
 
 *Reasoning is required.* `REJECTED`, `PUBLISHED_WITH_EXCEPTIONS` and
@@ -163,6 +166,15 @@ record.
 orchestrator refuses them without written reasoning (at least 15 characters
 after trimming; "ok" and "Approved." do not count). A plain `APPROVED` after
 two clean reviews keeps its reasoning optional.
+
+*Non-waivable findings.* A human may publish over a judgment call but not over
+a finding that says the note states something false or untraceable.
+`ledger.NON_WAIVABLE_CHECKS` lists the rubric checks C1.1, C1.2, C1.3, C2.1,
+C2.2, C3.1 and C3.2; findings raised by a gate are never waivable either.
+While one is open `PUBLISHED_WITH_EXCEPTIONS` is refused and the approver must
+request a revision or reject. Judgment calls (C1.4, C2.3-C2.6, C4.x and human
+findings) stay waivable. The UI disables "Publish with exceptions" and marks
+such findings "Cannot be waived".
 
 *Request revision.* The approver may disagree with the critics, or with an
 escalation, without having to publish or reject. `REVISION_REQUESTED` takes
@@ -216,7 +228,7 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 | Gates | 7 numerical gates, deterministic, rerun per round; invalid submission repairs at role, budget-bounded | `gates.py` |
 | Finding ledger | append-only open/closed findings with critic-verified closure evidence (artifact + sha match) | `ledger.py`, `findings.json` |
 | Repair packets | findings + required evidence issued by orchestrator → full re-build round (fresh eyes) | `repair-packet.json`, `examples/run2-seeded-repair` |
-| Stop rules / budgets / resume | 4 rounds; 3 retries/role; 45 min; 60k tokens/role; 48 h approval; discard-unverified resume of pending role only | `budget.py`, `resume.py`, `examples/run3-kill-resume` |
+| Stop rules / budgets / resume | 6 review + 4 mechanical rounds; 3 retries/role; 120 min; 1.2M tokens/role; 48 h approval; discard-unverified resume of pending role only | `budget.py`, `resume.py`, `examples/run3-kill-resume` |
 | Verification & improvement | independent fresh critics; human approval gate; bounded revision; baseline regression; version registry + rollback; cutoff/no-leakage | §4 here, `examples/run4-perturbation`, `examples/run5-evolution` |
 | Version registry / evolution | `versions/registry.json`; evolvable = cards/tables/engines/templates (regression-proven), locked = controller/gates/acceptance/rubric; human approve + rollback | `registry.py`, `cli.py` (`evolve`) |
 | Evidence trail | per-case `trace.jsonl` with fixed event vocabulary; checkpoints; hashed inputs; replay recordings | contracts §2, `examples/run1-clean/…/trace.jsonl` |
@@ -232,7 +244,7 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 All five were produced offline by running the real controller + deterministic
 engines against the frozen Intel bundle (the agent role calls use the offline
 replay/stub dispatch, exactly what the demo control panel in the UI labels
-"scripted rehearsal"). Unit + regression suite — 976 tests — runs fully offline:
+"scripted rehearsal"). Unit + regression suite — 1053 tests — runs fully offline:
 `python -m pytest tests/`.
 
 ## 7. Second phase: what live runs changed in the design

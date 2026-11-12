@@ -35,7 +35,7 @@ they can become active.
 | `coverageflow/dispatch.py`, `_prompt_assembly.py` | A3 | RoleCall envelope, prompt assembly (preamble + role card + pinned references + bound request), strict output parsing, budget caps |
 | `coverageflow/backends/` | A3 | backend adapters: `claude`, `codex`, `kimi` headless CLIs, OpenAI-compatible `api`, `replay` recordings (+ recording wrapper) |
 | `coverageflow/bundle.py`, `slicer.py`, `model_engine.py`, `valuation_engine.py`, `export_xlsx.py` | A1 | EDGAR bundle snapshot/hashing; deterministic document slicing; model engine (canonical series, ~80 fields); valuation engine (DCF + comps + sensitivity); institutional 5-tab xlsx exporter |
-| `coverageflow/export_dossier.py` | **A5 (this stream)** | LaTeX/PDF dossier renderer from the verified artifacts (template: `references/dossier-template.tex`) |
+| `coverageflow/export_dossier.py` | **A5 (this stream)** | research-note export from the verified artifacts: `report_doc.py` (structured doc) -> `render_note_tex.py` (PDF, template `references/note-template.tex`) and `render_note_html.py` (self-contained HTML); wired through `note_build.py`, `export_dossier.py` and the UI export |
 | `ui/` (api, ws, service, static SPA) | A4 | FastAPI service + no-build vanilla-JS dashboard (run control, trace, findings, approval dossier, evolution, demo panel) |
 | `prompts/`, `references/` | A3/A1 | versioned role cards (ingest, extractor, model, writer, critics, leads); pinned references (harness preamble, critic rubric, model schema, segment mapping v1) |
 | `data/intel-bundle/`, `data/amd-bundle/` | A1 | frozen EDGAR snapshots (12 Intel docs; 10 AMD docs) with manifest + SHA-256 |
@@ -43,7 +43,7 @@ they can become active.
 | `docs/` | coordinator + **A5** | task spec, locked design record, graded design note, workflow diagram, frozen contracts |
 | `scripts/fetch_demo_bundles.py` | A1 | bundle builder for any new company |
 | `scripts/gen_diagram.py` | **A5** | regenerates `docs/workflow-diagram.png` (pure matplotlib) |
-| `tests/` | all streams | 976 tests, fully offline (replay/stub + unit fixtures) |
+| `tests/` | all streams | 1053 tests, fully offline (replay/stub + unit fixtures) |
 | `cases/`, `versions/` | — | runtime workspaces (created at run time; the evidence copies live under `examples/`) |
 
 ## Quick start (one command)
@@ -80,9 +80,15 @@ python3 -m venv .venv
 ```
 
 `requirements.txt`: `pytest`, `openpyxl`, `fastapi`, `uvicorn`, `httpx`,
-`websockets` (+ `matplotlib`, only used by `scripts/gen_diagram.py`).
-pdflatex (TeX Live 2026) is optional — it compiles `dossier.tex` into
-`dossier.pdf`; without it the `.tex` is the deliverable.
+`websockets` (+ `matplotlib`, used for the charts in the exported note and by `scripts/gen_diagram.py`; without it the note renders without charts).
+pdflatex (TeX Live 2026) is optional — it compiles
+`export/<case_id>-<version>-dossier.tex` into the matching `-dossier.pdf`, a 5-page note (cover with rating sidebar, results and segment exhibits, DCF, bridge, sensitivity, comps, football field, risks, sources and controls appendix); without it the `.tex` is the deliverable.
+Every export is named `<case_id>-<version>-<kind>[-DRAFT].<ext>` (`kind` is
+`dossier` for the PDF/HTML/TeX note, `model` for the workbook, `note` for the
+clean markdown), e.g. `amd-fy2026q3r3-20261104-v1-cand-aa8-dossier.pdf`, so a
+file taken out of the case folder still says which case and version it is;
+unapproved exports carry `-DRAFT` (or `-draft-` before any version exists).
+Non-final statuses carry a DRAFT watermark and a `PUBLISHED_WITH_EXCEPTIONS` case is rendered as such. The note needs the XCharter and Source Sans fonts (TeX Live) and the accent colour matches the UI.
 
 ## Running the workflow (CLI)
 
@@ -104,7 +110,10 @@ state files directly. Run from the repository root:
 
 # decisions: APPROVED | REJECTED | PUBLISHED_WITH_EXCEPTIONS (ESCALATED cases) | REVISION_REQUESTED.
 # REJECTED, PUBLISHED_WITH_EXCEPTIONS and REVISION_REQUESTED need --reason of at least 15
-# characters. REVISION_REQUESTED sends an ESCALATED or PENDING_APPROVAL case back to RUNNING with
+# characters. PUBLISHED_WITH_EXCEPTIONS is refused while a non-waivable finding is open (rubric
+# checks C1.1-C1.3, C2.1-C2.2, C3.1-C3.2, or any gate finding): request a revision or reject.
+# Judgment calls (C1.4, C2.3-C2.6, C4.x, human findings) remain waivable.
+# REVISION_REQUESTED sends an ESCALATED or PENDING_APPROVAL case back to RUNNING with
 # your objections as human findings (OWNER[/SEVERITY]:SUMMARY, owner writer|model|extractor), 2 extra
 # rounds, and at most 2 requests per case; then `run` continues the same case:
 .venv/bin/python -m coverageflow --workspace examples/run1-clean approve --case intc-fy2026q3-20261030 \
@@ -203,7 +212,7 @@ Role dispatches (per fresh call) use one backend, selected per case:
 - **CLI headless** — `claude -p` / `codex exec` / `kimi` / `vibe -p` (headless Mistral CLI, capped at $1.50 per call): uses the local CLI login, no API keys; auto-detection checks PATH (tests ship fake CLI fixtures).
 - **OpenAI-compatible API** — set `COVERAGEFLOW_BASE_URL`, `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (optionally `COVERAGEFLOW_CONFIG` for a JSON config file); the launcher writes the same fields to `.coverageflow.json`. Backend selection is the `--backend` flag on `run` / UI selection / auto-detection.
 - **Replay** — recorded responses matched by role + prompt hash; the whole test suite and the five evidence runs use the offline stub/replay dispatch ("scripted rehearsal" — real engines, scripted role responses).
-- **Stub** — `--backend stub`: the offline role responder with no recording requirement (the launcher's offline demo mode). The UI's Backends page selection governs runs launched from the case page.
+- **Stub** — `--backend stub`: the offline role responder with no recording requirement (the launcher's offline demo mode). The backend is pinned to the case on its first live run: a UI or CLI run uses the pinned backend, and an explicit different one is refused (409 in the UI). The Backends page selection only applies to a case with no pin.
 
 ```bash
 .venv/bin/python -m coverageflow backends     # report backend health/detection
@@ -215,7 +224,7 @@ Role dispatches (per fresh call) use one backend, selected per case:
 .venv/bin/python -m pytest tests/            # full suite, fully offline
 ```
 
-976 tests (controller state machine, gates, budget, resume, registry,
+1053 tests (controller state machine, gates, budget, resume, registry,
 engines, slicer, dispatch/prompt assembly, backends incl. record/replay
 roundtrip, xlsx and dossier exporters, FastAPI API, repair-loop economics).
 Live LLM access is never required to run the tests or the five offline
@@ -225,14 +234,14 @@ live Codex runs.
 ## Limitations / known gaps (honest list)
 
 - **Single-writer, single-workspace**: one orchestrator per case directory; no concurrent multi-case scheduling server, no auth on the UI (local tool).
-- **Live runs depend on your own CLI login**: runs 1-5 use the offline replay/stub dispatch. `examples/run6-amd-live/` is the curated record of live Codex runs on AMD (artifacts, ledger, trace); re-running it needs a logged-in `codex` CLI. The final AMD case reaches human review but is not an approved publication: see `docs/live-run-hardening.md` for what still stops it.
+- **Live runs depend on your own CLI login**: runs 1-5 use the offline replay/stub dispatch. `examples/run6-amd-live/` is the curated record of live Codex runs on AMD (artifacts, ledger, trace); re-running it needs a logged-in `codex` CLI. The final AMD case reaches human review but is not an approved publication: see `docs/live-run-hardening.md` for what still stops it, and for the later exception publication that today's rules would refuse.
 - **Extraction boundaries**: facts come from structured statement/segment slices via the deterministic slicer; MD&A-only disclosures are noted in `facts.json` `notes`, not modeled.
 - **Live mandate requirements**: `case new` on a live backend (not the stub or replay) refuses a mandate without `assumptions.market.price` (as_of <= cutoff) or with no usable `assumptions.peer_block.peers`, and prints an example. Optional `assumptions.rating_bands` = `{"buy": 0.15, "sell": -0.10}`: upside above `buy` is Buy, below `sell` is Sell, otherwise Hold (these are the defaults).
 - **Comps**: the demo mandate ships without a filled peer block, so comps-implied price is `null` and the DCF/comps tolerance cross-check is reported but not differential-priced; the gate and table renderers handle the empty case explicitly.
 - **CLI `ui`/`export` verbs** are placeholders (ui: use `python3 launch.py` or `uvicorn ui.api:app`; export: use the UI's Export buttons, or `python -m coverageflow.export_dossier`). The UI exports an escalated/unfinished case as a marked **unapproved draft**.
 - **Schema-light dispatch format checks**: submission validation pins the frozen wire-format keys per contract; full JSON-schema depth checks remain in the orchestrator's validation.
 - **Demo figures are fixture-real**, not guidance: the scripted extractor reports a hand-computed mini 10-Q set so the real model/valuation engines can run offline; live runs extract from the actual document slices.
-- Budget unit is tokens/duration/rounds; no monetary cost ledger yet.
+- Budget unit is tokens/duration/rounds. Optional USD caps (`call_cost_usd_max`, `case_cost_usd_max` in the mandate `limits`) are off by default and only bite when the backend reports a cost.
 
 ## Documentation map
 
@@ -254,7 +263,7 @@ frozen interfaces, integrated by a coordinator stream:
 - **A2 — controller**: orchestrator state machine, gates, budgets, findings ledger, verified resume, version registry, controller CLI (`coverageflow/{orchestrator,gates,budget,statestore,ledger,resume, registry,cli}.py`).
 - **A3 — agent layer**: RoleCall/dispatch, prompt assembly, backend adapters (CLI/API/replay), role cards and pinned references (`coverageflow/{dispatch,_prompt_assembly,backends/*}.py`, `prompts/`).
 - **A4 — web UI**: FastAPI service, WebSocket push, no-build SPA (`ui/`).
-- **A5 — docs & evidence (this stream)**: `requirements.txt`, `docs/design-note.md`, `docs/workflow-diagram.png` + `scripts/gen_diagram.py`, the five evidence runs under `examples/`, the LaTeX dossier template + renderer (`references/dossier-template.tex`, `coverageflow/export_dossier.py`, `tests/test_export_dossier.py`), and the top-level README.
+- **A5 — docs & evidence (this stream)**: `requirements.txt`, `docs/design-note.md`, `docs/workflow-diagram.png` + `scripts/gen_diagram.py`, the five evidence runs under `examples/`, the research-note template + renderers (`references/note-template.tex`, `coverageflow/report_doc.py`, `render_note_tex.py`, `render_note_html.py`, `coverageflow/export_dossier.py`, `tests/test_export_dossier.py`, `tests/test_report_doc.py`), and the top-level README.
 - **Coordinator**: contract authoring and freeze, stream integration, cross-stream test upkeep; A6 (integration phase) wires the remaining CLI verbs and controller-mode UI.
 
 All streams executed against the same frozen contracts; streams did not

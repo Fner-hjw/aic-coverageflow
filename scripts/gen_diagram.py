@@ -8,9 +8,13 @@ analyst steps are tan. After the gates, four critics review in parallel, the
 controller merges findings and decides: two clean reviews lead to analyst
 approval and publish, build-side findings loop back along the bottom to the
 earliest affected stage, engine/harness/mandate findings block, and a stalled
-run escalates to the analyst.
+run escalates to the analyst. At the human gate the analyst can also request a
+revision (from Approve or Escalated): the human findings re-enter the same
+repair loop, bounded to 2 requests per case with 2 extra rounds each. Publish
+with exceptions is refused over non-waivable findings.
 
-Pure matplotlib, deterministic output, 2400x1350 px.
+Pure matplotlib, deterministic output: 2480x1330 layout units, written as a
+2x PNG (4960x2660 px) and, with --svg, a vector SVG next to it.
 
 Usage:  python scripts/gen_diagram.py [--out docs/workflow-diagram.png]
 """
@@ -27,7 +31,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib import font_manager  # noqa: E402
 from matplotlib.patches import FancyBboxPatch, Polygon  # noqa: E402
 
-W, H, DPI = 2400, 1350, 200          # canvas in pixels; 1 data unit = 1 px
+W, H, DPI = 2480, 1330, 200          # canvas in pixels; 1 data unit = 1 px
 PT = 72 / DPI                        # pixels -> points
 
 INK = "#222222"
@@ -42,15 +46,15 @@ RED = "#9B3D3D"
 NAME_PX, SUB_PX, NOTE_PX = 20, 16, 15
 
 # Lane bands (top, bottom) and the row each lane's boxes sit on.
-LANES = {"analyst": (85, 360), "ctrl": (360, 700), "model": (700, 1100)}
+LANES = {"analyst": (85, 400), "ctrl": (400, 740), "model": (740, 1140)}
 LANE_LABELS = {"analyst": "Analyst", "ctrl": "Controller (Python)",
                "model": "Model calls\n(fresh context)"}
-Y_CTRL, Y_MODEL = 545, 890
+Y_CTRL, Y_MODEL = 585, 930
 
 # Layout table: key -> (style, cx, cy, w, h, name, sub)
 BOXES = {
     "prefill":  (CODE,    295, Y_CTRL, 200, 84, "Prefill mandate", "SEC filings, prices, peers"),
-    "review":   (ANALYST, 295, 225,    200, 84, "Review and accept", "edits recorded"),
+    "review":   (ANALYST, 295, 245,    200, 84, "Review and accept", "edits recorded"),
     "ingest":   (CODE,    505, Y_CTRL, 200, 84, "Ingest and slice", "filings"),
     "extract":  (MODEL,   610, Y_MODEL, 200, 84, "Extractor", "facts with citations"),
     "engine":   (CODE,    715, Y_CTRL, 200, 84, "Model engine", ""),
@@ -60,17 +64,18 @@ BOXES = {
     "gates":    (CODE,   1165, Y_CTRL, 230, 150, "Gates",
                  "cutoff, schema, periods,\nbounds, recompute,\nterminal check,\nevidence links, controls"),
     "merge":    (CODE,   1405, Y_CTRL, 200, 84, "Merge findings", "ledger, verified closures"),
-    "approve":  (ANALYST, 2010, 160,   200, 76, "Approve", ""),
-    "escalate": (ANALYST, 2010, 280,   200, 100, "Escalated", "publish with exceptions\nor reject"),
-    "publish":  (CODE,   2265, 445,    200, 84, "Publish", "note + clean export"),
-    "blocked":  (BLOCKED, 2010, Y_CTRL, 200, 84, "Blocked", "evolution input"),
+    "approve":  (ANALYST, 1990, 150,   190, 64, "Approve", ""),
+    "revise":   (ANALYST, 2210, 255,   200, 84, "Request revision", "max 2 per case,\n+2 rounds each"),
+    "escalate": (ANALYST, 1990, 330,   190, 96, "Escalated", "revise, reject or publish\nwith exceptions"),
+    "publish":  (CODE,   2350, 480,    200, 84, "Publish", "note + clean export"),
+    "blocked":  (BLOCKED, 1990, Y_CTRL, 190, 84, "Blocked", "evolution input"),
 }
 CRITICS = ["C1 evidence", "C2 robustness", "C3 timing", "C4 controls"]
 CRIT_CX, CRIT_W, CRIT_H = 1310, 160, 52
-CRIT_Y = [791 + 66 * i for i in range(4)]
+CRIT_Y = [831 + 66 * i for i in range(4)]
 DECIDE = (1600, Y_CTRL, 110, 100)    # diamond: cx, cy, w, h
 TRUNK_X = 1745
-Y_REPAIR = 1160
+Y_REPAIR = 1200
 
 
 def pick_font() -> str:
@@ -166,7 +171,7 @@ def draw(f: Fig) -> None:
     # critics (parallel, each fed only its own inputs)
     for name, cy in zip(CRITICS, CRIT_Y):
         f.box(CRIT_CX, cy, CRIT_W, CRIT_H, MODEL, name)
-    f.text(CRIT_CX, 1052, "run in parallel,\neach with only its own inputs", NOTE_PX, GREY)
+    f.text(CRIT_CX, 1092, "run in parallel,\neach with only its own inputs", NOTE_PX, GREY)
 
     # decision diamond
     dx, dy, dw, dh = DECIDE
@@ -205,44 +210,67 @@ def draw(f: Fig) -> None:
     # merge -> decide
     f.arrow([edge("merge", "right"), (dx - dw / 2, dy)])
 
-    # outcomes
+    # outcomes: one trunk from Decide, one branch per outcome
     f.line([(dx + dw / 2, dy), (TRUNK_X, dy)])
-    f.line([(TRUNK_X, 160), (TRUNK_X, Y_REPAIR), (455, Y_REPAIR)])
-    f.arrow([(TRUNK_X, 160), edge("approve", "left")])
-    f.arrow([(TRUNK_X, 280), edge("escalate", "left")])
+    f.line([(TRUNK_X, edge("approve", "left")[1]), (TRUNK_X, Y_REPAIR), (455, Y_REPAIR)])
+    f.arrow([(TRUNK_X, edge("approve", "left")[1]), edge("approve", "left")])
+    f.arrow([(TRUNK_X, edge("escalate", "left")[1]), edge("escalate", "left")])
     f.arrow([(TRUNK_X, dy), edge("blocked", "left")])
-    ax_, ay_ = edge("approve", "right")
-    f.arrow([(ax_, ay_), (2265, ay_), edge("publish", "top")])
-    ex, ey = edge("escalate", "bottom")
-    px, py = edge("publish", "left")
-    f.arrow([(ex, ey), (ex, py), (px, py)], dashed=True)
-    f.text(ex + 12, py - 40, "with exceptions\nbanner", NOTE_PX, GREY, ha="left")
     f.arrow([(455, Y_REPAIR), (455, edge("ingest", "bottom")[1])])
 
+    # Approve -> Publish, passing above the revision box
+    ar, at = edge("approve", "right")[0], edge("approve", "top")[1]
+    pub_x = edge("publish", "top", 50)[0]
+    f.arrow([(ar, at + 20), (pub_x, at + 20), edge("publish", "top", 50)])
+
+    # Approve / Escalated -> Request revision (a bracket into the box's top and bottom)
+    bx = edge("revise", "left")[0] + 40
+    f.arrow([(ar, at + 48), (bx, at + 48), (bx, edge("revise", "top")[1])])
+    er, ey = edge("escalate", "right")
+    f.arrow([(er, ey), (bx, ey), (bx, edge("revise", "bottom")[1])])
+
+    # human findings re-enter the loop: back to the trunk, between Approve and Escalated
+    rl, rly = edge("revise", "left")
+    f.arrow([(rl, rly), (TRUNK_X, rly)], dashed=True)
+
+    # Escalated -> Publish with exceptions
+    ex, eby = edge("escalate", "bottom")
+    px, py = edge("publish", "left")
+    f.arrow([(ex, eby), (ex, py), (px, py)], dashed=True)
+
     lx = TRUNK_X + 12
-    f.text(lx, 142, "2 clean reviews", NOTE_PX, GREY, ha="left")
-    f.text(lx, 262, "stalled or out\nof rounds", NOTE_PX, GREY, ha="left")
-    f.text(lx, dy - 24, "engine, harness or\nmandate findings", NOTE_PX, GREY, ha="left")
-    f.text(lx, 840, "writer, model or\nextractor findings", NOTE_PX, GREY, ha="left")
-    f.text(480, Y_REPAIR - 18, "repair from earliest affected stage", NOTE_PX, GREY, ha="left")
+    f.text(lx, edge("approve", "left")[1] - 18, "2 clean reviews", NOTE_PX, GREY, ha="left")
+    f.text(lx, rly - 18, "human findings re-enter the loop", NOTE_PX, GREY, ha="left")
+    f.text(lx, ey - 30, "stalled or\nout of rounds", NOTE_PX, GREY, ha="left")
+    f.text(lx, dy - 30, "engine, harness or\nmandate findings", NOTE_PX, GREY, ha="left")
+    f.text(ex + 14, (eby + py) / 2, "with exceptions banner;\nnot over correctness findings\n(C1.1-1.3, C2.1-2.2, C3, gates)",
+           NOTE_PX, GREY, ha="left")
+    f.text(480, Y_REPAIR - 18, "writer, model or extractor findings: repair from the earliest affected stage",
+           NOTE_PX, GREY, ha="left")
 
     # footer
-    f.line([(30, 1255), (W - 30, 1255)], RULE)
-    f.text(30, 1292, "Every step is recorded in state.json, trace.jsonl and the findings ledger. "
+    f.line([(30, 1250), (W - 30, 1250)], RULE)
+    f.text(30, 1287, "Every step is recorded in state.json, trace.jsonl and the findings ledger. "
            "Prompt cards, mapping tables and engines change only through the evolution loop, "
-           "with human approval.", 17, GREY, ha="left")
+           "with human approval. Reject, publish with exceptions and request revision need written reasoning.", 17, GREY, ha="left")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "docs" / "workflow-diagram.png"))
+    ap.add_argument("--svg", action="store_true", help="also write a vector .svg next to the PNG")
     args = ap.parse_args()
     f = Fig(pick_font())
     draw(f)
     f.check_fit()
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    f.fig.savefig(args.out, dpi=DPI, facecolor="white", metadata={"Software": None})
+    f.fig.savefig(args.out, dpi=2 * DPI, facecolor="white", metadata={"Software": None})
     print(f"wrote {args.out}")
+    if args.svg:
+        svg = Path(args.out).with_suffix(".svg")
+        plt.rcParams["svg.hashsalt"] = "coverageflow"      # deterministic ids
+        f.fig.savefig(svg, format="svg", facecolor="white", metadata={"Date": None, "Creator": None})
+        print(f"wrote {svg}")
 
 
 if __name__ == "__main__":

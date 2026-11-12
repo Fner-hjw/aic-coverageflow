@@ -42,7 +42,7 @@ cutoff 2026-10-30) → `run` (build → 7 gates → 4 critics → merge →
 2 clean rounds → `PENDING_APPROVAL`) → `approve --by "Gaetano Marco Chiantia"`
 → `gates` snapshot → dossier export
 (`python -m coverageflow.export_dossier`, writes `export/dossier.tex` +
-`dossier.pdf` from the verified artifacts). The case directory contains the
+`dossier.pdf` from the verified artifacts; the 2-page PDF committed in `run1-clean` was produced before the current 5-page note template, and `commands.sh` regenerates it with the current one). The case directory contains the
 complete evidence trail: `trace.jsonl` (96 events), `state.json` with the
 checkpoints, `approvals/apr-0001.json`, `report/v1-cand-43f.md`,
 engine artifacts per round, and `history/checkpoint-*.json`.

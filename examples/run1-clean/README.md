@@ -18,5 +18,5 @@ What to look at (in `cases/intc-fy2026q3-20261030/`):
 - `rounds/round-001` — generator artifacts (ingest, facts with per-number citations, forecast, engine `model.json`/`valuation.json`, report.md), `numerical/gates.json` (all 7 gates pass), critic verdicts (4x clean), merged-findings for round 1 and the re-review round 2 (same candidate, streak 2 -> acceptance).
 - `state.json` — CLOSED, `clean_review_rounds: 2`, budget usage.
 - `approvals/apr-0001.json` — human approval record.
-- `report/v1-cand-43f.md` + `export/dossier.tex|pdf` — the published note, every number rendered from the verified artifacts.
+- `report/v1-cand-43f.md` + `export/dossier.tex|pdf` — the published note, every number rendered from the verified artifacts. The committed PDF is the earlier 2-page layout; re-running the last command above writes the current 5-page note (`report_doc.py` + `references/note-template.tex`).
 - `out-*.txt` — captured CLI output for each step.

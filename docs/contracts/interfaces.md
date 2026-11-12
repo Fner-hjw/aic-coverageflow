@@ -66,7 +66,7 @@ python -m coverageflow case list
 python -m coverageflow run    [--case <id>] [--backend auto] [--replay] [--record]
 python -m coverageflow resume [--case <id>]          # verified resume of pending work only
 python -m coverageflow approve --case <id> --decision APPROVED|REJECTED|PUBLISHED_WITH_EXCEPTIONS|REVISION_REQUESTED --by "Name" [--reason "..."] [--acknowledge <finding-id>...] [--finding "OWNER[/SEVERITY]:SUMMARY"]...
-                                # --reason (>= 15 chars) required for all but APPROVED; --finding only for REVISION_REQUESTED (max 2 requests per case)
+                                # --reason (>= 15 chars) required for all but APPROVED; PUBLISHED_WITH_EXCEPTIONS is refused over non-waivable findings (C1.1-C1.3, C2.1-C2.2, C3.1-C3.2, gate findings); --finding only for REVISION_REQUESTED (max 2 requests per case)
 python -m coverageflow demo seed-finding|kill-stage|perturb --case <id> [--stage k]
 python -m coverageflow evolve prepare|propose|regress  # evo lifecycle
 python -m coverageflow export --case <id>             # xlsx + pdf + html

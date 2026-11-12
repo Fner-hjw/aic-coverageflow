@@ -17,6 +17,14 @@ ledger with owners), `trace.jsonl`, `rounds/round-N/numerical/gates.json`,
 critic reports, and `last-candidate/` (note, model, valuation, forecast,
 facts, manifest). `summary.json` has the headline numbers.
 
+Note on the AMD case after `e`: in the live workspace the case was later
+closed as `PUBLISHED_WITH_EXCEPTIONS` over `fnd-0007` (a C1.2 cited-value
+finding) with the reasoning "Approved.". That predates two rules: reasoning of
+at least 15 characters, and non-waivable findings (C1.1-C1.3, C2.1-C2.2,
+C3.1-C3.2 and gate findings). Under today's rules the publication would be
+refused; the curated `e` folder here still ends at `ESCALATED` and is
+unchanged. See `docs/live-run-hardening.md`.
+
 Reproduce (needs a logged-in `codex` CLI; spends model usage):
 
 ```
