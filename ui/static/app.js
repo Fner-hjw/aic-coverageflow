@@ -910,6 +910,17 @@ Views.case = async function (view, caseId, tab) {
 function caseNextAction(c) {
   const st = c.state, caseId = c.case_id;
   let title, message, action;
+  if (st.status === "EXHAUSTED") {
+    return h("section", { class: "block case-next" },
+      h("div", { class: "case-next-copy" }, h("span", { class: "eyebrow" }, "Next step"),
+        h("h2", null, "Run limit reached"),
+        h("p", null,
+          "A revision, case clock, or role token limit ran out. Granting more allowance resumes from the last verified stage. Limit exhaustion does not count as acceptance.")),
+      h("div", { class: "case-next-actions" },
+        h("button", { class: "btn primary", onclick: () => doRun(caseId, false, true) },
+          "Grant allowance and re-run"),
+        h("a", { class: "btn", href: `#/terminal/${caseId}` }, "Inspect the trace →")));
+  }
   if (st.status === "CREATED") {
     title = "Start the case";
     message = "Ready to start with the selected provider.";
@@ -926,7 +937,7 @@ function caseNextAction(c) {
     title = "Review the case";
     message = "The case is waiting for an approval decision.";
     action = h("a", { class: "btn primary", href: `#/case/${caseId}/approval` }, "Review and decide");
-  } else if (["BLOCKED", "EXHAUSTED"].includes(st.status)) {
+  } else if (st.status === "BLOCKED") {
     title = "Attention needed";
     message = "Review the case status and available next steps.";
     action = blockedGuidance(c, st);
@@ -964,8 +975,7 @@ function renderCaseOverview(body, c) {
   const updateClock = () => {
     const elapsed = Number(b.used.elapsed_minutes || 0) + (clockActive ? Math.max(0, Date.now() - started) / 60000 : 0);
     clockBox.replaceChildren(h("span", null, "Case time"),
-      h("strong", null, icon("clock"), duration(elapsed)),
-      h("small", null, clockActive ? "Clock is running" : "Recorded time"));
+      h("strong", null, icon("clock"), duration(elapsed)));
   };
   updateClock();
   if (clockActive) CASE_CLOCK_TIMER = setInterval(updateClock, 1000);
@@ -1105,20 +1115,6 @@ function blockedGuidance(c, st) {
         h("a", { class: "btn small", href: `#/terminal/${c.case_id}` },
           "Inspect the trace →")));
   }
-  if (st.status === "EXHAUSTED") {
-    return h("div", { class: "err-box mt2" },
-      h("b", null, "Run limit reached."),
-      h("p", { class: "mb0" },
-        "Revision rounds, the case clock, or a per-role token cap ran out. ",
-        "Exhaustion never grants acceptance, but it is a budget verdict, not a verdict on the work: ",
-        "granting one more allowance continues this same case from its last verified stage."),
-      h("div", { class: "row wrap mt2" },
-        h("button", { class: "btn primary small",
-          onclick: () => doRun(c.case_id, false, true) },
-          "▶ Grant one more allowance and re-run"),
-        h("a", { class: "btn small", href: `#/terminal/${c.case_id}` },
-          "Inspect the trace →")));
-  }
   return null;
 }
 
@@ -1150,7 +1146,6 @@ function deleteCaseControl(c) {
   const input = h("input", { type: "text", placeholder: caseId, autocomplete: "off",
                              spellcheck: "false", "aria-label": "Type the case ID to confirm" });
   const btn = h("button", { class: "btn danger", type: "button", disabled: "" }, "Delete case");
-  const msg = h("div");
   input.addEventListener("input", () => { btn.disabled = input.value.trim() !== caseId; });
   btn.addEventListener("click", async () => {
     btn.disabled = true;
@@ -1159,7 +1154,7 @@ function deleteCaseControl(c) {
       toast("Case deleted", r.moved_to ? `Moved to ${r.moved_to}. Move it back to restore it.` : caseId);
       location.hash = "#/dashboard";
     } catch (err) {
-      msg.replaceChildren(h("div", { class: "err-box" }, err.message || "Delete failed."));
+      toast(err.status === 405 ? "Not allowed" : requestErrorText(err), null, true);
       btn.disabled = input.value.trim() !== caseId;
     }
   });
@@ -1169,8 +1164,7 @@ function deleteCaseControl(c) {
     h("p", null, running
       ? "This case is running. Stop it before deleting."
       : "Removes the case from the workspace. The folder is kept under deleted/ so it can be restored. Type the case ID to confirm."),
-    h("div", { class: "control-actions" }, input, btn),
-    msg);
+    h("div", { class: "control-actions" }, input, btn));
 }
 
 async function doKill(caseId) {
