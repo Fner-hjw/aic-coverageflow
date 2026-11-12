@@ -81,6 +81,10 @@ _UNAVAILABLE_RE = re.compile(
     r"too many requests|\b429\b|billing|credit balance", re.I)
 
 
+DEFAULT_CODEX_MODEL = "gpt-6-luna"
+DEFAULT_CODEX_EFFORT = "high"
+
+
 class _TempFiles:
     """Cleanup handle for several temp files (the runner calls ``unlink``)."""
 
@@ -448,8 +452,7 @@ class ClaudeBackend(_CliBackendBase):
 class CodexBackend(_CliBackendBase):
     """`codex exec --json` (fresh, read-only, ephemeral); prompt on stdin.
 
-    Config: ``model`` ctor arg, else env ``CF_CODEX_MODEL``, else None (the
-    CLI's own default; ``--model`` omitted). ``reasoning_effort`` /
+    Config: ``model`` ctor arg, else env ``CF_CODEX_MODEL``, else gpt-6-luna. ``reasoning_effort`` /
     ``CF_CODEX_EFFORT`` likewise. ``json_schema`` (dict or JSON string) or
     ``call.budget["json_schema"]`` is passed as ``--output-schema <file>``.
     """
@@ -462,9 +465,12 @@ class CodexBackend(_CliBackendBase):
                  reasoning_effort: str | None = None,
                  json_schema: object = None) -> None:
         super().__init__(cli_path)
-        self.model = model or os.environ.get("CF_CODEX_MODEL") or None
+        # Pinned like the original adapter: GPT-6 Luna at high effort. With no
+        # --model the CLI used its own (heavier) default, which spent the
+        # ChatGPT usage allowance far faster on the long extraction calls.
+        self.model = model or os.environ.get("CF_CODEX_MODEL") or DEFAULT_CODEX_MODEL
         self.reasoning_effort = (
-            reasoning_effort or os.environ.get("CF_CODEX_EFFORT") or None)
+            reasoning_effort or os.environ.get("CF_CODEX_EFFORT") or DEFAULT_CODEX_EFFORT)
         self.json_schema = json_schema
 
     def _build_args(self, prompt: str, call: "RoleCall",

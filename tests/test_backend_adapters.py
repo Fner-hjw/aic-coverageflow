@@ -79,10 +79,12 @@ def test_codex_command_flags_and_stdin(tmp_path, monkeypatch):
     assert res.model == "gpt-test"
 
 
-def test_codex_model_from_env_and_no_default(tmp_path, monkeypatch):
+def test_codex_model_defaults_to_luna_high_and_env_overrides(tmp_path, monkeypatch):
     monkeypatch.delenv("CF_CODEX_MODEL", raising=False)
+    monkeypatch.delenv("CF_CODEX_EFFORT", raising=False)
     argv, res = _argv(tmp_path, monkeypatch, cli.CodexBackend())
-    assert "--model" not in argv and res.model is None
+    assert argv[argv.index("--model") + 1] == "gpt-6-luna" and res.model == "gpt-6-luna"
+    assert 'model_reasoning_effort="high"' in argv
     monkeypatch.setenv("CF_CODEX_MODEL", "env-model")
     assert cli.CodexBackend().model == "env-model"
 
