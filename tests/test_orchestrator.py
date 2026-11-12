@@ -472,7 +472,7 @@ class TestEvidenceLinkFailureIsASubmissionRepair:
         sent = dispatch.calls_of("writer")[1].payload["submission_feedback"]
         assert "lacks an evidence marker" in sent
         assert st["budget"]["used"]["retries_by_role"][
-            "writer:report_evidence_links"] == 1
+            "writer:report_evidence_links:r1"] == 1
 
     def test_exhausted_retries_fall_through_to_the_gate(self, tmp_path):
         orch, dispatch, clk, case_dir = build_env(

@@ -156,6 +156,15 @@ INGEST_INPUTS_SIDECAR = "ingest-inputs.sha256"
 # its own key so it is bounded by retries_max without eating the budget of
 # ordinary invalid submissions.
 _EVIDENCE_RETRY_KEY = "writer:report_evidence_links"
+
+
+def _evidence_retry_key(round_no: int) -> str:
+    """Evidence-link retries are budgeted per round: a retry spent in round 1
+    must not leave round 4 with none, which failed the round on four unmarked
+    numbers the writer would have fixed in one more pass."""
+    return f"{_EVIDENCE_RETRY_KEY}:r{round_no}"
+
+
 _EVIDENCE_FEEDBACK_PREFIX = "evidence-link gate: every number needs an [EV:<key>] marker. "
 
 # What each critic is contracted to read (see the --read line of its card).
@@ -327,17 +336,34 @@ def flagged_line_numbers(feedback: str) -> set[int]:
 
 
 def patch_flagged_lines(previous: str, new: str, flagged: set[int]) -> str:
-    """``previous`` with only the ``flagged`` lines taken from ``new``.
+    """``previous`` with only the changes that touch a ``flagged`` line.
 
-    Falls back to ``new`` unchanged when the two drafts differ in line count:
-    the writer restructured the note, so there is no line to line mapping.
+    A line diff of the two drafts: a changed block is kept from ``new`` only
+    when it replaces at least one flagged line of ``previous``; every other
+    change (a rewritten sentence, an added or dropped line elsewhere) is
+    reverted to ``previous``. Works when the writer reflowed the note. The
+    provenance header carries this request's id, so it is always the new one.
     """
+    import difflib
     a, b = previous.splitlines(), new.splitlines()
-    if not flagged or len(a) != len(b):
+    if not flagged:
         return new
-    out = [b[i] if (i + 1) in flagged else a[i] for i in range(len(a))]
+    ha, hb = gates._provenance_header_end(a), gates._provenance_header_end(b)
+    out: list[str] = list(b[:hb])
+    body_a, body_b = a[ha:], b[hb:]
+    flagged_body = {n - ha for n in flagged if n > ha}
+    ops = difflib.SequenceMatcher(None, body_a, body_b,
+                                  autojunk=False).get_opcodes()
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "equal":
+            out.extend(body_a[i1:i2])
+        elif any((k + 1) in flagged_body for k in range(i1, i2)):
+            out.extend(body_b[j1:j2])
+        else:
+            out.extend(body_a[i1:i2])
     tail = "\n" if new.endswith("\n") else ""
     return "\n".join(out) + tail
+
 
 class StopLoop(RuntimeError):
     """Internal control-flow signal: a terminal state was written mid-loop."""
@@ -1425,7 +1451,7 @@ class Orchestrator:
         if ok:
             return None
         used = int((budget.used.get("retries_by_role") or {})
-                   .get(_EVIDENCE_RETRY_KEY, 0))
+                   .get(_evidence_retry_key(arts.round), 0))
         if used >= budget.limits.retries_max:
             return None
         return (_EVIDENCE_FEEDBACK_PREFIX + "\n".join(
@@ -1436,7 +1462,7 @@ class Orchestrator:
                                     err: str) -> None:
         """Count a same-role evidence-link repair; it consumes no round."""
         p = state["pending"]
-        used = budget.note_retry(_EVIDENCE_RETRY_KEY)
+        used = budget.note_retry(_evidence_retry_key(p["round"]))
         p["retry_count"] += 1
         self._sync_budget(state, budget)
         self._persist(state)

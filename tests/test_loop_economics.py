@@ -54,9 +54,18 @@ def test_patch_only_restores_unflagged_lines():
     prev = "a 1\nb 2 [EV:x]\nc 3\n"
     new = "a 9 [EV:y]\nb 2 [EV:x]\nc 3 [EV:z]\n"
     assert patch_flagged_lines(prev, new, {3}) == "a 1\nb 2 [EV:x]\nc 3 [EV:z]\n"
-    # restructured note: no line mapping, the new draft stands
-    assert patch_flagged_lines(prev, new + "d\n", {3}) == new + "d\n"
+    # a reflowed note (extra line added elsewhere) still only keeps the fix
+    new2 = "intro\n" + new
+    assert patch_flagged_lines(prev, new2, {3}) == "a 1\nb 2 [EV:x]\nc 3 [EV:z]\n"
     assert flagged_line_numbers('numeric token "3" on line 3 lacks x; line 12') == {3, 12}
+
+
+def test_patch_only_always_takes_the_new_provenance_header():
+    hdr = "> **Cutoff:** 2026-11-04 · **Bundle:** b / s\n> **Candidate:** c · **Request:** {}\n"
+    prev = hdr.format("req-1") + "\nRevenue 12.7\n"
+    new = hdr.format("req-2") + "\nRevenue 12.7 [EV:a]\n"
+    out = patch_flagged_lines(prev, new, {4})
+    assert "req-2" in out and "[EV:a]" in out
 
 
 def test_unit_schema_is_strict_and_matches_required_keys():
