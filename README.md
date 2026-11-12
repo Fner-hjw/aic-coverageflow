@@ -1,278 +1,408 @@
 # CoverageFlow
 
-**Long-running agent workflow for maintaining sell-side equity coverage** —
-AI Coding in Finance (Fall 2026) final project.
+**A long-running agent workflow that keeps sell-side equity coverage up to date.**
+AI Coding in Finance (Fall 2026), final project.
 
-**Author:** Gaetano Marco Chiantia — **Student ID:** 25210660138
+**Author:** Gaetano Marco Chiantia · **Student ID:** 25210660138
+**Repository:** local Git repository (no hosted remote); the full development
+history is in the `.git/` directory included in the submission ZIP.
 
-CoverageFlow turns dated, frozen, SHA-256-hashed SEC-filing bundles plus an
-information cutoff into updated, independently verified, human-approved,
-versioned research notes for a covered company (demo: Intel `INTC`; AMD as a
-held-out second bundle). New dated documents trigger staged rebuilds —
-ingest → extraction → model → valuation → report — under a
-Generator/Critic revision loop with deterministic numerical gates,
-checkpointed state (kill any process, resume without repeating completed
-work), budget control, a finding ledger closed only by critic-verified
-repairs, a human approval gate before anything is published, and an
-evolution system that regression-tests changes to the system itself before
-they can become active.
+---
 
-| Deliverable | Where |
+## In one paragraph
+
+When a covered company files a new 10-Q, 10-K or 8-K, an analyst has to
+update the financial model, the valuation and the research note, check every
+number against the filing, and get the update approved before it goes out.
+CoverageFlow does that update as a **persistent, checkpointed case**: language
+models read the filings and write the note, **deterministic Python** does every
+calculation, **four independent critics** and **ten numerical gates** check the
+result, a **bounded revision loop** repairs what they find, and **a human
+approves** before anything is published. Every step is recorded, an
+interrupted run resumes without redoing finished work, nothing dated after the
+information cutoff can enter the case, and changes to the system itself are
+regression-tested before they become active. The output is a versioned,
+evidence-linked research note (PDF and HTML) plus an Excel model.
+
+![CoverageFlow workflow](docs/workflow-diagram.svg)
+
+*The workflow of one coverage update. Analyst lane (top): mandate review, the
+human decision (approve, request revision, reject, or publish with
+exceptions). Controller lane (middle): deterministic Python, including the
+engines and gates. Model-call lane (bottom): fresh-context agent calls. A PNG
+copy is at `docs/workflow-diagram.png`; `scripts/gen_diagram.py --svg`
+regenerates both.*
+
+## What it produces
+
+A sample output from a real run on AMD's Q3 FY2026 10-Q (live model calls,
+real filings), re-rendered from the case's saved artifacts:
+
+| Cover page | Valuation page |
 |---|---|
-| Requirement 1 — task spec | `docs/task-spec.md`, `docs/design-decisions.md` (locked design record) |
-| Requirement 2 — design of the long-running system | **`docs/design-note.md`** (graded design document, embeds `docs/workflow-diagram.png`, maps every element to the lecture concepts) |
-| Requirement 2 — evidence runs | **`examples/`** — five reproduced offline runs (clean update / seeded repair / kill+resume / no-leakage perturbation / evolution) and **`examples/run6-amd-live/`**, the live Codex runs on AMD that drove the second hardening phase |
-| Live-run hardening (what broke on real filings, what was changed, measured before/after) | **`docs/live-run-hardening.md`**, with the earlier loop diagnosis in `docs/diagnosis-2026-11-11.md` |
-| Frozen contracts | `docs/contracts/state-and-artifacts.md`, `docs/contracts/interfaces.md` |
+| ![Sample note, cover](docs/sample-note/cover.png) | ![Sample note, valuation](docs/sample-note/valuation.png) |
 
-## Repository guide
+- `docs/sample-note/amd-fy2026q3r3-20261104-v1-cand-aa8-dossier.pdf`: the
+  5-page note (cover with rating sidebar; results and segment exhibits; DCF,
+  EV bridge, WACC × growth sensitivity, peer comps, football field; risks;
+  sources and controls appendix with input hashes, evidence references and
+  the decision record).
+- `...-dossier.html`: the same note as one self-contained HTML file.
+- `...-model.xlsx`: the Excel model (statements, DCF, comps, ratios).
 
-| Path | Owner stream | What it is |
+This particular case was *published with exceptions*: the human approver
+signed off over one open critic finding (fnd-0007, a cited value that did not
+match its evidence key). The note says so on its cover and in its appendix.
+That episode led to two of the last changes: the gate that now catches this
+error class, and a rule that forbids publishing over it (see
+[Human decision](#5-human-decision-the-only-route-to-publication) below).
+
+## How it works
+
+### 1. A case and its inputs
+
+A **case** is one coverage update: a ticker, a trigger filing, an
+**information cutoff date**, a **frozen input bundle** (SEC filings
+snapshotted from EDGAR with SHA-256 hashes, `data/*-bundle/`) and a
+**mandate** (valuation assumptions, forecast bounds, budgets). The mandate is
+human-owned: market data (price, peers, beta, risk-free rate) can be
+prefilled by code with provenance, but a person must review and accept it
+before the case can run.
+
+### 2. Generators: agents that read and write, engines that compute
+
+| Stage | Who | Output |
 |---|---|---|
-| `coverageflow/orchestrator.py` | A2 | the state machine: build/gates/critics/merge/repair loop, budgets, acceptance, approval gate (pure Python, no LLM) |
-| `coverageflow/budget.py`, `statestore.py`, `ledger.py`, `resume.py`, `registry.py` | A2 | budgets; atomic JSON+JSONL writes with hashes; append-only finding ledger; verified resume planner; version registry |
-| `coverageflow/gates.py`, `cli.py` | A2 | the 7 numerical gates; the controller CLI (`python -m coverageflow …`) |
-| `coverageflow/dispatch.py`, `_prompt_assembly.py` | A3 | RoleCall envelope, prompt assembly (preamble + role card + pinned references + bound request), strict output parsing, budget caps |
-| `coverageflow/backends/` | A3 | backend adapters: `claude`, `codex`, `kimi` headless CLIs, OpenAI-compatible `api`, `replay` recordings (+ recording wrapper) |
-| `coverageflow/bundle.py`, `slicer.py`, `model_engine.py`, `valuation_engine.py`, `export_xlsx.py` | A1 | EDGAR bundle snapshot/hashing; deterministic document slicing; model engine (canonical series, ~80 fields); valuation engine (DCF + comps + sensitivity); institutional 5-tab xlsx exporter |
-| `coverageflow/export_dossier.py` | **A5 (this stream)** | research-note export from the verified artifacts: `report_doc.py` (structured doc) -> `render_note_tex.py` (PDF, template `references/note-template.tex`) and `render_note_html.py` (self-contained HTML); wired through `note_build.py`, `export_dossier.py` and the UI export |
-| `ui/` (api, ws, service, static SPA) | A4 | FastAPI service + no-build vanilla-JS dashboard (run control, trace, findings, approval dossier, evolution, demo panel) |
-| `prompts/`, `references/` | A3/A1 | versioned role cards (ingest, extractor, model, writer, critics, leads); pinned references (harness preamble, critic rubric, model schema, segment mapping v1) |
-| `data/intel-bundle/`, `data/amd-bundle/` | A1 | frozen EDGAR snapshots (12 Intel docs; 10 AMD docs) with manifest + SHA-256 |
-| `examples/` | **A5** | the five evidence runs, each self-contained and reproducible (`examples/README.md`) |
-| `docs/` | coordinator + **A5** | task spec, locked design record, graded design note, workflow diagram, frozen contracts |
-| `scripts/fetch_demo_bundles.py` | A1 | bundle builder for any new company |
-| `scripts/gen_diagram.py` | **A5** | regenerates `docs/workflow-diagram.png` (pure matplotlib) |
-| `tests/` | all streams | 1053 tests, fully offline (replay/stub + unit fixtures) |
-| `cases/`, `versions/` | — | runtime workspaces (created at run time; the evidence copies live under `examples/`) |
+| Ingest and slice | controller code (deterministic slicer) | statement slices per filing |
+| Extraction | **extractor** agent, fanned out per statement | `facts.json`: every figure with a citation (doc, slice, anchor) |
+| Model | **model** agent proposes segment growth and margin paths within mandate bounds; the **model engine** (Python) builds ~80 canonical series | `forecast_assumptions.json`, `model.json` |
+| Valuation | **valuation engine** (Python): DCF with Gordon and exit-multiple terminal values, comps, sensitivity, rating | `valuation.json` |
+| Note | **writer** agent; every number must carry an `[EV:<key>]` evidence marker | `report.md` |
 
-## Quick start (one command)
+Agents never do arithmetic that matters: they propose and describe, the
+engines compute. Each agent call is a fresh context with a versioned role
+card (`prompts/`), pinned references (`references/`) and only the inputs its
+role needs.
+
+### 3. Checks independent of the producer
+
+- **Ten deterministic gates** (`coverageflow/gates.py`): input cutoff, facts
+  schema, citation presence, period coverage, forecast bounds, candidate
+  manifest integrity, recompute, terminal reconciliation, report evidence
+  links (every number cites a key, and the cited key holds that value), and
+  controls conformance.
+- **Four critics**, run in parallel, each with its own checklist from the
+  locked rubric (`references/critic-rubric-v1.1.md`): C1 evidence, C2
+  robustness of the numbers, C3 timing and cutoff, C4 controls and risks.
+- **Findings ledger** (`findings.json`): every finding gets a unique ID, a
+  severity and an **owner** (writer, model, extractor, system or mandate). A
+  finding is closed only when a critic verifies the repair against the
+  artifact's SHA-256, never because a critic stopped mentioning it.
+
+### 4. The bounded revision loop
+
+Open findings owned by a role become a **repair packet**, and the case
+rebuilds from the earliest stage those findings touch. A writer-only gate
+failure is repaired at the writer without spending a review round. Findings
+owned by the system or the mandate stop the case (`BLOCKED`) and become input
+for an evolution proposal, since no rebuild can fix them. The loop ends in
+one of four ways:
+
+- **Accepted:** two consecutive clean reviews of the same candidate →
+  `PENDING_APPROVAL`.
+- **Escalated:** rounds run out or progress stalls with a fully reviewed
+  candidate → `ESCALATED`, for a human to adjudicate.
+- **Exhausted:** a budget (tokens, minutes, retries) is breached → `EXHAUSTED`;
+  a human can grant more budget explicitly.
+- **Blocked:** missing inputs, an unavailable backend, or a defect no role can
+  repair → `BLOCKED` with a precise reason.
+
+### 5. Human decision: the only route to publication
+
+| Decision | When | Effect |
+|---|---|---|
+| **Approve** | after two clean reviews | publishes `report/vN-<candidate>.md`, case `CLOSED` |
+| **Request revision** | pending approval or escalated | your objections enter the ledger as human findings with an owner; up to 2 requests per case, +2 rounds each; the critics verify the fix like any other finding |
+| **Reject** | any time at the gate | case closed, nothing published |
+| **Publish with exceptions** | escalated only | published under a banner listing every open finding, recorded as `PUBLISHED_WITH_EXCEPTIONS`, never `APPROVED` |
+
+Reject, request revision and publish with exceptions need written reasoning
+(at least 15 characters). **Correctness findings cannot be waived**: if an
+open finding says a number has no source or a wrong one (C1.1-C1.3), differs
+from the engines or breaks the bounds (C2.1-C2.2), uses post-cutoff
+information (C3), or comes from a gate, publishing with exceptions is refused
+and the approver must request a revision or reject. Judgment calls stay
+waivable.
+
+### 6. Long-running operation
+
+- **State and checkpoints:** `state.json` with `history/checkpoint-*.json`,
+  an append-only `trace.jsonl` with a fixed event vocabulary, and every
+  artifact written atomically with its SHA-256.
+- **Resume:** kill the process at any point; `resume` verifies what is on
+  disk, discards torn partial writes and re-dispatches only the pending role
+  (evidence run 3).
+- **Request binding:** every dispatch gets a request ID the agent must echo;
+  stale answers are rejected.
+- **Budgets:** per-role tokens, case minutes, review rounds (6) plus
+  mechanical rounds (4), retries per role (3), per-call timeouts, an approval
+  deadline (48 h), optional USD caps. A breach ends the case `EXHAUSTED`,
+  never accepted.
+- **Backend pinning:** a case keeps the backend it was started with (offline
+  stub, replay, a headless CLI such as Claude Code or Codex, or an
+  OpenAI-compatible API); the CLI and the UI refuse to switch it silently.
+- **Triggers:** a new dated filing opens a new case; the writer receives the
+  previous published note and its headline values as `prior.*` evidence.
+
+### 7. No future-information leakage
+
+The cutoff is enforced in code: the input manifest is gated against it,
+market data is taken only as of the cutoff, SEC company facts only if filed on
+or before it, and critic C3 checks the note for post-cutoff references.
+Evidence run 4 injects a post-cutoff 8-K and shows the gate rejecting it.
+
+### 8. Improving the system safely (evolution)
+
+Prompt cards, mapping tables and engine versions live in a version registry.
+A proposed change is regression-tested against a fixed baseline case, needs
+human approval to become the active version, is refused if it touches the
+locked controller scope, and can be rolled back (evidence run 5).
+
+## Where each requirement is answered
+
+| Requirement | Where |
+|---|---|
+| 1. Task specification (user, process, stages, triggers, inputs, cutoffs, products, acceptance) | `docs/task-spec.md`; locked design record in `docs/design-decisions.md` |
+| 2. Architecture: diagram and design note mapped to the lecture concepts | `docs/workflow-diagram.svg` / `.png`, **`docs/design-note.md`** |
+| 2. Roles, handoffs, deterministic code vs agent decisions | design note §roles; `prompts/`, `coverageflow/orchestrator.py`, engines |
+| 2. Long-running operation (state, resume, retries, stops, limits) | design note; `statestore.py`, `resume.py`, `budget.py`; evidence run 3 |
+| 2. Verification and improvement (independent checks, human approval, bounded loop, baseline testing, versioning, rollback, leakage) | design note; `gates.py`, `ledger.py`, `registry.py`; evidence runs 1, 2, 4, 5 |
+| 3. Code, prompts, configuration, example inputs and outputs | this repository; `examples/`, `docs/sample-note/` |
+| 3. Evidence of verification and recovery | `examples/run1` to `run5` (offline, reproducible), `examples/run6-amd-live` (live runs) |
+| What live runs exposed and what was changed | `docs/live-run-hardening.md`, `docs/diagnosis-2026-11-11.md` |
+
+## Quick start
 
 ```bash
 python3 launch.py
 ```
 
-The launcher does everything: creates the virtualenv and installs
-dependencies on first run, asks **once** which backend role dispatch should
-use — **offline demo** (no account, no keys, everything runs for real
-except the model calls, which are canned), an **OpenAI-compatible API**
-(Mistral, OpenAI, …), or a **headless CLI** logged in on the machine
-(`claude` / `codex` / `kimi` / `vibe` — the Mistral CLI) — creates a
-workspace, seeds a ready-to-run Intel demo case, starts the web UI and
-opens it. Answers are saved to `.coverageflow-launch.json`
-(`--configure` to redo them; API credentials land in
-`.coverageflow.json`, which is gitignored). Stop with `Ctrl+C`.
+The launcher creates the virtualenv and installs dependencies on first run,
+asks once which backend to use (**offline demo** needs no account or keys:
+everything runs for real except the model calls, which are scripted; or an
+OpenAI-compatible API; or a logged-in headless CLI: `claude`, `codex`, `kimi`,
+`vibe`), creates a workspace with a ready-to-run Intel case, starts the web
+UI and opens it. Answers are saved to `.coverageflow-launch.json`
+(`--configure` to redo them). Flags: `--port N`, `--no-browser`, `--yes`.
 
-Flags: `--port N`, `--no-browser`, `--yes` (accept all defaults),
-`--configure`.
+In the UI: open the Intel case, press **Run**, watch the rounds, gates,
+critics and trace, then decide on the **Approval** tab and export the note
+as PDF, HTML or Excel.
 
-## Setup
+### Manual setup
 
-Python 3.11+ (stdlib-first codebase). Everything runs offline — the entire
-test suite and all evidence runs need no network access.
+Python 3.11+. The test suite and the five offline evidence runs need no
+network access.
 
 ```bash
-cd coverageflow            # the repository root
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-# run things through the package:
-.venv/bin/python -m coverageflow --help
+.venv/bin/python -m pytest -q            # 1053 tests, offline
 ```
 
 `requirements.txt`: `pytest`, `openpyxl`, `fastapi`, `uvicorn`, `httpx`,
-`websockets` (+ `matplotlib`, used for the charts in the exported note and by `scripts/gen_diagram.py`; without it the note renders without charts).
-pdflatex (TeX Live 2026) is optional — it compiles
-`export/<case_id>-<version>-dossier.tex` into the matching `-dossier.pdf`, a 5-page note (cover with rating sidebar, results and segment exhibits, DCF, bridge, sensitivity, comps, football field, risks, sources and controls appendix); without it the `.tex` is the deliverable.
-Every export is named `<case_id>-<version>-<kind>[-DRAFT].<ext>` (`kind` is
-`dossier` for the PDF/HTML/TeX note, `model` for the workbook, `note` for the
-clean markdown), e.g. `amd-fy2026q3r3-20261104-v1-cand-aa8-dossier.pdf`, so a
-file taken out of the case folder still says which case and version it is;
-unapproved exports carry `-DRAFT` (or `-draft-` before any version exists).
-Non-final statuses carry a DRAFT watermark and a `PUBLISHED_WITH_EXCEPTIONS` case is rendered as such. The note needs the XCharter and Source Sans fonts (TeX Live) and the accent colour matches the UI.
+`websockets`, `matplotlib` (charts in the note and the diagram; the note
+renders without charts if it is missing). The PDF needs `pdflatex` (TeX Live
+with the XCharter and Source Sans fonts); without it the `.tex` source is the
+deliverable.
 
-## Running the workflow (CLI)
+## Walkthrough (CLI)
 
-All controller actions go through the orchestrator — the CLI never writes
-state files directly. Run from the repository root:
+All controller actions go through the orchestrator; the CLI never writes
+state files directly.
 
 ```bash
+WS=examples/run1-clean; CASE=intc-fy2026q3-20261030
+
 # 1) create a case from the frozen Intel bundle (cutoff = filing date)
-.venv/bin/python -m coverageflow --workspace examples/run1-clean case new \
+.venv/bin/python -m coverageflow --workspace $WS case new \
     --ticker INTC --period fy2026q3 --trigger-doc intc-10q-2026q3 \
-    --cutoff 2026-10-30 --manifest examples/run1-clean/inputs-manifest.json
+    --cutoff 2026-10-30 --manifest $WS/inputs-manifest.json
 
-# 2) run the loop: build -> gates -> 4 fresh critics -> merge -> acceptance
-.venv/bin/python -m coverageflow --workspace examples/run1-clean run --case intc-fy2026q3-20261030
+# 2) run the loop: build -> gates -> 4 critics -> merge -> repair or accept
+.venv/bin/python -m coverageflow --workspace $WS run --case $CASE
 
-# 3) the human gate: the only route to publication
-.venv/bin/python -m coverageflow --workspace examples/run1-clean approve --case intc-fy2026q3-20261030 \
-    --decision APPROVED --by "Gaetano Marco Chiantia" --reason "Quarterly update verified."
-
-# decisions: APPROVED | REJECTED | PUBLISHED_WITH_EXCEPTIONS (ESCALATED cases) | REVISION_REQUESTED.
-# REJECTED, PUBLISHED_WITH_EXCEPTIONS and REVISION_REQUESTED need --reason of at least 15
-# characters. PUBLISHED_WITH_EXCEPTIONS is refused while a non-waivable finding is open (rubric
-# checks C1.1-C1.3, C2.1-C2.2, C3.1-C3.2, or any gate finding): request a revision or reject.
-# Judgment calls (C1.4, C2.3-C2.6, C4.x, human findings) remain waivable.
-# REVISION_REQUESTED sends an ESCALATED or PENDING_APPROVAL case back to RUNNING with
-# your objections as human findings (OWNER[/SEVERITY]:SUMMARY, owner writer|model|extractor), 2 extra
-# rounds, and at most 2 requests per case; then `run` continues the same case:
-.venv/bin/python -m coverageflow --workspace examples/run1-clean approve --case intc-fy2026q3-20261030 \
-    --decision REVISION_REQUESTED --by "Gaetano Marco Chiantia" \
+# 3) the human gate
+.venv/bin/python -m coverageflow --workspace $WS approve --case $CASE \
+    --decision APPROVED --by "Your Name" --reason "Quarterly update verified."
+#    or send it back with your own findings:
+.venv/bin/python -m coverageflow --workspace $WS approve --case $CASE \
+    --decision REVISION_REQUESTED --by "Your Name" \
     --reason "Valuation paragraph ignores the buyback; the critics missed it." \
     --finding "writer:Valuation ignores the Q3 buyback"
 
-# other verbs: case list | resume | gates | demo seed-finding|kill-stage|perturb |
-# evolve prepare|propose|regress|approve|rollback | backends | export-dossier:
-.venv/bin/python -m coverageflow --workspace examples/run1-clean gates --case intc-fy2026q3-20261030
-.venv/bin/python -m coverageflow.export_dossier --case examples/run1-clean/cases/intc-fy2026q3-20261030
+# 4) export the note (PDF + .tex + clean markdown) from the verified artifacts
+.venv/bin/python -m coverageflow.export_dossier --case $WS/cases/$CASE
+
+# other verbs: case list|prefill|review|accept|stop · resume · gates · backends
+#   demo seed-finding|kill-stage|perturb · evolve prepare|propose|regress|approve|rollback
 ```
 
-Each case leaves a complete evidence trail: `cases/<case_id>/trace.jsonl`
-(fixed event vocabulary), `state.json` + `history/checkpoint-*.json`,
-`findings.json`, per-round generator/critic/numerical artifacts,
-`approvals/`, `report/`, `export/`.
+Each case leaves its full record under `cases/<case_id>/`: `mandate.json`,
+`state.json` + `history/`, `trace.jsonl`, `findings.json`, `rounds/round-NNN/`
+(generator artifacts, critic reports, repair packets), `approvals/`,
+`report/` and `export/`. Exports are named
+`<case_id>-<version>-<kind>[-DRAFT].<ext>` (`dossier` for the note, `model`
+for the workbook), so a file taken out of the folder still identifies its
+case and version; anything not yet approved carries `-DRAFT` and a watermark.
 
-### The five evidence runs (walkthrough)
+## Evidence runs
 
-All five were produced by actually running the system offline (offline
-replay/stub dispatch + the real deterministic engines) and are committed
-with their outputs. **Start at `examples/README.md`**; reproduce any of them
-with its `commands.sh`:
+Start at `examples/README.md`; each offline run has a `commands.sh` that
+reproduces it with the real engines and scripted model responses.
 
-1. **run1 — clean end-to-end update** (`examples/run1-clean`): create → run (7 gates pass, 4 critics clean, 2 clean full reviews of the same candidate) → `PENDING_APPROVAL` → human approval → `CLOSED`, plus the LaTeX dossier export (`export/dossier.pdf`).
-2. **run2 — seeded finding → critic-verified closure** (`examples/run2-seeded-repair`): `demo seed-finding` opens `fnd-001`; the critic contexts carry it; it closes only against artifact+SHA-256 evidence (`FINDING_VERIFIED_CLOSED` ×4 in the trace).
-3. **run3 — kill mid-run → resume** (`examples/run3-kill-resume`): the run dies during a role dispatch (dangling request visible in the trace); `demo kill-stage` writes the torn partial a real crash leaves; `resume` discards it to `discarded/` and re-dispatches **only the pending role** (`out-evidence-check.txt`: `ALL_CHECKS_PASS: true`).
-4. **run4 — cutoff / no-leakage perturbation** (`examples/run4-perturbation`): `demo perturb` proves deterministic re-runs and clean cutoff; a post-cutoff 8-K injected into the manifest is **rejected by the gate** (exit 1); outputs are byte-identical before/after.
-5. **run5 — evolution, 3-part demo** (`examples/run5-evolution`): scoped change → regression → human APPROVE (active pointer swap); over-broad proposal touching locked controller scope → approve **refused** + REJECT recorded; second approved version → authorized **rollback** → and a verification case run under the rolled-back version.
+1. **run1, clean update** (`examples/run1-clean`): create → run → all gates
+   pass, two clean reviews → `PENDING_APPROVAL` → human approval → `CLOSED`,
+   plus the export.
+2. **run2, seeded finding → verified closure** (`examples/run2-seeded-repair`):
+   a seeded finding is carried to the critics and closes only against
+   artifact + SHA-256 evidence.
+3. **run3, kill mid-run → resume** (`examples/run3-kill-resume`): the run dies
+   during a dispatch; `resume` discards the torn write and re-dispatches only
+   the pending role.
+4. **run4, no-leakage perturbation** (`examples/run4-perturbation`): re-runs
+   are byte-identical, and a post-cutoff 8-K injected into the manifest is
+   rejected by the gate.
+5. **run5, evolution** (`examples/run5-evolution`): a scoped change passes
+   regression and is approved; an over-broad change is refused; an approved
+   version is rolled back and a case runs under the rolled-back version.
+6. **run6, live AMD runs** (`examples/run6-amd-live`): five live Codex cases on
+   AMD's filings, from the first exhausted run to the last escalated one, which
+   drove the hardening documented in `docs/live-run-hardening.md`.
 
-## Running the web UI
+## Development history
+
+The Git history (about 180 commits, 9-12 November 2026) has three phases:
+
+- **Build (9-10 Nov):** contracts first, then the controller, gates, budgets,
+  ledger and resume; the agent layer and backends; the engines and slicer;
+  the web UI; the five offline evidence runs and the design note.
+- **First live diagnosis (11 Nov):** a live Intel case that never converged
+  was analysed (`docs/diagnosis-2026-11-11.md`). Fixes: unique ledger IDs,
+  finding owners with partial rebuilds, critic-verified closure only,
+  role-scoped compact prompts, the stall rule, `ESCALATED` as its own
+  status, mandate prefill with provenance, input sanitising.
+- **Live hardening and the human loop (12 Nov):** live AMD runs drove
+  extraction fan-out, writer repairs without spending rounds, engine
+  repairs, budgets from measurements (`docs/live-run-hardening.md`). Then:
+  the cited-value gate, a fix for critic repairs being rejected as stale,
+  backend pinning in the UI, **request revision**, required reasoning,
+  **non-waivable correctness findings**, and the **redesigned PDF/HTML
+  research note**.
+
+## Web UI
+
+`python3 launch.py`, or manually:
 
 ```bash
-python3 launch.py          # recommended: setup + workspace + server + browser
-# or, manually (demo store, no real workspace):
-.venv/bin/python -m uvicorn ui.api:app --port 8765
-# or, in controller mode against a specific workspace:
-COVERAGEFLOW_WORKSPACE=examples/run1-clean \
-    .venv/bin/python -m uvicorn ui.api:app --port 8765
-# open http://127.0.0.1:8765  (no build step; institutional light "paper" look)
+.venv/bin/python -m uvicorn ui.api:app --port 8765                 # demo data
+COVERAGEFLOW_WORKSPACE=<workspace> .venv/bin/python -m uvicorn ui.api:app --port 8765
 ```
 
-The SPA covers run control, live monitoring (state, rounds, findings, trace,
-budgets), the approval gate with dossier, evolution management, case/artifact
-inspectors with report-version diff, the EDGAR bundle builder, a demo control
-panel (labeled "scripted rehearsal": seed finding / kill run / perturbation
-check), run replay viewer, and the backend manager with per-role token
-metering. Every UI action routes through the controller; the UI never bypasses
-orchestrator gates. (`python -m coverageflow ui` is the contract verb for the
-same launch; it still prints a placeholder, so use `launch.py` or the uvicorn
-command above. The UI service ships with deterministic in-memory demo data and
-switches to a real workspace in controller mode via `COVERAGEFLOW_WORKSPACE`,
-which `launch.py` sets.) The backend picked on the Backends page is saved in
-the workspace and survives a restart; deleted cases move to `deleted/` and can
-be restored or erased from the Deleted cases page.
+It covers the case dashboard, starting coverage (mandate form with market-data
+prefill), the EDGAR bundle builder, run control and live monitoring (rounds,
+gates, findings, trace, budgets and per-role tokens), the approval dossier
+with the human decision, exports, version diffs, evolution, run replays, and
+backend selection. Every action goes through the controller; the UI cannot
+bypass a gate.
 
-## Mandate prefill and review
+## Configuration
 
-Market data is fetched by code, with provenance; the mandate stays human-owned. A prefill is only a proposal until a person accepts it.
+- **Backends:** `stub` (offline), `replay` (recorded responses matched by role
+  and prompt hash), headless CLIs (`claude -p`, `codex exec`, `kimi`,
+  `vibe -p`, using the machine's own login), or an OpenAI-compatible API via
+  `COVERAGEFLOW_BASE_URL`, `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (or
+  `.coverageflow.json`, which is gitignored). `python -m coverageflow backends`
+  reports what is available.
+- **Mandate prefill:** `python -m coverageflow case prefill INTC --cutoff
+  2026-10-30` proposes price, peers and multiples, beta, risk-free rate and
+  WACC, each with its source, URL, as-of date and hash (Stooq/Yahoo, FRED or
+  Treasury, SEC company facts filed before the cutoff). `case review` and
+  `case accept --set path=value` record the human's edits; a proposed mandate
+  cannot run.
+- **SEC access:** set `COVERAGEFLOW_SEC_USER_AGENT="Your Name your@email"`
+  before searching or freezing live filings.
+
+## Repository guide
+
+| Path | What it is |
+|---|---|
+| `coverageflow/orchestrator.py` | the controller state machine: build, gates, critics, merge, repair, acceptance, escalation, the human gate |
+| `coverageflow/gates.py`, `ledger.py`, `budget.py`, `statestore.py`, `resume.py`, `registry.py` | gates; findings ledger with owners and the non-waivable rule; budgets; atomic state and trace; verified resume; version registry |
+| `coverageflow/dispatch.py`, `_prompt_assembly.py`, `backends/` | role-call envelope, prompt assembly, output validation; backend adapters (CLI, API, replay, stub) |
+| `coverageflow/slicer.py`, `extraction.py`, `model_engine.py`, `valuation_engine.py` | deterministic slicing, extraction-unit handling, the model and valuation engines |
+| `coverageflow/report_doc.py`, `render_note_tex.py`, `render_note_html.py`, `report_exhibits.py`, `note_charts.py`, `note_build.py`, `export_dossier.py`, `export_xlsx.py` | the research note (one structured document rendered to PDF and HTML) and the Excel model |
+| `coverageflow/mandate_prefill.py`, `market_data.py`, `bundle.py`, `cli.py` | mandate prefill with provenance, market data, EDGAR bundles, the CLI |
+| `ui/` | FastAPI service, WebSocket push, no-build JavaScript UI |
+| `prompts/` | versioned role cards: ingest, extractor, model, writer, critics C1-C4 |
+| `references/` | harness preamble, critic rubric, model and mandate schemas, segment mappings, accounting definitions, note template |
+| `data/intel-bundle/`, `data/amd-bundle/` | frozen EDGAR snapshots with manifests and hashes |
+| `examples/` | the evidence runs |
+| `docs/` | task spec, design note, design decisions, contracts, diagnosis, hardening log, diagram, sample note |
+| `scripts/` | bundle fetcher, diagram generator, evidence curation, prompt measurement, ZIP builder |
+| `tests/` | 1053 offline tests |
+
+## Testing
 
 ```bash
-# propose: price, peers + multiples, beta/risk-free/WACC, exit multiple, own band
-python -m coverageflow case prefill INTC --cutoff 2026-10-30 [--peers AMD,NVDA] [--erp 0.05]
-# -> workspace/drafts/intc-2026-10-30/mandate.proposed.json (or the case dir if the case exists)
-python -m coverageflow case review intc-2026-10-30         # re-print the table
-python -m coverageflow case accept intc-2026-10-30 --set assumptions.exit_multiple_ebitda=15
-python -m coverageflow case new --ticker INTC --trigger-doc intc-10q-2026q3 \
-    --cutoff 2026-10-30 --mandate workspace/drafts/intc-2026-10-30/mandate.json
+.venv/bin/python -m pytest -q
 ```
 
-- Sources: Stooq daily/weekly closes (Yahoo chart API as fallback), FRED `DGS10` for the risk-free rate, SEC XBRL `companyfacts` for fundamentals (only facts `filed` on or before the cutoff). All reads go through one injectable `fetch`, so tests use recorded fixtures. Tags and fallbacks are listed in `coverageflow/market_data.py`.
-- Every proposed value has a `provenance` entry (`value, source, url, as_of, sha256, basis`, plus `inputs` for derived values such as WACC). Anything that could not be fetched is `null`, listed in `missing`, and must be entered with `--set path=value` before the mandate can be accepted.
-- `status: proposed` mandates are refused by `case new`, `run` and `resume`. `case accept` validates against `references/mandate-schema.json` and the live-backend rules, then writes `mandate.json` with `approval: {by, at, edits: [{path, proposed, final}]}` and keeps the provenance.
-- Peers: `--peers`, else `references/peer-sets.json` (INTC, AMD seeded), else a coarse same-SIC suggestion from EDGAR. Segment growth bounds fall back to the existing defaults because companyfacts has no segment history; the basis says so.
-- In the web UI the mandate form has a "Prefill from market data" button. Each field shows its source and as-of date, changed fields are marked "edited", and creating the case accepts the form and records the edits.
+1053 tests cover the state machine, gates, ledger, budgets, resume, registry,
+engines, slicer, extraction, dispatch and prompt assembly, backends
+(including record/replay), the human decisions (revision, reasoning,
+non-waivable findings), the note and workbook exports, the API and UI
+service, and input sanitising. No test needs network access or a model.
 
-## SEC filing search
+## Limitations
 
-The source bundle search resolves ticker symbols through the SEC company ticker
-index and searches the recent filings in the SEC submissions feed. It does not
-include older filings stored in the SEC's historical submissions files. The
-SEC index does not cover every security or historical ticker. An unavailable SEC
-connection falls back to the small Intel/AMD demo index when possible; other
-lookups report an error. Set an identifying user agent before launching, for
-example `export COVERAGEFLOW_SEC_USER_AGENT="Your Name your@email.com"`.
+- **Local, single-user tool:** one orchestrator per case directory, no
+  scheduler service, no authentication on the UI.
+- **Live runs need your own model access:** runs 1-5 use scripted responses;
+  run 6 is a recorded live run and re-running it needs a logged-in `codex`
+  CLI. Live runs cost money (the budget caps tokens, time and optionally USD).
+- **No live case reached an approved publication:** the final AMD case was
+  escalated, and the sample note above was published with exceptions before
+  the reasoning and non-waivable rules existed; today it would be refused
+  (`docs/live-run-hardening.md`).
+- **Model coverage:** facts come from statement and segment tables; MD&A-only
+  disclosures are noted, not modelled. The model has no EPS forecast and
+  holds forecast EBITDA margins at the base year; the note shows "n.a."
+  where data is missing.
+- **CLI `ui` and `export` verbs are placeholders:** use `launch.py` and
+  `python -m coverageflow.export_dossier` (or the UI's export buttons).
 
-Live SEC filings can be searched in either mode. Freezing them requires a
-controller workspace, such as the workspace opened by `python3 launch.py`.
-The demo-only server cannot freeze live filings.
+## My contribution
 
-## Backend configuration
-
-Role dispatches (per fresh call) use one backend, selected per case:
-
-- **CLI headless** — `claude -p` / `codex exec` / `kimi` / `vibe -p` (headless Mistral CLI, capped at $1.50 per call): uses the local CLI login, no API keys; auto-detection checks PATH (tests ship fake CLI fixtures).
-- **OpenAI-compatible API** — set `COVERAGEFLOW_BASE_URL`, `COVERAGEFLOW_MODEL`, `COVERAGEFLOW_API_KEY` (optionally `COVERAGEFLOW_CONFIG` for a JSON config file); the launcher writes the same fields to `.coverageflow.json`. Backend selection is the `--backend` flag on `run` / UI selection / auto-detection.
-- **Replay** — recorded responses matched by role + prompt hash; the whole test suite and the five evidence runs use the offline stub/replay dispatch ("scripted rehearsal" — real engines, scripted role responses).
-- **Stub** — `--backend stub`: the offline role responder with no recording requirement (the launcher's offline demo mode). The backend is pinned to the case on its first live run: a UI or CLI run uses the pinned backend, and an explicit different one is refused (409 in the UI). The Backends page selection only applies to a case with no pin.
-
-```bash
-.venv/bin/python -m coverageflow backends     # report backend health/detection
-```
-
-## Dependencies & testing
-
-```bash
-.venv/bin/python -m pytest tests/            # full suite, fully offline
-```
-
-1053 tests (controller state machine, gates, budget, resume, registry,
-engines, slicer, dispatch/prompt assembly, backends incl. record/replay
-roundtrip, xlsx and dossier exporters, FastAPI API, repair-loop economics).
-Live LLM access is never required to run the tests or the five offline
-evidence runs; `examples/run6-amd-live/` holds the recorded outcome of the
-live Codex runs.
-
-## Limitations / known gaps (honest list)
-
-- **Single-writer, single-workspace**: one orchestrator per case directory; no concurrent multi-case scheduling server, no auth on the UI (local tool).
-- **Live runs depend on your own CLI login**: runs 1-5 use the offline replay/stub dispatch. `examples/run6-amd-live/` is the curated record of live Codex runs on AMD (artifacts, ledger, trace); re-running it needs a logged-in `codex` CLI. The final AMD case reaches human review but is not an approved publication: see `docs/live-run-hardening.md` for what still stops it, and for the later exception publication that today's rules would refuse.
-- **Extraction boundaries**: facts come from structured statement/segment slices via the deterministic slicer; MD&A-only disclosures are noted in `facts.json` `notes`, not modeled.
-- **Live mandate requirements**: `case new` on a live backend (not the stub or replay) refuses a mandate without `assumptions.market.price` (as_of <= cutoff) or with no usable `assumptions.peer_block.peers`, and prints an example. Optional `assumptions.rating_bands` = `{"buy": 0.15, "sell": -0.10}`: upside above `buy` is Buy, below `sell` is Sell, otherwise Hold (these are the defaults).
-- **Comps**: the demo mandate ships without a filled peer block, so comps-implied price is `null` and the DCF/comps tolerance cross-check is reported but not differential-priced; the gate and table renderers handle the empty case explicitly.
-- **CLI `ui`/`export` verbs** are placeholders (ui: use `python3 launch.py` or `uvicorn ui.api:app`; export: use the UI's Export buttons, or `python -m coverageflow.export_dossier`). The UI exports an escalated/unfinished case as a marked **unapproved draft**.
-- **Schema-light dispatch format checks**: submission validation pins the frozen wire-format keys per contract; full JSON-schema depth checks remain in the orchestrator's validation.
-- **Demo figures are fixture-real**, not guidance: the scripted extractor reports a hand-computed mini 10-Q set so the real model/valuation engines can run offline; live runs extract from the actual document slices.
-- Budget unit is tokens/duration/rounds. Optional USD caps (`call_cost_usd_max`, `case_cost_usd_max` in the mandate `limits`) are off by default and only bite when the backend reports a cost.
-
-## Documentation map
-
-- `docs/task-spec.md` — Requirement 1 (task domain, triggers, products)
-- `docs/design-decisions.md` — the locked design record (Rounds A–F)
-- `docs/design-note.md` — **the graded design document** (Requirement 2): roles and handoffs, the loop, long-running operation, verification and improvement, each mapped to the lecture concepts with code references
-- `docs/live-run-hardening.md` — second phase: what the live AMD runs exposed, the changes, the measurements
-- `docs/diagnosis-2026-11-11.md` — the first diagnosis of the live Intel case (finding-ID collisions, owner routing, cost)
-- `docs/workflow-diagram.png` — annotated architecture figure (`scripts/gen_diagram.py` regenerates it)
-- `examples/README.md` — the evidence-run index
-- `docs/contracts/` — frozen state/artifact schemas and interface contracts
-
-## Contribution statement
-
-This repository was built by parallel agent streams with contract-first
-frozen interfaces, integrated by a coordinator stream:
-
-- **A1 — runtime & data**: EDGAR bundle fetcher/hasher, deterministic slicer, model engine, valuation engine, xlsx exporter, model schema, segment mapping (`coverageflow/{bundle,slicer,model_engine, valuation_engine,export_xlsx}.py`, `references/`, bundles).
-- **A2 — controller**: orchestrator state machine, gates, budgets, findings ledger, verified resume, version registry, controller CLI (`coverageflow/{orchestrator,gates,budget,statestore,ledger,resume, registry,cli}.py`).
-- **A3 — agent layer**: RoleCall/dispatch, prompt assembly, backend adapters (CLI/API/replay), role cards and pinned references (`coverageflow/{dispatch,_prompt_assembly,backends/*}.py`, `prompts/`).
-- **A4 — web UI**: FastAPI service, WebSocket push, no-build SPA (`ui/`).
-- **A5 — docs & evidence (this stream)**: `requirements.txt`, `docs/design-note.md`, `docs/workflow-diagram.png` + `scripts/gen_diagram.py`, the five evidence runs under `examples/`, the research-note template + renderers (`references/note-template.tex`, `coverageflow/report_doc.py`, `render_note_tex.py`, `render_note_html.py`, `coverageflow/export_dossier.py`, `tests/test_export_dossier.py`, `tests/test_report_doc.py`), and the top-level README.
-- **Coordinator**: contract authoring and freeze, stream integration, cross-stream test upkeep; A6 (integration phase) wires the remaining CLI verbs and controller-mode UI.
-
-All streams executed against the same frozen contracts; streams did not
-modify each other's modules, and integration is the coordinator's job. The
-author directed all streams, reviewed every change, and owns the final
-work product.
+I chose the task, wrote the task specification and the design (roles,
+controller, gates, ledger, budgets, human gate, evolution), and froze the
+contracts in `docs/contracts/`. The code was written with AI coding agents
+working as parallel streams against those contracts:
+runtime and engines, controller, agent layer, web UI, and docs and evidence,
+integrated by a coordinator stream. I directed each stream, reviewed every
+change, ran and diagnosed the live cases, and made the design calls that
+came out of them: the finding owners and partial rebuilds, the escalation
+status, the request-revision loop, the non-waivable correctness rule, and the
+report redesign. I own the final work product.
 
 ## Credits
 
-- The three supplied course Excel templates — **`Complete Quantitative Analysis_40491.xlsx`**, **`Discounted Cash Flow Template_22221.xlsx`**, and **`Stock Analysis Tool_60250.xlsx`** — provided the layout conventions adopted by this project: line-item naming and absolute-ratio row pairing (`export_xlsx.py` "Statements Model"/"Ratios" tabs), YoY/QoQ ratio conventions, the DCF tab layout (projection + PV + terminal via exit multiple and Gordon growth, EV → equity → per-share bridge, market-vs-intrinsic block), the Company Comparison tab layout (dated peer block, implied per-share values, own historical band), and the clean institutional styling (no gridlines, light header fills, thousands separators, static values).
-- The lecture slides for the long-running-workflow architecture (Orchestrator/Generator/Critic, harness, loops and gates, finding ledgers, repair packets, version registries) that this system implements and the design note maps to.
-- EDGAR (SEC) for the public filings snapshotted in the demo bundles.
+- The three supplied course Excel templates (`Complete Quantitative
+  Analysis`, `Discounted Cash Flow Template`, `Stock Analysis Tool`) set the
+  layout conventions of the Excel export: line-item naming, ratio rows, the
+  DCF tab (projection, PV, exit-multiple and Gordon terminal values, EV to
+  per-share bridge) and the comps tab.
+- The course lecture on long-running workflows (orchestrator, generator and
+  critic roles, harness, loops and gates, finding ledgers, repair packets,
+  version registries), which the design note maps element by element.
+- SEC EDGAR for the public filings in the demo bundles.
