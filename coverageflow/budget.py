@@ -67,6 +67,14 @@ DEFAULT_ROLE_TIMEOUTS = {
 }
 
 
+# Per-role reasoning effort. Roles not listed use the backend's own default
+# (Luna "high" for codex, "medium" for claude). The extractor is a transcription
+# job, not a judgement one, and the measured cost of "high" was output time.
+# Mandates override any entry via limits.role_efforts; a null/"default" value
+# restores the backend default for that role.
+DEFAULT_ROLE_EFFORT = {"extractor": "medium"}
+
+
 def _opt_float(v: Any) -> float | None:
     return None if v is None else float(v)
 
@@ -86,6 +94,8 @@ class Limits:
     case_cost_usd_max: float | None = None
     role_timeouts: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_ROLE_TIMEOUTS))
+    role_efforts: dict[str, str | None] = field(
+        default_factory=lambda: dict(DEFAULT_ROLE_EFFORT))
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Limits":
@@ -93,6 +103,9 @@ class Limits:
         timeouts = dict(DEFAULT_ROLE_TIMEOUTS)
         for role, seconds in (d.get("role_timeouts") or {}).items():
             timeouts[str(role)] = float(seconds)
+        efforts: dict[str, str | None] = dict(DEFAULT_ROLE_EFFORT)
+        for role, effort in (d.get("role_efforts") or {}).items():
+            efforts[str(role)] = effort
         return cls(
             rounds_max=int(d.get("rounds_max", DEFAULT_LIMITS["rounds_max"])),
             retries_max=int(d.get("retries_max", DEFAULT_LIMITS["retries_max"])),
@@ -104,7 +117,20 @@ class Limits:
                 d.get("call_cost_usd_max", d.get("cost_usd_max"))),
             case_cost_usd_max=_opt_float(d.get("case_cost_usd_max")),
             role_timeouts=timeouts,
+            role_efforts=efforts,
         )
+
+    def effort_for(self, role: str) -> str | None:
+        """Reasoning effort to request for *role*; None = backend default.
+
+        Exact role match wins, then the ``critic`` family. ``None``, "" and
+        "default" all mean "let the backend decide".
+        """
+        value = self.role_efforts.get(role)
+        if value is None and role.startswith("critic"):
+            value = self.role_efforts.get("critic")
+        value = str(value).strip() if value is not None else ""
+        return None if value.lower() in ("", "default", "none") else value
 
     def timeout_for(self, role: str) -> float:
         """Wall-clock ceiling for one invocation of *role*.
@@ -206,6 +232,7 @@ class BudgetTracker:
             "approval_hours": self.limits.approval_hours,
             "stall_rounds": self.limits.stall_rounds,
             "role_timeouts": dict(self.limits.role_timeouts),
+            "role_efforts": dict(self.limits.role_efforts),
             "call_cost_usd_max": self.limits.call_cost_usd_max,
             "case_cost_usd_max": self.limits.case_cost_usd_max,
         }
@@ -284,7 +311,9 @@ class BudgetTracker:
         human just made must get a full retry budget, otherwise the case is
         blocked again on the first hiccup.
         """
-        (self.used.get("retries_by_role") or {}).pop(role, None)
+        by_role = self.used.get("retries_by_role") or {}
+        for key in [k for k in by_role if k == role or k.startswith(f"{role}:")]:
+            by_role.pop(key, None)
 
     def reset_tokens(self, role: str) -> None:
         """Clear the token count for *role* after a human cleared a block.

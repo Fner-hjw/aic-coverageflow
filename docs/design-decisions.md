@@ -87,6 +87,10 @@ the writer gets the current period, its YTD, the prior-year comparables, the
 previous quarter and the last fiscal year. The ledger on disk and the evidence
 index are unchanged, so scoping affects only what a role reads.
 
+### Extraction is fanned out per statement
+
+One extractor call over the trigger 10-Q plus the annual-anchor 10-K emitted about 300 facts, each with a full citation object (about 100k characters), and took 535-630 s on Codex (Luna, high effort); every other role takes 0.5-3 minutes. Output generation dominated. The extractor is now one dispatch per (document in `_extraction_scope`, statement slice: income statement, balance sheet, cash flow, segments), run together through `_dispatch_concurrently`; MD&A and slices that do not exist are skipped, and the Intel scope is eight units. A unit sees only its slice and that statement's field list, and answers with compact `field|period|value|unit|locator` rows: the harness knows the document, slice and anchor, so code expands each row into the same cited fact object (`coverageflow/extraction.py`). A malformed row (bad shape, unknown field, non-numeric value, non-canonical period) makes that unit alone invalid and it is repaired at the same role with the row-level feedback, consuming no round. Units merge in code into the same `facts.json`: equal duplicates collapse; a restated figure takes the more recently filed document's value and names both documents in `notes`; a `missing` entry is dropped when another unit supplied the field. The file records which units and request ids produced it (`extraction_units`, excluded from candidate identity), so reuse across rounds by hash proof is unchanged. Extraction also runs at `medium` reasoning effort by default (`DEFAULT_ROLE_EFFORT`, override per role with `limits.role_efforts`); it is transcription, not judgement.
+
 ### Agent assembly model
 
 Each role call = one fresh CLI/API invocation; context assembled by the controller:

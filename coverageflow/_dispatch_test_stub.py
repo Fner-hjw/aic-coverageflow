@@ -18,6 +18,7 @@ At integration the coordinator swaps StubDispatch for the real dispatch.
 from __future__ import annotations
 
 import hashlib
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -108,21 +109,24 @@ def _default_ingest(payload: dict) -> dict:
 
 
 def _default_facts(payload: dict) -> dict:
-    """Scripted extractor payload: mini quarterly set + FY annuals.
+    """Scripted extractor answer for one extraction unit (compact rows).
 
-    Values mirror the hand-computed mini-10q fixture in tests/ so the REAL
-    model and valuation engines can run end-to-end in offline stub mode.
+    Mini quarterly set + FY annuals; values mirror the hand-computed mini-10q
+    fixture in tests/ so the REAL model and valuation engines can run
+    end-to-end in offline stub mode. The stub does not read the slice: every
+    unit answers with the whole set (rows from several units for the same
+    field+period carry equal values, so the merge collapses them).
     """
-    doc_id = _doc_id_from_payload(payload)
+    unit = payload.get("unit") or {}
+    unit_name = unit.get("name") or f"{_doc_id_from_payload(payload)}/income_statement"
+    out_rows: list[str] = []
 
     def fact(field, period, value, idx):
-        return {"field": field, "period": period, "value": value,
-                "unit": "USDmm",
-                "confidence": 0.98,
-                "citation": {"doc_id": doc_id,
-                             "slice_id": f"{doc_id}/IS",
-                             "anchor": "Consolidated Statements of Operations",
-                             "locator": f"line {idx}"}}
+        # USD for per-share fields, shares_mm for share counts, else USDmm
+        u = ("USD" if field.endswith("eps")
+             else "shares_mm" if field.endswith("shares_outstanding")
+             else "USDmm")
+        out_rows.append(f"{field}|{period}|{value!r}|{u}|line {idx}")
 
     IS_Q = {"revenue": (13500.0, 12500.0), "cost_of_revenue": (8325.0, 8125.0),
             "gross_profit": (5175.0, 4375.0),
@@ -154,12 +158,12 @@ def _default_facts(payload: dict) -> dict:
             "altera": (6000.0, 150.0), "mobileye": (4000.0, 100.0),
             "all_other": (-6000.0, -220.0)}
 
-    facts, i = [], 0
+    i = 0
     for group, table in (("income_statement", IS_Q), ("balance_sheet", BS_Q),
                          ("cash_flow", CF_Q)):
         for fld, vals in table.items():
             for p, v in zip(("2026-Q3", "2025-Q3"), vals):
-                facts.append(fact(f"{group}.{fld}", p, v, i)); i += 1
+                fact(f"{group}.{fld}", p, v, i); i += 1
     SEGS_Q = {"Client Computing Group": ((6000.0, 700.0), (5800.0, 500.0)),
               "Data Center and AI": ((4500.0, 300.0), (4000.0, 150.0)),
               "Network and Edge": ((2000.0, 150.0), (1700.0, 100.0)),
@@ -168,22 +172,23 @@ def _default_facts(payload: dict) -> dict:
               "Mobileye": ((500.0, 100.0), (450.0, 50.0)),
               "All Other": ((-1300.0, -25.0), (-1200.0, -25.0))}
     for name, ((r26, o26), (r25, o25)) in SEGS_Q.items():
-        facts.append(fact(f"segments.{name}.revenue", "2026-Q3", r26, i)); i += 1
-        facts.append(fact(f"segments.{name}.revenue", "2025-Q3", r25, i)); i += 1
-        facts.append(fact(f"segments.{name}.operating_income", "2026-Q3", o26, i)); i += 1
-        facts.append(fact(f"segments.{name}.operating_income", "2025-Q3", o25, i)); i += 1
+        fact(f"segments.{name}.revenue", "2026-Q3", r26, i); i += 1
+        fact(f"segments.{name}.revenue", "2025-Q3", r25, i); i += 1
+        fact(f"segments.{name}.operating_income", "2026-Q3", o26, i); i += 1
+        fact(f"segments.{name}.operating_income", "2025-Q3", o25, i); i += 1
     for group, table in FY.items():
         for fld, v in table.items():
-            facts.append(fact(f"{group}.{fld}", "FY2025", v, i)); i += 1
+            fact(f"{group}.{fld}", "2025", v, i); i += 1
     for seg, (rev, oi) in SEGS.items():
         if seg == "all_other":
-            facts.append(fact("segments.all_other_revenue", "FY2025", rev, i)); i += 1
-            facts.append(fact("segments.all_other_operating_income", "FY2025", oi, i)); i += 1
+            fact("segments.all_other_revenue", "2025", rev, i); i += 1
+            fact("segments.all_other_operating_income", "2025", oi, i); i += 1
         else:
-            facts.append(fact(f"segments.{seg}.revenue", "FY2025", rev, i)); i += 1
-            facts.append(fact(f"segments.{seg}.operating_income", "FY2025", oi, i)); i += 1
+            fact(f"segments.{seg}.revenue", "2025", rev, i); i += 1
+            fact(f"segments.{seg}.operating_income", "2025", oi, i); i += 1
 
-    return {"role": "extractor", "facts": facts, "missing": [], "notes": [],
+    return {"role": "extractor", "unit": unit_name, "rows": out_rows,
+            "missing": [], "notes": [],
             "conformance": "schema 1.0", "prompt_version": "1.0"}
 
 
@@ -388,6 +393,8 @@ class StubDispatch:
         self.calls: list[RoleCall] = []
         self.results: list[AgentResult] = []
         self._counts: dict[str, int] = {}
+        # extraction units are dispatched from several threads at once
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------- protocol
     def healthcheck(self) -> dict:
@@ -398,12 +405,14 @@ class StubDispatch:
         return None
 
     def __call__(self, call: RoleCall) -> AgentResult:
-        self.calls.append(call)
-        n = self._counts.get(call.role, 0) + 1
-        self._counts[call.role] = n
-        entry = self._script_entry(call.role, n)
+        with self._lock:
+            self.calls.append(call)
+            n = self._counts.get(call.role, 0) + 1
+            self._counts[call.role] = n
+            entry = self._script_entry(call.role, n)
         result = self._materialize(call, entry)
-        self.results.append(result)
+        with self._lock:
+            self.results.append(result)
         return result
 
     # dispatch.py naming parity (A3's real dispatch will expose .invoke)

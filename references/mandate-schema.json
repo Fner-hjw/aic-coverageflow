@@ -607,6 +607,13 @@
             "exclusiveMinimum": 0
           },
           "description": "seconds per role (default, ingest, extractor, model, writer, critic)"
+        },
+        "role_efforts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "null"]
+          },
+          "description": "reasoning effort per role (low, medium, high, xhigh, ...); default {extractor: medium}; null or 'default' = the backend's own default"
         }
       }
     },

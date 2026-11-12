@@ -237,12 +237,17 @@ class _CliBackendBase:
 
         result = self._normalize_output(stdout)
         result.model = result.model or self.model
+        result.reasoning_effort = self._effective_effort(call)
         result.elapsed_seconds = elapsed
         result.tokens_in = result.tokens_in or tokens_in
         result.tokens_out = result.tokens_out or estimate_tokens_chars_per_four(
             result.output_text or ""
         )
         return result
+
+    def _effective_effort(self, call: "RoleCall") -> str | None:
+        """Effort this call runs at; adapters without an effort knob: None."""
+        return None
 
     def estimate_cost(self, text: str) -> CostEstimate:
         return CostEstimate(
@@ -387,7 +392,7 @@ class ClaudeBackend(_CliBackendBase):
         args = [
             "-p",
             "--model", self.model,
-            "--effort", self.effort,
+            "--effort", self._effective_effort(call),
             "--output-format", "json",
             "--tools", "",
             "--strict-mcp-config",
@@ -406,6 +411,12 @@ class ClaudeBackend(_CliBackendBase):
         if cap is not None:
             args += ["--max-budget-usd", f"{float(cap):g}"]
         return args, None
+
+    def _effective_effort(self, call: "RoleCall") -> str | None:
+        # a per-role effort (RoleCall.budget["reasoning_effort"]) wins over
+        # the adapter default
+        return ((getattr(call, "budget", None) or {}).get("reasoning_effort")
+                or self.effort)
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         try:
@@ -485,8 +496,9 @@ class CodexBackend(_CliBackendBase):
         ]
         if self.model:
             args += ["--model", self.model]
-        if self.reasoning_effort:
-            args += ["--config", f'model_reasoning_effort="{self.reasoning_effort}"']
+        effort = self._effective_effort(call)
+        if effort:
+            args += ["--config", f'model_reasoning_effort="{effort}"']
         cleanup: _TempFiles | None = None
         schema = _schema_text(budget.get("json_schema") or self.json_schema)
         if schema:
@@ -495,6 +507,12 @@ class CodexBackend(_CliBackendBase):
             cleanup = _TempFiles(path)
         args.append("-")  # prompt is read from stdin, never argv
         return args, cleanup
+
+    def _effective_effort(self, call: "RoleCall") -> str | None:
+        # a per-role effort (RoleCall.budget["reasoning_effort"]) wins over
+        # the adapter default
+        return ((getattr(call, "budget", None) or {}).get("reasoning_effort")
+                or self.reasoning_effort)
 
     def _error_from_stdout(self, stdout: str) -> str | None:
         """Message of the last ``error`` / ``turn.failed`` event, if any."""

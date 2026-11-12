@@ -57,6 +57,7 @@ from typing import Any, Callable
 
 from . import budget as budget_mod
 from . import bundle as bundle_mod
+from . import extraction
 from . import gates, ledger as ledger_mod
 from . import mandate_sanitize
 from . import sanitize as san
@@ -136,7 +137,9 @@ _REQUEST_HEADER = re.compile(r"(\*\*Request:\*\*)[^·\n]*")
 # they restate another artifact's FILE hash, which carries that request id --
 # the artifact's own content is already digested directly.
 _IDENTITY_EXCLUDED = frozenset({"candidate_id", "request_id",
-                                "input_facts_sha256", "input_forecast_sha256"})
+                                "input_facts_sha256", "input_forecast_sha256",
+                                # which request produced each extraction unit
+                                "extraction_units"})
 
 
 def _blank_candidate(text: str) -> str:
@@ -762,7 +765,8 @@ class Orchestrator:
 
     def _prepare_dispatch(self, state: dict, budget: budget_mod.BudgetTracker,
                           role: str, payload: dict, candidate_id: str | None,
-                          write_scope: list[str]) -> Any:
+                          write_scope: list[str],
+                          detail: dict | None = None) -> Any:
         """Budget check, request binding and the dispatch trace record."""
         ok, reason = budget.check_dispatch(role)
         self._trace(event="BUDGET_CHECK",
@@ -772,6 +776,13 @@ class Orchestrator:
             self.exhausted(state, budget, reason)
             raise StopLoop()
         req_id = self._bind_request(state, role, payload, candidate_id)
+        call_budget = {"tokens_max": budget.limits.role_tokens_max,
+                       "timeout_seconds": budget.limits.timeout_for(role),
+                       "cost_usd_max": budget.limits.call_cost_usd_max}
+        effort = budget.limits.effort_for(role)
+        if effort:
+            # absent = the backend's own default effort
+            call_budget["reasoning_effort"] = effort
         call = RoleCall(role=role, request_id=req_id, candidate_id=candidate_id,
                         # version/sha are resolved from the card on disk by
                         # dispatch, so the trace records what actually ran
@@ -780,17 +791,18 @@ class Orchestrator:
                         # the artifact this role must emit, so dispatch can
                         # enforce its required top-level keys
                         payload=payload, output_schema=output_schema_for(role),
-                        budget={"tokens_max": budget.limits.role_tokens_max,
-                                "timeout_seconds": budget.limits.timeout_for(role),
-                                "cost_usd_max": budget.limits.call_cost_usd_max},
+                        budget=call_budget,
                         write_scope=write_scope,
                         workdir=str(self.case_dir))
+        extra = {"detail": dict(detail)} if detail else {}
         self._trace(event="AGENT_DISPATCHED", request_id=req_id, role=role,
-                    candidate_id=candidate_id, round=state["pending"]["round"])
+                    candidate_id=candidate_id, round=state["pending"]["round"],
+                    **extra)
         return call
 
     def _finish_dispatch(self, state: dict, budget: budget_mod.BudgetTracker,
-                         role: str, call, result) -> Any:
+                         role: str, call, result,
+                         detail_extra: dict | None = None) -> Any:
         """Account for a completed dispatch and record its result."""
         req_id = call.request_id
         candidate_id = call.candidate_id
@@ -806,6 +818,14 @@ class Orchestrator:
         detail = {"ok": bool(getattr(result, "ok", False)),
                   "error": getattr(result, "error", None)}
         detail.update(dispatch_trace.get("detail") or {})
+        # what the call actually ran as: the adapter's model and the effort
+        # in force (role override or the backend default)
+        detail["model"] = getattr(result, "model", None)
+        detail["reasoning_effort"] = (
+            getattr(result, "reasoning_effort", None)
+            or call.budget.get("reasoning_effort"))
+        if detail_extra:
+            detail.update(detail_extra)
         self._trace(event="AGENT_RESULT", request_id=req_id, role=role,
                     candidate_id=candidate_id, round=state["pending"]["round"],
                     backend=getattr(result, "backend", None),
@@ -829,8 +849,11 @@ class Orchestrator:
                     not isinstance(parsed.get("slices"), list) or not parsed["slices"]:
                 return "ingest submission must include classification and non-empty slices"
         elif role == "extractor":
-            if not isinstance(parsed.get("facts"), list) or not parsed["facts"]:
-                return "extraction submission must include a non-empty facts array"
+            # one extraction unit's compact answer (rows are expanded and
+            # checked row by row in extraction.expand_unit)
+            if not isinstance(parsed.get("rows"), list):
+                return ("extraction submission must include a rows array of "
+                        "'field|period|value|unit|locator' strings")
         elif role == "model":
             if not isinstance(parsed.get("segments"), list) or not parsed["segments"] \
                     or not isinstance(parsed.get("margin_glide"), dict):
@@ -918,7 +941,8 @@ class Orchestrator:
         raise StopLoop()
 
     def _handle_invalid(self, state: dict, budget: budget_mod.BudgetTracker,
-                        role: str, error: str) -> None:
+                        role: str, error: str,
+                        retry_key: str | None = None) -> None:
         """Repair at the SAME role, new request, WITHOUT consuming a round.
 
         The retries budget (mandate ``retries_max``) decides how many repairs
@@ -926,8 +950,9 @@ class Orchestrator:
         reserved for the case where the repair itself cannot be attempted.
         """
         p = state["pending"]
-        used = budget.note_retry(role)
-        ok, reason = budget.check_retry(role)
+        key = retry_key or role
+        used = budget.note_retry(key)
+        ok, reason = budget.check_retry(key)
         if not ok:
             self.exhausted(state, budget, reason)
             raise StopLoop()
@@ -1032,6 +1057,14 @@ class Orchestrator:
             self._stage_done(state, stage)
             return
 
+        if stage == "extractor":
+            merged = self._run_extraction(state, budget, arts, rel)
+            self._write_artifact(state, budget, arts, "generator",
+                                 STAGE_ARTIFACT[stage], merged)
+            self._stage_side_effects(state, budget, arts, stage)
+            self._stage_done(state, stage)
+            return
+
         candidate_id = None
         payload = self._generator_payload(state, arts, stage)
         while True:
@@ -1072,6 +1105,91 @@ class Orchestrator:
                 statestore.sha256_json(self.input_manifest()) + "\n")
         self._stage_side_effects(state, budget, arts, stage)
         self._stage_done(state, stage)
+
+    # ============================================================ extraction
+    def _extraction_unit_payload(self, state: dict, arts: Arts, unit: dict,
+                                 catalogue: dict) -> dict:
+        """The bound payload for ONE extraction unit.
+
+        Only this unit's slice (text inlined and hash-verified) and the field
+        list for its statement: the other statements, the other filing and the
+        rest of the case are not in the prompt.
+        """
+        guide = extraction.field_guide(unit["kind"], catalogue)
+        return {
+            "case_id": state["case_id"], "round": arts.round,
+            "carried_findings": self._carried(),
+            "unit": {"name": unit["unit"], "doc_id": unit["doc_id"],
+                     "kind": unit["kind"], "slice_id": unit["slice_id"],
+                     "form": unit["form"], "filed": unit["filed"]},
+            "fields": guide["fields"],
+            "field_notes": guide["notes"],
+            "prior_artifacts": {
+                "slices": self._slice_payload([unit["slice"]],
+                                              inline_text=True)},
+        }
+
+    def _run_extraction(self, state: dict, budget: budget_mod.BudgetTracker,
+                        arts: Arts, rel: str) -> dict:
+        """Fan the extractor out per (document, statement slice), merge in code.
+
+        Units are independent single-slice calls dispatched together. Each is
+        validated on its own and an invalid one is re-requested at the same
+        role with feedback (consuming no round); the valid units merge into
+        the one facts.json the rest of the pipeline reads.
+        """
+        role = "extractor"
+        ingest = self._lazy(arts, arts.rel("generator", "ingest-report.json"))
+        slices = (ingest or {}).get("slices") or []
+        units = extraction.plan_units(self._extraction_scope(), slices)
+        if not units:
+            self.blocked(state, "missing_inputs",
+                         "extraction has nothing to read: the ingest report "
+                         "declares no income statement, balance sheet, cash "
+                         "flow or segment slice for any document in scope",
+                         {"role": role})
+            raise StopLoop()
+        catalogue = extraction.load_catalogue()
+        payloads = [self._extraction_unit_payload(state, arts, u, catalogue)
+                    for u in units]
+        done: dict[int, dict] = {}
+        pending = list(range(len(units)))
+        while pending:
+            calls = [self._prepare_dispatch(
+                state, budget, role, payloads[i], None, [rel],
+                detail={"unit": units[i]["unit"]}) for i in pending]
+            results = self._dispatch_concurrently(calls)
+            retry: list[int] = []
+            for i, call, result in zip(pending, calls, results):
+                unit = units[i]
+                result = self._finish_dispatch(
+                    state, budget, role, call, result,
+                    detail_extra={"unit": unit["unit"]})
+                self._block_if_unrunnable(state, role, result)
+                err = self._validate_submission(role, call.request_id, result)
+                got = None
+                if err is None:
+                    err, got = extraction.expand_unit(result.parsed, unit,
+                                                      catalogue)
+                if err is None:
+                    done[i] = {"unit": unit, "request_id": call.request_id,
+                               **got}
+                    continue
+                self._handle_invalid(
+                    state, budget, role, err,
+                    retry_key=(role if len(units) == 1
+                               else f"{role}:{unit['unit']}"))
+                payloads[i] = dict(payloads[i], submission_feedback=err)
+                retry.append(i)
+            pending = retry
+        state["pending"]["retry_count"] = 0
+        ordered = [done[i] for i in range(len(units))]
+        from . import _prompt_assembly as pa
+        version = pa.parse_role_card(
+            pa.default_root() / "prompts" / "extractor.md")["version"]
+        return extraction.merge_units(
+            ordered, request_id=ordered[0]["request_id"], candidate_id=None,
+            prompt_version=version)
 
     def _generator_payload(self, state: dict, arts: Arts, stage: str) -> dict:
         """The bound payload for a generator-team role (ingest..writer)."""
