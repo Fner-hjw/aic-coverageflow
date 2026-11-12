@@ -3326,7 +3326,27 @@ class Orchestrator:
                            detail={"deadline": state["pending"].get("deadline")})
 
     # ================================================================ terminal
+    def _settle_clock(self, state: dict,
+                      budget: budget_mod.BudgetTracker | None = None) -> None:
+        """Book the running case clock into ``elapsed_minutes``.
+
+        ``elapsed_minutes`` only grows when the clock is paused, and the
+        BLOCKED and EXHAUSTED paths never paused it: a 13-minute case ended
+        with 0.0 minutes recorded. The clock is restarted by ``resume_check``
+        (RUNNING) when the case is re-run, so ``clock_paused`` marks that the
+        case had started.
+        """
+        budget = budget or self._budget(state)
+        if budget.clock_started is None:
+            return
+        budget.pause_clock()
+        state["pending"]["case_clock_started"] = None
+        state["pending"]["clock_paused"] = True
+        state["budget"]["used"]["elapsed_minutes"] = round(
+            budget.used["elapsed_minutes"], 3)
+
     def blocked(self, state: dict, code: str, message: str, detail: dict) -> None:
+        self._settle_clock(state)
         state["status"] = "BLOCKED"
         state["reason"] = {"code": code, "message": message, "detail": detail or {}}
         self._transition(state, "RUNNING", "BLOCKED", verified=code,
@@ -3354,7 +3374,7 @@ class Orchestrator:
         state["pending"]["retry_count"] = 0
         state["reason"] = None
         target = ("RUNNING" if state["pending"].get("case_clock_started")
-                  else "CREATED")
+                  or state["pending"].get("clock_paused") else "CREATED")
         state["status"] = target
         self._transition(state, "BLOCKED", target,
                          detail={"unblocked": code, "retries_reset_for": role})
@@ -3383,7 +3403,7 @@ class Orchestrator:
         state["pending"]["retry_count"] = 0
         state["reason"] = None
         target = ("RUNNING" if state["pending"].get("case_clock_started")
-                  else "CREATED")
+                  or state["pending"].get("clock_paused") else "CREATED")
         state["status"] = target
         self._transition(state, "EXHAUSTED", target,
                          detail={"budget_grant": record})
@@ -3484,6 +3504,7 @@ class Orchestrator:
     def exhausted(self, state: dict, budget: budget_mod.BudgetTracker,
                   reason: budget_mod.BudgetReason) -> None:
         """EXHAUSTED with a precise machine-readable reason; never acceptance."""
+        self._settle_clock(state, budget)
         state["status"] = "EXHAUSTED"
         self._sync_budget(state, budget)
         state["reason"] = reason.as_dict()
