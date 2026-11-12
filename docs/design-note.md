@@ -92,6 +92,12 @@ a control topology, prompts are not control").
 Case states (`docs/contracts/state-and-artifacts.md` §1):
 `CREATED → RUNNING → PENDING_APPROVAL → APPROVED/REJECTED → CLOSED`, with
 terminal `BLOCKED`, `EXHAUSTED`, `STOPPED`. Exhaustion never grants acceptance.
+A candidate that passed every gate and was fully reviewed but could not settle
+its objections is `ESCALATED` for a human instead. The human gate has four
+decisions: `APPROVED` (only from `PENDING_APPROVAL`), `PUBLISHED_WITH_EXCEPTIONS`
+(only from `ESCALATED`), `REJECTED`, and `REVISION_REQUESTED`, which is the one
+decision that is not terminal: it sends an `ESCALATED` or `PENDING_APPROVAL`
+case back to `RUNNING` (see Human approval below).
 
 Per round the orchestrator runs the graph: build stages
 (ingest → extraction → model/valuation engines → report draft → candidate
@@ -151,6 +157,27 @@ version `vA-<candidate8>` plus exports (`model.xlsx`,
 `dossier.pdf` via `coverageflow/export_dossier.py` + `references/dossier-template.tex`,
 `dossier.html`) from the *same* verified JSON — exports cannot drift from the
 record.
+
+*Reasoning is required.* `REJECTED`, `PUBLISHED_WITH_EXCEPTIONS` and
+`REVISION_REQUESTED` override or redirect the machine verdict, so the
+orchestrator refuses them without written reasoning (at least 15 characters
+after trimming; "ok" and "Approved." do not count). A plain `APPROVED` after
+two clean reviews keeps its reasoning optional.
+
+*Request revision.* The approver may disagree with the critics, or with an
+escalation, without having to publish or reject. `REVISION_REQUESTED` takes
+one or more human findings (summary, owner `writer`/`model`/`extractor`,
+severity `major`/`critical`). They enter the ledger with `source_critic:
+"human"` and `raised_by`, are carried in the repair packet and to the critics
+like any critic finding, and close only on a critic's verified resolution:
+never on silence. An `owner` of `system` or `mandate` is refused; those follow
+the `needs_system_change` / `needs_mandate_change` route. The rebuild restarts
+at the earliest stage a finding's owner names. The request resets the
+clean-review streak and the stall history, clears the approval deadline (a new
+one is set when the case next reaches `PENDING_APPROVAL`), grants 2 extra
+rounds as a recorded budget grant, and is written to `approvals/apr-NNNN.json`
+and the trace (`REVISION_REQUESTED`) without closing the case. At most 2
+requests per case; after that the human publishes with exceptions or rejects.
 
 **No-leakage.** Everything is tied to the cutoff stamped in the immutable
 mandate: the input manifest is gate-checked (`gate_manifest_cutoff`), every

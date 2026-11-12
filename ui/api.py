@@ -186,7 +186,8 @@ def create_app() -> FastAPI:
         return service.record_approval(
             case_id, str(payload.get("decision") or ""),
             str(payload.get("by") or ""), str(payload.get("reasoning") or ""),
-            acknowledge_findings=[str(a) for a in ack])
+            acknowledge_findings=[str(a) for a in ack],
+            findings=payload.get("findings"))
 
     @app.post("/api/cases/{case_id}/demo/{action}")
     def case_demo(case_id: str, action: str, payload: dict | None = None) -> dict:

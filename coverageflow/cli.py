@@ -666,11 +666,29 @@ def cmd_approve(args, ws: Path) -> int:
     orch = Orchestrator(case_dir, dispatch=load_dispatch()[0],
                         gate_engine=load_gate_engine(stub_engines=False,
                                                       workspace=ws))
-    out = orch.record_approval(decision=args.decision, by=args.by,
-                               reasoning=args.reason or "",
-                               acknowledge_findings=args.acknowledge or None)
+    findings = [_parse_revision_finding(raw) for raw in args.finding or []]
+    try:
+        out = orch.record_approval(decision=args.decision, by=args.by,
+                                   reasoning=args.reason or "",
+                                   acknowledge_findings=args.acknowledge or None,
+                                   revision_findings=findings or None)
+    except (ValueError, RuntimeError) as exc:
+        raise SystemExit(f"approval refused: {exc}")
     _print(out)
     return 0
+
+
+def _parse_revision_finding(raw: str) -> dict:
+    """``OWNER[/SEVERITY]:SUMMARY`` -> a human finding for a revision request."""
+    head, sep, summary = raw.partition(":")
+    if not sep:
+        raise SystemExit(f"--finding {raw!r}: expected OWNER[/SEVERITY]:SUMMARY, "
+                         "e.g. writer:Valuation paragraph ignores the buyback")
+    owner, _, severity = head.partition("/")
+    out = {"owner": owner.strip(), "summary": summary.strip()}
+    if severity.strip():
+        out["severity"] = severity.strip()
+    return out
 
 
 def cmd_case_stop(args, ws: Path) -> int:
@@ -942,9 +960,18 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--case", required=True)
     approve.add_argument("--decision", required=True,
                          choices=["APPROVED", "REJECTED",
-                                  "PUBLISHED_WITH_EXCEPTIONS"])
+                                  "PUBLISHED_WITH_EXCEPTIONS",
+                                  "REVISION_REQUESTED"])
     approve.add_argument("--by", required=True)
-    approve.add_argument("--reason", default="")
+    approve.add_argument("--reason", default="",
+                         help="required (at least 15 characters) for REJECTED, "
+                              "PUBLISHED_WITH_EXCEPTIONS and REVISION_REQUESTED")
+    approve.add_argument("--finding", action="append", default=None,
+                         metavar="OWNER[/SEVERITY]:SUMMARY",
+                         help="REVISION_REQUESTED: an objection to repair, "
+                              "repeatable. OWNER is writer, model or extractor; "
+                              "SEVERITY is major (default) or critical. At most "
+                              "2 revision requests per case")
     approve.add_argument("--acknowledge", nargs="*", default=None,
                          metavar="FINDING_ID",
                          help="open blocking findings the approver has read and "

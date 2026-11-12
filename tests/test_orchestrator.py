@@ -1202,7 +1202,8 @@ class TestBudgetExhaustion:
     def test_published_with_exceptions_needs_every_open_finding_named(self, tmp_path):
         orch, case_dir = self._escalated(tmp_path)
         with pytest.raises(RuntimeError, match="not acknowledged"):
-            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup")
+            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup",
+                                 reasoning="objection judged wrong")
         assert load_state(case_dir)["status"] == "ESCALATED"
 
     def test_published_with_exceptions_records_the_open_findings(self, tmp_path):
@@ -1224,14 +1225,15 @@ class TestBudgetExhaustion:
 
     def test_an_escalated_case_can_be_rejected(self, tmp_path):
         orch, case_dir = self._escalated(tmp_path)
-        out = orch.record_approval(decision="REJECTED", by="Sup", reasoning="no")
+        out = orch.record_approval(decision="REJECTED", by="Sup", reasoning="not fit to publish")
         assert out["terminal"] == "REJECTED"
 
     def test_published_with_exceptions_is_only_for_escalated_cases(self, tmp_path):
         orch, dispatch, clk, case_dir = build_env(tmp_path)
         orch.run()
         with pytest.raises(RuntimeError, match="ESCALATED"):
-            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup")
+            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup",
+                                 reasoning="objection judged wrong")
 
 
 class TestStallRule:
@@ -2181,3 +2183,32 @@ class TestControllerStepsAndScopedPayloads:
         assert O._model_wants_fact(mk("segments.DCAI.revenue", "2024"))
         assert O._model_wants_fact(mk("cash_flow.capital_expenditure", "2024"))
         assert not O._model_wants_fact(mk("balance_sheet.goodwill", "2024"))
+
+
+class TestCriticRepairUsesTheRepairRequestId:
+    """A critic repair is a new request; it must be validated against the id
+    it was bound to. Validating against the batch's original id rejected every
+    correct repair as stale, so one bad critic answer exhausted the retries
+    budget (seen live: echoed 'req-0056' != bound 'req-0053')."""
+
+    def test_one_invalid_critic_answer_is_repaired_without_exhaustion(self, tmp_path):
+        import dataclasses
+        orch, dispatch, clk, case_dir = build_env(tmp_path)
+        real = orch.dispatch
+        spoiled = {"done": False}
+
+        def flaky(call):
+            result = real(call)
+            if call.role == "critic_c2" and not spoiled["done"]:
+                spoiled["done"] = True
+                parsed = dict(result.parsed, request_id="req-9999")
+                return dataclasses.replace(result, parsed=parsed)
+            return result
+
+        orch.dispatch = flaky
+        summary = orch.run()
+        assert spoiled["done"]
+        assert summary["status"] == "PENDING_APPROVAL", summary
+        repairs = [e["detail"]["error"] for e in statestore.read_trace(case_dir)
+                   if (e.get("detail") or {}).get("repair_at_same_role") == "critic_c2"]
+        assert len(repairs) == 1 and "req-9999" in repairs[0]

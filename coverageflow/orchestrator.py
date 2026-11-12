@@ -97,6 +97,19 @@ REBUILD_ORDER = ("ingest", "extractor", "model", "writer")
 # or in a human-owned input, so the case ends and feeds an evolution proposal.
 OWNER_BLOCK_CODES = ("needs_system_change", "needs_mandate_change")
 EVOLUTION_INPUT_FILE = "evolution-input.json"
+# Human decisions that need a stated reason. APPROVED after two clean reviews
+# keeps its reasoning optional: the machine record already carries the case.
+REASONING_REQUIRED = ("REJECTED", "PUBLISHED_WITH_EXCEPTIONS",
+                      "REVISION_REQUESTED")
+MIN_REASONING_CHARS = 15
+# A revision request is the approver disagreeing with the critics (or with an
+# escalation). It is bounded: after MAX_REVISION_REQUESTS the human publishes
+# with exceptions or rejects. Each one buys REVISION_ROUNDS_GRANT extra rounds.
+MAX_REVISION_REQUESTS = 2
+REVISION_ROUNDS_GRANT = 2
+# Which critic must verify a human finding, by the owner the approver named.
+HUMAN_FINDING_CRITIC = {"extractor": "critic_c1", "writer": "critic_c1",
+                        "model": "critic_c2"}
 PRIOR_DIR = "prior"
 PRIOR_NOTE_FILE = "prior-note.md"
 PRIOR_VALUATION_FILE = "prior-valuation.json"
@@ -730,7 +743,7 @@ class Orchestrator:
         if state["status"] == "ESCALATED":
             return self._summary(
                 state, "escalated: awaiting human resolution "
-                       "(PUBLISHED_WITH_EXCEPTIONS or REJECTED)")
+                       "(PUBLISHED_WITH_EXCEPTIONS, REVISION_REQUESTED or REJECTED)")
 
         if state["status"] in TERMINAL:
             return self._saved_result(
@@ -2906,13 +2919,14 @@ class Orchestrator:
 
     def _issue_repair_packet(self, state: dict, arts: Arts,
                              led: ledger_mod.FindingsLedger,
-                             note: str = "") -> None:
+                             note: str = "",
+                             packet_name: str = "repair-packet.json") -> None:
         """Repair packet per contracts section 6; the next build is a full
         re-build (rounds budget consumed at build start)."""
         if self._stop_for_owner(state, led):
             return      # a role cannot repair it: no packet, no rebuild
         round_no = arts.round if arts.round else state["pending"]["round"]
-        rel = f"rounds/round-{round_no:03d}/repair-packet.json"
+        rel = f"rounds/round-{round_no:03d}/{packet_name}"
         mandate = self.mandate()
         # Only a blocking finding is a repair obligation. Carrying the minors
         # too fed every advisory nit back into the next round's prompts, so
@@ -2987,9 +3001,10 @@ class Orchestrator:
         for (role, rel, payload, call), result in zip(
                 pending, self._dispatch_concurrently([c for *_, c in pending])):
             result = self._finish_dispatch(state, budget, role, call, result)
+            req_id = call.request_id
             while True:
                 self._block_if_unrunnable(state, role, result)
-                err = self._validate_submission(role, call.request_id, result)
+                err = self._validate_submission(role, req_id, result)
                 if err is None:
                     state["pending"]["retry_count"] = 0
                     break
@@ -2998,6 +3013,10 @@ class Orchestrator:
                 payload["submission_feedback"] = err
                 result = self._dispatch_role(state, budget, role, payload,
                                              candidate_id, [rel])
+                # the repair is a NEW request: validate against the id it was
+                # bound to, not the batch's original one, or every critic
+                # repair is rejected as stale and the retry budget runs out
+                req_id = state["pending"]["request_id"]
             sha = statestore.atomic_write_json(self.case_dir / rel, result.parsed)
             arts.files[rel] = sha
             arts.content[rel] = result.parsed
@@ -3074,7 +3093,12 @@ class Orchestrator:
         out = []
         for f in self._carried():
             src = f.get("source_critic")
-            if src == role or (role == "critic_c1" and not src):
+            if src == ledger_mod.HUMAN_SOURCE:
+                # the approver's finding has no critic of origin: the critic
+                # whose area covers the owner's artifacts must verify it
+                if HUMAN_FINDING_CRITIC.get(f.get("owner")) == role:
+                    out.append(f)
+            elif src == role or (role == "critic_c1" and not src):
                 out.append(f)
         return out
 
@@ -3108,6 +3132,10 @@ class Orchestrator:
             if not f.get("check_id"):
                 f["check_id"] = check_ids.get(
                     (f.get("source_critic"), f.get("finding_id")))
+            # a critic that re-emits a human finding by its ledger id keeps
+            # that one row open; it is not a new critic finding
+            if led.refresh_human_finding(str(f.get("finding_id")), round_no):
+                continue
             fid = led.open_finding(f, round=round_no)
             self._trace(event="FINDING_OPENED",
                         candidate_id=candidate_id, round=round_no,
@@ -3299,7 +3327,8 @@ class Orchestrator:
         return self.clock() > _epoch_from_iso(deadline)
 
     def record_approval(self, decision: str, by: str, reasoning: str = "",
-                        acknowledge_findings: list[str] | None = None) -> dict:
+                        acknowledge_findings: list[str] | None = None,
+                        revision_findings: list[dict] | None = None) -> dict:
         """Record the human decision at the approval gate.
 
         ``acknowledge_findings`` names the open blocking findings the approver
@@ -3310,9 +3339,13 @@ class Orchestrator:
         silently swallows an objection is exactly what the ledger exists to
         prevent.
         """
-        if decision not in ("APPROVED", "REJECTED", "PUBLISHED_WITH_EXCEPTIONS"):
-            raise ValueError("decision must be APPROVED, REJECTED or "
-                             "PUBLISHED_WITH_EXCEPTIONS")
+        if decision not in ("APPROVED", "REJECTED", "PUBLISHED_WITH_EXCEPTIONS",
+                            "REVISION_REQUESTED"):
+            raise ValueError("decision must be APPROVED, REJECTED, "
+                             "PUBLISHED_WITH_EXCEPTIONS or REVISION_REQUESTED")
+        self._require_reasoning(decision, reasoning)
+        if decision == "REVISION_REQUESTED":
+            return self.request_revision(by, reasoning, revision_findings or [])
         state = self.load()
         if state["status"] == "ESCALATED":
             # An escalated case never met the acceptance rule, so APPROVED is
@@ -3322,7 +3355,7 @@ class Orchestrator:
                 raise RuntimeError(
                     "an ESCALATED case cannot be APPROVED (acceptance needs "
                     "2 consecutive clean reviews); resolve it with "
-                    "PUBLISHED_WITH_EXCEPTIONS or REJECTED")
+                    "PUBLISHED_WITH_EXCEPTIONS, REVISION_REQUESTED or REJECTED")
             if decision == "REJECTED":
                 return self._finish_rejection(state, by, reasoning)
             return self._finish_published_with_exceptions(
@@ -3348,6 +3381,169 @@ class Orchestrator:
                 and decision == "APPROVED":
             return self._restart_acceptance_from_zero(state, by, reasoning)
         raise RuntimeError(f"case is not awaiting approval (status={state['status']})")
+
+    @staticmethod
+    def _require_reasoning(decision: str, reasoning: str | None) -> str:
+        """Reject, publish-with-exceptions and revision need a real reason.
+
+        These decisions override or redirect the machine's verdict, so the
+        audit trail has to say why. Blank text and one-word acknowledgements
+        ("ok", "Approved.") do not count.
+        """
+        text = " ".join(str(reasoning or "").split())
+        if decision in REASONING_REQUIRED and len(text) < MIN_REASONING_CHARS:
+            raise ValueError(
+                f"{decision} needs written reasoning of at least "
+                f"{MIN_REASONING_CHARS} characters saying why; got "
+                f"{len(text)}")
+        return text
+
+    def revision_requests_used(self, state: dict | None = None) -> int:
+        state = state or self.load()
+        return int(state.get("revision_requests", 0))
+
+    def request_revision(self, by: str, reasoning: str,
+                         findings: list[dict]) -> dict:
+        """Send an ESCALATED or PENDING_APPROVAL case back for another repair.
+
+        The approver disagrees with the machine verdict: with the critics
+        (clean reviews that missed something) or with an escalation. The
+        objections enter the ledger as human findings, owned by the role that
+        must repair them, and travel in the repair packet and the critics'
+        carried findings like any other. Nothing here is terminal; the case
+        returns to RUNNING with acceptance restarted from zero and a recorded
+        grant of REVISION_ROUNDS_GRANT extra rounds. At most
+        MAX_REVISION_REQUESTS per case: after that the human publishes with
+        exceptions or rejects.
+        """
+        self._require_reasoning("REVISION_REQUESTED", reasoning)
+        state = self.load()
+        frm = state["status"]
+        if frm not in ("ESCALATED", "PENDING_APPROVAL"):
+            raise RuntimeError("a revision can be requested on an ESCALATED or "
+                               f"PENDING_APPROVAL case only (status={frm})")
+        if frm == "PENDING_APPROVAL" and self._approval_expired(state):
+            self._approval_block(state)
+            raise RuntimeError("approval deadline expired: case blocked "
+                               "(APPROVAL_EXPIRED)")
+        used = self.revision_requests_used(state)
+        if used >= MAX_REVISION_REQUESTS:
+            raise RuntimeError(
+                f"revision limit reached ({used} of {MAX_REVISION_REQUESTS} "
+                "requests used): publish with exceptions or reject")
+        rows = self._validate_revision_findings(findings)
+        led = self.ledger()
+        if led.stopping_findings():
+            raise RuntimeError("open findings owned by the harness or the "
+                               "mandate block this case; a revision cannot "
+                               "repair them")
+        text = " ".join(reasoning.split())
+        round_no = state["pending"]["round"]
+        cand_id = state["candidate"]["candidate_id"]
+        ids = []
+        for row in rows:
+            fid = led.open_human_finding(raised_by=by, round=round_no, **row)
+            ids.append(fid)
+            self._trace(event="FINDING_OPENED", candidate_id=cand_id,
+                        round=round_no, role=ledger_mod.HUMAN_SOURCE,
+                        detail={"finding_id": fid, "summary": row["summary"],
+                                "source": ledger_mod.HUMAN_SOURCE,
+                                "raised_by": by, "owner": row["owner"]})
+        budget = self._budget(state)
+        grant = budget.grant(rounds=REVISION_ROUNDS_GRANT, by=by)
+        grant["reason"] = "REVISION_REQUESTED"
+        grant["revision_request"] = used + 1
+        record = self._approval_record(state, "REVISION_REQUESTED", by, text, {
+            "finding_ids": ids, "budget_grant": grant,
+            "revision_request": used + 1,
+            "revision_requests_max": MAX_REVISION_REQUESTS,
+            "from_status": frm})
+        state["revision_requests"] = used + 1
+        # a fresh start for the objections: the clean streak belonged to the
+        # candidate the approver just rejected, and stall history to the
+        # findings that were open before
+        cand = state["candidate"]
+        cand["clean_review_rounds"] = 0
+        cand["last_review_candidate"] = None
+        cand["stall"] = {"history": [], "streak": 0}
+        budget.resume_clock()
+        self._sync_budget(state, budget)
+        # earliest stage owned by an open repairable finding decides the
+        # rebuild scope, human and critic findings alike
+        state["pending"]["round"] = self._latest_round_dir() or round_no
+        self._issue_repair_packet(
+            state, Arts(round=state["pending"]["round"]), led,
+            note=f"human revision request {used + 1} of "
+                 f"{MAX_REVISION_REQUESTS} by {by}: {text}",
+            packet_name=f"revision-packet-{used + 1}.json")
+        state["pending"]["case_clock_started"] = _iso_from_epoch(self.clock())
+        state["pending"]["deadline"] = None
+        state["reason"] = None
+        state["status"] = "RUNNING"
+        self._transition(state, frm, "RUNNING",
+                         verified=f"approvals/{record['decision_id']}.json",
+                         detail={"revision_requested": used + 1,
+                                 "rebuild_from":
+                                     state["pending"].get("rebuild_from")})
+        self._trace(event="REVISION_REQUESTED",
+                    candidate_id=cand_id, round=round_no,
+                    detail={"by": by, "reasoning": text,
+                            "decision_id": record["decision_id"],
+                            "finding_ids": ids, "budget_grant": grant,
+                            "revision_request": used + 1,
+                            "revision_requests_max": MAX_REVISION_REQUESTS,
+                            "from": frm})
+        stale = self.case_dir / statestore.RESULT_FILE
+        if stale.exists():
+            stale.unlink()
+        return {"status": "RUNNING", "terminal": None,
+                "decision_id": record["decision_id"], "finding_ids": ids,
+                "revision_requests_used": used + 1,
+                "revision_requests_remaining": MAX_REVISION_REQUESTS - used - 1,
+                "rebuild_from": state["pending"].get("rebuild_from"),
+                "message": "revision requested; run() continues"}
+
+    @staticmethod
+    def _validate_revision_findings(findings: list[dict]) -> list[dict]:
+        """Normalise the approver's findings, or raise ValueError."""
+        if not isinstance(findings, list) or not findings:
+            raise ValueError("a revision request needs at least one finding "
+                             "saying what to change")
+        rows = []
+        for i, raw in enumerate(findings, 1):
+            if not isinstance(raw, dict):
+                raise ValueError(f"finding {i}: must be an object")
+            summary = " ".join(str(raw.get("summary") or "").split())
+            if not summary:
+                raise ValueError(f"finding {i}: summary is required")
+            owner = str(raw.get("owner") or "").strip().lower()
+            if owner in ledger_mod.STOP_OWNERS:
+                route = ("needs_system_change" if owner == "system"
+                         else "needs_mandate_change")
+                raise ValueError(
+                    f"finding {i}: owner {owner!r} is not repairable by a "
+                    f"role; a {owner} defect follows the {route} route "
+                    f"(evolution proposal / new case), not a revision")
+            if owner not in ledger_mod.REPAIRABLE_OWNERS:
+                raise ValueError(
+                    f"finding {i}: owner must be one of "
+                    f"{', '.join(sorted(ledger_mod.REPAIRABLE_OWNERS))}")
+            severity = str(raw.get("severity") or "major").strip().lower()
+            if severity not in ledger_mod.BLOCKING_SEVERITIES:
+                raise ValueError(
+                    f"finding {i}: severity must be major or critical (a "
+                    "revision request is a blocking objection)")
+            arts = raw.get("affected_artifacts") or []
+            if isinstance(arts, str):
+                arts = [arts]
+            arts = [str(a).strip() for a in arts if str(a).strip()]
+            if not arts:
+                arts = [ledger_mod.HUMAN_DEFAULT_ARTIFACT[owner]]
+            rows.append({"summary": summary, "owner": owner,
+                         "severity": severity, "affected_artifacts": arts,
+                         "required_evidence": str(
+                             raw.get("required_evidence") or "").strip()})
+        return rows
 
     def _approval_record(self, state: dict, decision: str, by: str, reasoning: str,
                          extra: dict | None = None) -> dict:

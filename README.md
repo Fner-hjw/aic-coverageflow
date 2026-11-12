@@ -102,6 +102,16 @@ state files directly. Run from the repository root:
 .venv/bin/python -m coverageflow --workspace examples/run1-clean approve --case intc-fy2026q3-20261030 \
     --decision APPROVED --by "Gaetano Marco Chiantia" --reason "Quarterly update verified."
 
+# decisions: APPROVED | REJECTED | PUBLISHED_WITH_EXCEPTIONS (ESCALATED cases) | REVISION_REQUESTED.
+# REJECTED, PUBLISHED_WITH_EXCEPTIONS and REVISION_REQUESTED need --reason of at least 15
+# characters. REVISION_REQUESTED sends an ESCALATED or PENDING_APPROVAL case back to RUNNING with
+# your objections as human findings (OWNER[/SEVERITY]:SUMMARY, owner writer|model|extractor), 2 extra
+# rounds, and at most 2 requests per case; then `run` continues the same case:
+.venv/bin/python -m coverageflow --workspace examples/run1-clean approve --case intc-fy2026q3-20261030 \
+    --decision REVISION_REQUESTED --by "Gaetano Marco Chiantia" \
+    --reason "Valuation paragraph ignores the buyback; the critics missed it." \
+    --finding "writer:Valuation ignores the Q3 buyback"
+
 # other verbs: case list | resume | gates | demo seed-finding|kill-stage|perturb |
 # evolve prepare|propose|regress|approve|rollback | backends | export-dossier:
 .venv/bin/python -m coverageflow --workspace examples/run1-clean gates --case intc-fy2026q3-20261030

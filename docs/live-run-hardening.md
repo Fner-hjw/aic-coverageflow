@@ -54,6 +54,7 @@ Tests are in `tests/test_loop_economics.py` unless noted.
 | 10 | Rounds spent on mechanical gate failures | one round counter | `mechanical_rounds_max` (4): a writer-only rebuild for gate findings is not a review round; `rounds_max` default 4 -> 6 |
 | 11 | Escalated case could not be inspected | export required an approved state | ESCALATED/EXHAUSTED/BLOCKED/STOPPED export as clearly marked **unapproved drafts** |
 | 12 | UI restart reset the chosen backend; token table showed 547k / 250k | in-memory selection vs launcher default; hard-coded cap | selection saved in the workspace; table shows each role's heaviest case against the cap it really has |
+| 13 | AMD note published with "USD 6,697mm" free cash flow cited to capex and "USD 145.52" cited to `comps.own_band` (fnd-0007) | the cited-value check of row 5 fired only when the key name shared a word with the sentence; "fcf" and "comps_price" did not | word overlap now only ranks the suggestion; with no overlap the number is still flagged when at most 3 leaf keys hold it or it is distinctive (2+ decimals or >= 1000); small alias map (fcf = free cash flow, price = per share) |
 
 ## What still stops a clean approval
 

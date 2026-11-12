@@ -881,3 +881,48 @@ class TestPeriodCoverageGateCashFlowAndEngine:
         assert not ok
         ctx.current_period = None
         assert eng._run_gate("period_coverage", ctx)[0]
+
+
+class TestValueMismatchWithoutWordOverlap:
+    """AMD fnd-0007: wrong citations slipped through when the sentence and the
+    holding key shared no word ("free cash flow" vs dcf.base.fcf)."""
+
+    VALUES = {
+        "dcf": [34639.0, 4444.0, 0.12, 6697.0],
+        "dcf.base": [34639.0, 4444.0, 0.12, 6697.0],
+        "dcf.base.revenue": [34639.0],
+        "dcf.base.ebitda_margin": [0.12],
+        "dcf.base.fcf": [6697.0],
+        "cash_flow.capital_expenditure": [-1200.0],
+        "comps.applied.ev_ebitda.own_metric": [4444.0],
+        "comps.own_band": [27.97, 44.31],
+        "comps.comps_price": [145.5193],
+    }
+    INDEX = {k: "valuation.json" for k in VALUES}
+
+    def _run(self, md):
+        return gates.gate_report_evidence_links(md, self.INDEX, self.VALUES)
+
+    def test_fcf_cited_to_other_keys_suggests_fcf(self):
+        _ok, f = self._run(
+            "The base was free cash flow of USD 6,697mm "
+            "[EV:dcf.base.revenue] [EV:cash_flow.capital_expenditure].\n")
+        mism = [x for x in f if "value-mismatch" in x["dedup_key"]]
+        assert mism and "dcf.base.fcf" in mism[0]["summary"]
+
+    def test_price_per_share_suggests_comps_price(self):
+        _ok, f = self._run(
+            "This yields an indicated value of USD 145.52 per share "
+            "[EV:comps.own_band].\n")
+        mism = [x for x in f if "value-mismatch" in x["dedup_key"]]
+        assert mism and "comps.comps_price" in mism[0]["summary"]
+
+    def test_correct_citation_is_clean(self):
+        ok, f = self._run(
+            "Free cash flow was USD 6,697mm [EV:dcf.base.fcf].\n")
+        assert ok and not f
+
+    def test_derived_number_held_by_no_key_is_left_alone(self):
+        _ok, f = self._run(
+            "Margin expanded to USD 7,123mm [EV:dcf.base.revenue].\n")
+        assert not [x for x in f if "value-mismatch" in x["dedup_key"]]

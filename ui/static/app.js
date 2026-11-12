@@ -1366,7 +1366,7 @@ async function renderCaseTrace(body, c) {
   function eventRow(e, i) {
     const isFail = e.event === "GATE_FAIL" || e.event === "FINDING_OPENED";
     const isKey = ["CASE_CREATED", "CASE_CLOSED", "APPROVAL_RECORDED",
-      "APPROVAL_REQUESTED", "FINDING_VERIFIED_CLOSED"].includes(e.event);
+      "APPROVAL_REQUESTED", "REVISION_REQUESTED", "FINDING_VERIFIED_CLOSED"].includes(e.event);
     const parts = [];
     if (e.role) parts.push(h("b", null, readableTraceName(e.role)));
     if (e.detail) {
@@ -1866,6 +1866,38 @@ async function renderCaseApproval(body, c) {
   const who = h("input", { type: "text", placeholder: "Approver name as recorded",
                             value: "Gaetano Marco Chiantia" });
   const why = h("textarea", { rows: "3", placeholder: "What did you review?" });
+  const rev = c.revision || { used: 0, max: 2, remaining: 2, rounds_per_request: 2 };
+  const revRows = h("div", { class: "revision-findings" });
+  function addRevisionRow() {
+    const summary = h("input", { type: "text", class: "rev-summary",
+      placeholder: "What must change, in one sentence" });
+    const owner = h("select", { class: "rev-owner", title: "Role that repairs it" },
+      h("option", { value: "writer" }, "Writer: the note"),
+      h("option", { value: "model" }, "Model: forecast and valuation"),
+      h("option", { value: "extractor" }, "Extractor: facts and citations"));
+    const severity = h("select", { class: "rev-severity", title: "Severity" },
+      h("option", { value: "major" }, "Major"),
+      h("option", { value: "critical" }, "Critical"));
+    const row = h("div", { class: "row wrap revision-finding" }, summary, owner, severity,
+      h("button", { class: "btn small", type: "button",
+        onclick: () => { row.remove(); } }, "Remove"));
+    revRows.append(row);
+    return summary;
+  }
+  addRevisionRow();
+  const revisionPanel = rev.remaining > 0
+    ? h("div", { class: "panel inset mt2 revision-panel" },
+        h("label", { class: "label mt0" }, "Request revision"),
+        h("p", { class: "hint" },
+          `Send the case back for another repair pass instead of deciding now. ${rev.remaining} of ${rev.max} revision requests left; each grants ${rev.rounds_per_request} extra rounds. Your review notes above are recorded as the reason, and each finding below is checked by the critics like any other.`),
+        revRows,
+        h("div", { class: "row wrap mt2" },
+          h("button", { class: "btn small", type: "button",
+            onclick: () => addRevisionRow().focus() }, "Add another finding"),
+          h("button", { class: "btn primary", type: "button",
+            onclick: () => requestRevision() }, "Request revision")))
+    : h("p", { class: "hint mt2" },
+        `All ${rev.max} revision requests are used. ${escalated ? "Publish with exceptions or reject." : "Approve or reject."}`);
   const act = h("div", { class: "signoff" },
     h("div", { class: "label-bar" }, h("span", null, "Publication decision"),
       h("span", { class: ready ? "signoff-status ready" : "signoff-status" }, ready ? "Ready for review"
@@ -1881,9 +1913,45 @@ async function renderCaseApproval(body, c) {
       escalated
         ? h("button", { class: "btn primary", onclick: () => decide("PUBLISHED_WITH_EXCEPTIONS") }, "Publish with exceptions")
         : h("button", { class: "btn primary", onclick: () => decide("APPROVED") }, "Approve for publication"),
-      h("button", { class: "btn danger", onclick: () => decide("REJECTED") }, "Reject")));
+      h("button", { class: "btn danger", onclick: () => decide("REJECTED") }, "Reject")),
+    revisionPanel);
+
+  /* Rejecting, publishing with exceptions and requesting a revision each
+   * override the machine verdict, so the notes must say why (the controller
+   * enforces the same minimum). */
+  function reasoningOk(decision) {
+    if (decision === "APPROVED") return true;
+    if (why.value.trim().length >= 15) return true;
+    toast("review notes required",
+      "Say why in at least 15 characters; this goes into the decision record.");
+    why.focus();
+    return false;
+  }
+
+  async function requestRevision() {
+    if (!reasoningOk("REVISION_REQUESTED")) return;
+    const findings = [...revRows.querySelectorAll(".revision-finding")].map(row => ({
+      summary: row.querySelector(".rev-summary").value.trim(),
+      owner: row.querySelector(".rev-owner").value,
+      severity: row.querySelector(".rev-severity").value,
+    })).filter(f => f.summary);
+    if (!findings.length) {
+      toast("finding required", "Describe at least one thing the case must change.");
+      return;
+    }
+    const r = await guard(() => Api.post(`/api/cases/${c.case_id}/approval`, {
+      decision: "REVISION_REQUESTED", by: who.value, reasoning: why.value,
+      findings }), "revision request failed");
+    if (r.ok) {
+      toast("Revision requested",
+        `${r.data.revision.remaining} request(s) left. Rebuilding from the ${r.data.rebuild_from} stage.`);
+      Route.nav(`#/case/${c.case_id}`);
+      await doRun(c.case_id, false);
+    }
+  }
 
   async function decide(decision) {
+    if (!reasoningOk(decision)) return;
     if (decision !== "REJECTED" && blocking.length && !why.value.trim()) {
       toast("review notes required",
         `Name the ${blocking.length} objection(s) you are signing off over.`);
@@ -1910,7 +1978,7 @@ async function renderCaseApproval(body, c) {
           ["2. Critic coverage", escalated ? "Every critic reviewed the candidate; the round budget ran out before the objections settled." : `${st.candidate.clean_review_rounds} of 2 consecutive clean reviews, same candidate`],
           ["3. Blocking findings", blocking.length ? `${blocking.length} open (major/critical), must be named to approve` : "None open"],
           ["4. Advisory findings", openFindings.length - blocking.length > 0 ? `${openFindings.length - blocking.length} minor, advisory only` : "None"],
-          ["5. Human gate", ["PENDING_APPROVAL", "ESCALATED"].includes(st.status) ? "Required. Record this decision." : `Recorded: ${(c.approvals[0] || {}).decision || st.status}`],
+          ["5. Human gate", ["PENDING_APPROVAL", "ESCALATED"].includes(st.status) ? "Required. Record this decision." : `Recorded: ${(c.approvals[c.approvals.length - 1] || {}).decision || st.status}`],
         ])),
       rep.ok ? labeledPanel(`Rendered note for sign-off (${rep.data.version})`,
         renderNote(rep.data),
@@ -1921,7 +1989,7 @@ async function renderCaseApproval(body, c) {
       ["PENDING_APPROVAL", "ESCALATED"].includes(st.status) ? act : decisionBox)));
 
   if (!["PENDING_APPROVAL", "ESCALATED"].includes(st.status)) {
-    const apr = (c.approvals || [])[0];
+    const apr = (c.approvals || []).slice(-1)[0];
     decisionBox.replaceChildren(labeledPanel("Decision record",
       apr ? kv([
         ["decision", apr.decision],
@@ -3287,7 +3355,7 @@ function activityLevel(ev) {
   const state = String(detail.to || detail.terminal || "").toUpperCase();
   const decision = String(detail.decision || "").toUpperCase();
   if (/FAIL|ERROR|INVALID/.test(event) || detail.ok === false) return "error";
-  if (event === "FINDING_OPENED" || event === "APPROVAL_REQUESTED" || event === "ESCALATED" ||
+  if (event === "FINDING_OPENED" || event === "APPROVAL_REQUESTED" || event === "ESCALATED" || event === "REVISION_REQUESTED" ||
       detail.rejected === true || ["BLOCKED", "EXHAUSTED", "STOPPED", "REJECTED"].includes(state) ||
       ["REJECTED", "DEFERRED"].includes(decision)) return "attention";
   if (event === "GATE_PASS" || event === "FINDING_VERIFIED_CLOSED" ||

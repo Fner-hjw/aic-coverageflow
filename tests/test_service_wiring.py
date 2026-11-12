@@ -614,3 +614,34 @@ class TestDeleteCase:
     def test_delete_rejects_path_traversal(self, controller):
         r = controller.delete("/api/cases/..%2F..%2Fetc?confirm=..%2F..%2Fetc")
         assert r.status_code in (404, 422)
+
+
+class TestUiRunHonoursTheBackendPin:
+    """A case pinned to the offline stub must not continue on whatever the
+    Backends page selects (seen live: a stub case resumed on `claude`)."""
+
+    def test_auto_run_uses_the_pin_over_the_selection(self, real_ws, controller):
+        case_id = "intc-fy2026q3-20261030"
+        case_dir = real_ws / "cases" / case_id
+        state = statestore.load_state(case_dir)
+        state["backend"] = "stub (offline)"
+        statestore.write_state(case_dir, state)
+        # a paid backend selected globally; never loaded for a pinned case
+        (real_ws / service._SELECTION_FILE).write_text(
+            json.dumps({"backend": "claude"}), encoding="utf-8")
+        r = controller.post(f"/api/cases/{case_id}/run", json={"backend": "auto"})
+        assert r.status_code == 200, r.text
+        assert r.json()["backend"] == "stub (offline)"
+        backends = {e.get("backend") for e in statestore.read_trace(case_dir)
+                    if e["event"] == "AGENT_RESULT"}
+        assert backends == {"stub"}, backends
+
+    def test_explicit_other_backend_is_refused(self, real_ws, controller):
+        case_id = "intc-fy2026q3-20261030"
+        case_dir = real_ws / "cases" / case_id
+        state = statestore.load_state(case_dir)
+        state["backend"] = "replay-stub"
+        statestore.write_state(case_dir, state)
+        r = controller.post(f"/api/cases/{case_id}/run", json={"backend": "stub"})
+        assert r.status_code == 409, r.text
+        assert "pinned" in r.text

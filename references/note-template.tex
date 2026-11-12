@@ -1,0 +1,117 @@
+%% CoverageFlow equity research note, page-1 (cover) template.
+%% Filled by coverageflow/render_note_tex.py from a report_doc dict.
+%% Prose: XCharter 10pt, ragged-right, hyphenation on.  Data: Source Sans Pro.
+\documentclass[10pt,a4paper]{article}
+\usepackage[a4paper,top=24mm,bottom=27mm,left=18mm,right=18mm,
+            headheight=12pt,headsep=7mm,footskip=9mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{XCharter}
+\usepackage[lining,tabular]{sourcesanspro}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{ragged2e}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{eso-pic}
+\usepackage{tikz}
+\usepackage{etoolbox}
+\usepackage{colortbl,booktabs}
+
+\definecolor{navy}{HTML}{1F3A5F}
+\definecolor{ink}{HTML}{1B1B1B}
+\definecolor{mute}{HTML}{5E6670}
+\definecolor{hair}{HTML}{B9BEC4}
+\color{ink}
+
+\newif\ifdraft
+{{DRAFT_FLAG}}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\setlength{\emergencystretch}{1.5em}
+\pretolerance=-1 \tolerance=1200
+\hyphenpenalty=50 \exhyphenpenalty=50
+\renewcommand{\arraystretch}{1.0}
+
+%% ---- running header / footer
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\let\origheadrule\headrule
+\renewcommand{\headrule}{\color{hair}\origheadrule}
+\fancyhead[L]{\sffamily\fontsize{7.5}{9}\selectfont\color{mute}{{HEADER_LEFT}}}
+\fancyhead[R]{\sffamily\fontsize{8}{9}\selectfont\bfseries\color{navy}{{TICKER}}}
+\fancyfoot[L]{\sffamily\fontsize{7}{8.5}\selectfont\color{mute}{{FOOTER_STATUS}}}
+\fancyfoot[R]{\sffamily\fontsize{7}{8.5}\selectfont\color{mute}\thepage}
+\fancyfoot[C]{}
+
+%% ---- draft watermark (light, diagonal)
+\ifdraft
+\AddToShipoutPictureBG*{%
+  \AtPageCenter{\makebox(0,0){\rotatebox{54}{%
+    \fontsize{150}{150}\selectfont\sffamily\bfseries\color{black!7}DRAFT}}}}
+\fi
+
+%% ---- small helpers
+\newcommand{\hrl}[3]{\par\nointerlineskip\vspace{#1}\noindent{\color{#2}\rule{\linewidth}{#3}}\par\nointerlineskip}
+\newcommand{\sech}[1]{\par\vspace{10pt}\noindent{\sffamily\fontsize{7.5}{9}\selectfont\bfseries\color{navy}\textls[90]{\MakeUppercase{#1}}}\hrl{2pt}{navy}{0.6pt}\vspace{4pt}}
+\renewcommand{\cite}[1]{\textsuperscript{\sffamily\color{navy}\fontsize{6.2}{6}\selectfont #1}}
+\newcommand{\kv}[3]{{\sffamily\noindent{\fontsize{8}{10}\selectfont\color{mute}#1}\hfill{\fontsize{8.5}{10}\selectfont\bfseries#2}\par
+  \ifblank{#3}{}{\noindent{\fontsize{6.5}{8}\selectfont\color{mute}\hfill#3}\par}}%
+  \hrl{3pt}{hair}{0.3pt}\vspace{3pt}}
+\newcommand{\figtitle}[1]{\noindent{\sffamily\fontsize{7.5}{9}\selectfont\bfseries\color{navy}#1\par}\vspace{2pt}}
+
+\begin{document}
+\thispagestyle{fancy}
+\newlength{\sidew}\setlength{\sidew}{60mm}
+\newlength{\gapw}\setlength{\gapw}{5.5mm}
+\newlength{\mainw}\setlength{\mainw}{\dimexpr\textwidth-\sidew-2\gapw-0.4pt\relax}
+\newlength{\colh}\setlength{\colh}{{{COLUMN_HEIGHT}}}
+
+\noindent
+\begin{minipage}[t][\colh][t]{\mainw}
+\RaggedRight
+%% -- kicker, headline, byline
+{\sffamily\fontsize{8}{10}\selectfont\bfseries\color{navy}\textls[100]{\MakeUppercase{{{KICKER}}}}}\par
+\vspace{3pt}
+{\sffamily\fontsize{18.5}{21.5}\selectfont\bfseries\color{ink}{{HEADLINE}}\par}
+\vspace{5pt}
+{\sffamily\fontsize{7.5}{9.5}\selectfont\color{mute}{{BYLINE}}\par}
+\hrl{3pt}{hair}{0.4pt}
+
+%% -- key points
+\vspace{7pt}
+\begin{itemize}[leftmargin=10pt,labelwidth=6pt,labelsep=4pt,itemsep=3pt,parsep=0pt,topsep=0pt,
+  label={\raisebox{0.25ex}{\rule{3.2pt}{3.2pt}}}]
+{{KEY_POINTS}}
+\end{itemize}
+
+%% -- summary
+\sech{Summary}
+\fontsize{10}{13}\selectfont
+{{SUMMARY}}
+
+%% -- figure
+{{FIGURE}}
+
+%% -- sources (grouped)
+\vspace{2pt}
+{{SOURCES}}
+
+\vfill
+%% -- status line (hairline box, unfilled)
+{{STATUS_BOX}}
+\end{minipage}%
+\hspace{\gapw}%
+{\color{hair}\vrule width 0.4pt height 9pt depth \dimexpr\colh-9pt\relax}%
+\hspace{\gapw}%
+\begin{minipage}[t][\colh][t]{\sidew}
+\RaggedRight
+{{SIDEBAR}}
+\end{minipage}
+
+\vspace{\fill}
+{\RaggedRight\sffamily\fontsize{6.3}{7.8}\selectfont\color{mute}{{DISCLAIMER}}\par}
+
+\end{document}

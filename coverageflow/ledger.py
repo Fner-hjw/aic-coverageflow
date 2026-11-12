@@ -84,6 +84,14 @@ OWNERS = ("writer", "model", "extractor", "system", "mandate")
 REPAIRABLE_OWNERS = frozenset({"writer", "model", "extractor"})
 STOP_OWNERS = frozenset({"system", "mandate"})
 
+# source_critic of a finding the human approver raised in a revision request
+HUMAN_SOURCE = "human"
+
+# default affected artifact per owner for a human finding that names none
+HUMAN_DEFAULT_ARTIFACT = {"writer": "report.md",
+                          "model": "forecast_assumptions.json",
+                          "extractor": "facts.json"}
+
 GATE_OWNERS = {
     "facts_schema": "extractor", "citation_presence": "extractor",
     "period_coverage": "extractor",
@@ -251,6 +259,55 @@ class FindingsLedger:
         self._rows.append(row)
         self.save()
         return finding_id
+
+    def open_human_finding(self, *, summary: str, owner: str, severity: str,
+                           affected_artifacts: list[str],
+                           required_evidence: str, raised_by: str,
+                           round: int) -> str:
+        """Append a finding raised by the human approver in a revision request.
+
+        Human findings bypass the computed dedup key: the approver's wording is
+        the identity, and a critic that re-emits the same complaint must not
+        merge into (or silently replace) it. The key is ``human|<n>|<artifact>``
+        with n the running count of human rows. They close exactly like critic
+        findings: only on a critic's verified resolution, never on silence.
+        """
+        if owner not in REPAIRABLE_OWNERS:
+            raise ValueError(f"human findings need a repairable owner: {owner}")
+        n = 1 + sum(1 for r in self._rows if r.get("source_critic") == HUMAN_SOURCE)
+        arts = [str(a) for a in affected_artifacts]
+        row = {
+            "finding_id": self._next_id(),
+            "critic_ref": None,
+            "dedup_key": f"{HUMAN_SOURCE}|{n}|{arts[0] if arts else 'note'}",
+            "source_critic": HUMAN_SOURCE,
+            "raised_by": raised_by,
+            "first_seen_round": round,
+            "last_seen_round": round,
+            "status": "open",
+            "closed_by": None,
+            "severity": severity,
+            "summary": summary,
+            "affected_artifacts": arts,
+            "required_evidence": required_evidence,
+            "owner": owner,
+        }
+        self._rows.append(row)
+        self.save()
+        return row["finding_id"]
+
+    def refresh_human_finding(self, finding_id: str, round: int) -> bool:
+        """A critic re-emitted an open human finding by its ledger id: note the
+        round on the human row instead of opening a duplicate. False when the
+        id is not an open human row."""
+        for r in self._rows:
+            if r["finding_id"] == finding_id:
+                if r["status"] != "open" or r.get("source_critic") != HUMAN_SOURCE:
+                    return False
+                r["last_seen_round"] = round
+                self.save()
+                return True
+        return False
 
     def owner_of(self, finding_id: str) -> str | None:
         for r in self._rows:

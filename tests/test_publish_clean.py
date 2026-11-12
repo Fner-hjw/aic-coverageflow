@@ -53,6 +53,7 @@ class TestCleanNoteOnPublication:
         ids = [f["finding_id"] for f in
                ledger.FindingsLedger(case_dir).blocking_findings()]
         out = orch.record_approval("PUBLISHED_WITH_EXCEPTIONS", by="Supervisor",
+                                   reasoning="objection judged wrong",
                                    acknowledge_findings=ids)
         cleans = list((case_dir / "report").glob("v*.clean.md"))
         assert len(cleans) == 1

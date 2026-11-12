@@ -65,7 +65,8 @@ python -m coverageflow case new --ticker INTC --trigger-doc intc-10q-2026q3 --cu
 python -m coverageflow case list
 python -m coverageflow run    [--case <id>] [--backend auto] [--replay] [--record]
 python -m coverageflow resume [--case <id>]          # verified resume of pending work only
-python -m coverageflow approve --case <id> --decision APPROVED --by "Name" [--reason "..."]
+python -m coverageflow approve --case <id> --decision APPROVED|REJECTED|PUBLISHED_WITH_EXCEPTIONS|REVISION_REQUESTED --by "Name" [--reason "..."] [--acknowledge <finding-id>...] [--finding "OWNER[/SEVERITY]:SUMMARY"]...
+                                # --reason (>= 15 chars) required for all but APPROVED; --finding only for REVISION_REQUESTED (max 2 requests per case)
 python -m coverageflow demo seed-finding|kill-stage|perturb --case <id> [--stage k]
 python -m coverageflow evolve prepare|propose|regress  # evo lifecycle
 python -m coverageflow export --case <id>             # xlsx + pdf + html
@@ -97,7 +98,11 @@ GET  /api/cases/{id}/trace?from=NN    # trace events after cursor
 GET  /api/cases/{id}/artifacts/{path} # read-only artifact (JSON/text/md)
 POST /api/cases/{id}/run {backend, replay}
 POST /api/cases/{id}/resume
-POST /api/cases/{id}/approval {decision, by, reasoning}
+POST /api/cases/{id}/approval {decision, by, reasoning, acknowledge_findings?, findings?}
+                                      # findings: [{summary, owner: writer|model|extractor, severity?: major|critical,
+                                      #   affected_artifacts?, required_evidence?}], REVISION_REQUESTED only. The call records the
+                                      #   decision and returns status RUNNING; the caller then POSTs /run. Case detail carries
+                                      #   revision: {used, max, remaining, rounds_per_request}.
 POST /api/cases/{id}/demo/seed-finding|kill-stage|perturb
 GET  /api/cases/{id}/report?version=N   # report md + rendered html + diff-with-prev
 POST /api/cases/{id}/export {format}

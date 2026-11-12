@@ -721,6 +721,28 @@ _KEY_STOPWORDS = frozenset({
     "prior", "total", "value", "per", "and", "the", "of"})
 
 
+# Key-name tokens whose prose spelling differs ("fcf" is written "free cash
+# flow"). Used only to *rank* the better-key suggestions, never to decide
+# whether a mismatch exists.
+_KEY_ALIASES = {
+    "fcf": ("free cash flow",),
+    "price": ("per share", "share price", "price per"),
+    "eps": ("earnings per share", "per share"),
+    "ebitda": ("earnings before interest",),
+    "capex": ("capital expenditure", "capital expenditures"),
+    "wacc": ("cost of capital", "discount rate"),
+    "ev": ("enterprise value",),
+    "margin": ("margins",),
+}
+
+
+def _is_distinctive(num: float, dec: int) -> bool:
+    """A figure unlikely to be held by a leaf key by coincidence: two or more
+    decimals, or magnitude >= 1000. Round small numbers (10.0, 25, 150) recur
+    across many keys, so they need word overlap or a near-unique holder."""
+    return dec >= 2 or abs(num) >= 1000
+
+
 def _token_number(tok: str) -> tuple[float, int] | None:
     try:
         text = tok.replace(",", "")
@@ -743,7 +765,10 @@ def gate_report_evidence_links(report_md: str,
     With *evidence_values* (key -> the numbers that key holds) a stated number
     must also be one of the values of the keys its sentence cites, when some
     other key does hold it: the writer then has a better key to cite. A number
-    no key holds is a derived figure and is left to the critics.
+    no key holds is a derived figure and is left to the critics. Word overlap
+    between sentence and key name only ranks the suggestion; without any
+    overlap the finding is still raised when <= 3 keys hold the number or it
+    is distinctive (>= 2 decimals or >= 1000).
     """
     findings: list[dict] = []
     if not report_md:
@@ -822,18 +847,29 @@ def gate_report_evidence_links(report_md: str,
                     continue    # the cited keys hold no number to compare with
                 if any(_num_matches(num, dec, v) for v in held):
                     continue
-                words = set(re.findall(r"[a-z]+", line.lower()))
+                low = line.lower()
+                words = set(re.findall(r"[a-z]+", low))
+                holders = [k for k, vals in evidence_values.items()
+                           if k in leaf_keys and k not in keys
+                           and any(_num_matches(num, dec, v) for v in vals)]
+                if not holders:
+                    continue    # derived figure: left to the critics
+                # Another leaf holds the number the cited keys do not. Word
+                # overlap only ranks the suggestions; it no longer gates the
+                # finding (the sentence says "free cash flow", the key is
+                # "fcf"). To avoid noise from coincidences, with no overlap at
+                # all the finding needs few holders (<= 3) or a distinctive
+                # figure (>= 2 decimals or >= 1000).
                 scored = []
-                for k, vals in evidence_values.items():
-                    if k not in leaf_keys or k in keys:
-                        continue
-                    if not any(_num_matches(num, dec, v) for v in vals):
-                        continue
+                for k in holders:
                     toks = {t for t in re.split(r"[._]", k.lower())
                             if t.isalpha() and t not in _KEY_STOPWORDS}
-                    score = len(toks & words)
-                    if score:       # the sentence is about what that key holds
-                        scored.append((-score, len(k), k))
+                    score = sum(1 for t in toks if t in words or any(
+                        a in low for a in _KEY_ALIASES.get(t, ())))
+                    scored.append((-score, len(k), k))
+                if (all(sc == 0 for sc, _l, _k in scored)
+                        and len(holders) > 3 and not _is_distinctive(num, dec)):
+                    continue
                 better = [k for _s, _l, k in sorted(scored)]
                 if not better:
                     continue

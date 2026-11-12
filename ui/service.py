@@ -2086,6 +2086,7 @@ def get_case(case_id: str) -> dict:
             "replays": len(_rreplays(cd)),
             "trace_count": len(_real_statestore.read_trace(cd)),
             "approval_deadline": (state.get("pending") or {}).get("deadline"),
+            "revision": _revision_info(state.get("revision_requests", 0)),
             "interrupted": _rinterrupted(cd, state.get("status")),
             "documents_visible_at_cutoff": [
                 d for d in manifest.get("documents", [])
@@ -2104,6 +2105,7 @@ def get_case(case_id: str) -> dict:
         "artifacts": sorted(c.artifacts), "replays": len(c.replays),
         "trace_count": len(c.trace),
         "approval_deadline": c.state["pending"].get("deadline"),
+        "revision": _revision_info(c.state.get("revision_requests", 0)),
         "interrupted": False,
         "documents_visible_at_cutoff": [
             d for d in c.manifest["documents"]
@@ -2233,14 +2235,28 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False,
                 f"case {case_id} is terminal ({state['status']}); start a "
                 "new case instead")
         run_backend = "replay" if replay else (backend or "auto")
-        # an explicitly selected backend (Backends page) wins over "auto"
-        # so runs launched from the case page use the operator's choice
-        if run_backend == "auto" and _selected_real_backend() not in ("", "auto"):
-            run_backend = _selected_real_backend()
+        # The backend is pinned to the case (same rule as the CLI): a case
+        # created offline must not silently continue on a paid backend, or
+        # the reverse. The Backends-page choice only applies to an unpinned
+        # case; an explicit backend that differs from the pin is refused.
+        pinned = state.get("backend") if isinstance(state.get("backend"), str) \
+            and state.get("backend") else None
+        if run_backend == "auto":
+            if pinned:
+                run_backend = _real_cli._name_to_arg(pinned)
+            elif _selected_real_backend() not in ("", "auto"):
+                run_backend = _selected_real_backend()
         try:
             dispatch, backend_name = _rdispatch_for(case_id, run_backend)
         except ConflictError:
             raise
+        if pinned and not replay and backend_name != pinned:
+            raise ConflictError(
+                f"case {case_id} is pinned to backend {pinned!r}; refusing to "
+                f"run it with {backend_name!r}. Start a new case to use "
+                "another backend.", case_id=case_id, backend=backend_name)
+        if not pinned and not replay:
+            _real_cli._pin_backend(cd, backend_name)
         orch = _real_orchestrator.Orchestrator(
             cd, dispatch=dispatch,
             gate_engine=_real_cli.load_gate_engine(workspace=_rws()))
@@ -2305,6 +2321,59 @@ def run_case(case_id: str, backend: str = "auto", replay: bool = False,
             "backend": "replay" if replay else backend,
             "pending_role": c.state["pending"]["role"],
             "trace_tail": len(c.trace)}
+
+
+def _demo_request_revision(c: Any, case_id: str, by: str, reasoning: str,
+                           findings: list[dict]) -> dict:
+    """Demo store: the same contract as the controller, minus the rebuild."""
+    if _real_orchestrator is None:
+        raise ValidationError("revision requests need the controller package")
+    orch = _real_orchestrator.Orchestrator
+    used = int(c.state.get("revision_requests", 0))
+    limit = _real_orchestrator.MAX_REVISION_REQUESTS
+    if used >= limit:
+        raise ConflictError(
+            f"revision limit reached ({used} of {limit} requests "
+            "used): publish with exceptions or reject")
+    try:
+        rows = orch._validate_revision_findings(findings)
+    except ValueError as exc:
+        raise ValidationError(str(exc))
+    ts = _now_iso()
+    ids = []
+    for row in rows:
+        fid = f"fnd-{len(c.ledger) + 1:04d}"
+        ids.append(fid)
+        c.ledger.append({
+            "finding_id": fid, "critic_ref": None,
+            "dedup_key": f"human|{len(ids)}|{row['affected_artifacts'][0]}",
+            "source_critic": "human", "raised_by": by,
+            "first_seen_round": c.state["pending"]["round"],
+            "last_seen_round": c.state["pending"]["round"],
+            "status": "open", "closed_by": None, **row})
+    c.artifacts["findings.json"] = {"findings": c.ledger}
+    _DEMO_COUNTERS["approval"] += 1
+    did = f"apr-{_DEMO_COUNTERS['approval']:04d}"
+    rec = {"decision_id": did, "case_id": case_id,
+           "candidate_id": c.state["candidate"]["candidate_id"],
+           "decision": "REVISION_REQUESTED", "by": by, "ts": ts,
+           "reasoning": reasoning, "finding_ids": ids,
+           "revision_request": used + 1}
+    c.approvals.append(rec)
+    c.artifacts[f"approvals/{did}.json"] = rec
+    c.state["revision_requests"] = used + 1
+    c.state["candidate"]["clean_review_rounds"] = 0
+    c.state["pending"]["deadline"] = None
+    c.state["status"] = "RUNNING"
+    c.state["updated_at"] = ts
+    c.trace.append(_ev(case_id, ts, "REVISION_REQUESTED",
+                       candidate_id=c.state["candidate"]["candidate_id"],
+                       detail={"by": by, "finding_ids": ids,
+                               "revision_request": used + 1}))
+    _emit(case_id, "APPROVAL_RECORDED", {"decision": "REVISION_REQUESTED"})
+    return {"case_id": case_id, "ok": True, "decision": "REVISION_REQUESTED",
+            "decision_id": did, "status": "RUNNING", "finding_ids": ids,
+            "revision": _revision_info(used + 1), "result": None}
 
 
 def resume_case(case_id: str) -> dict:
@@ -2374,14 +2443,61 @@ def resume_case(case_id: str) -> dict:
                     "the pending role is re-dispatched"}
 
 
+_REVISION_SEVERITIES = ("major", "critical")
+
+
+def _clean_revision_findings(findings: Any) -> list[dict]:
+    """Sanitise the approver's revision findings (free text, owner, severity)."""
+    if findings is None:
+        return []
+    if not isinstance(findings, list):
+        raise ValidationError("findings must be a list of objects")
+    out = []
+    for i, f in enumerate(findings):
+        if not isinstance(f, dict):
+            raise ValidationError(f"findings[{i}] must be an object")
+        arts = f.get("affected_artifacts") or []
+        if not isinstance(arts, list):
+            raise ValidationError(
+                f"findings[{i}].affected_artifacts must be a list")
+        out.append({
+            "summary": _v(_san.note, f"findings[{i}].summary",
+                          f.get("summary") or "", ),
+            "owner": str(f.get("owner") or "").strip().lower(),
+            "severity": str(f.get("severity") or "major").strip().lower(),
+            "affected_artifacts": [
+                _v(_san.text, f"findings[{i}].affected_artifacts[{j}]", a)
+                for j, a in enumerate(arts)],
+            "required_evidence": _v(_san.note,
+                                    f"findings[{i}].required_evidence",
+                                    f.get("required_evidence") or ""),
+        })
+    return out
+
+
+def _revision_info(used: int) -> dict:
+    mx = _real_orchestrator.MAX_REVISION_REQUESTS if _real_orchestrator else 2
+    per = _real_orchestrator.REVISION_ROUNDS_GRANT if _real_orchestrator else 2
+    return {"used": int(used), "max": mx, "remaining": max(0, mx - int(used)),
+            "rounds_per_request": per}
+
+
 def record_approval(case_id: str, decision: str, by: str,
                     reasoning: str = "",
-                    acknowledge_findings: list[str] | None = None) -> dict:
-    """POST /api/cases/{id}/approval — the human gate (auditable record)."""
+                    acknowledge_findings: list[str] | None = None,
+                    findings: list[dict] | None = None) -> dict:
+    """POST /api/cases/{id}/approval — the human gate (auditable record).
+
+    ``REVISION_REQUESTED`` sends the case back to RUNNING with ``findings``
+    (summary, owner, severity) as human findings; it records the decision but
+    does not close the case. The caller starts the run afterwards, the same
+    way it does after a budget grant.
+    """
     by = _v(_san.person_name, "by", by, required=False)
     reasoning = _v(_san.note, "reasoning", reasoning)
     ack = [_v(_san.identifier, f"acknowledge_findings[{i}]", a)
            for i, a in enumerate(acknowledge_findings or [])]
+    rev_findings = _clean_revision_findings(findings)
     if _using_real():
         cd = _rcase_dir(case_id)
         state = _rstate(cd)
@@ -2399,10 +2515,11 @@ def record_approval(case_id: str, decision: str, by: str,
                 "PENDING_APPROVAL or ESCALATED; approval is only recorded "
                 "at the human gate")
         if decision not in ("APPROVED", "REJECTED",
-                            "PUBLISHED_WITH_EXCEPTIONS"):
+                            "PUBLISHED_WITH_EXCEPTIONS", "REVISION_REQUESTED"):
             raise ValidationError(
-                "decision must be APPROVED, REJECTED or "
-                f"PUBLISHED_WITH_EXCEPTIONS, got: {decision}")
+                "decision must be APPROVED, REJECTED, "
+                "PUBLISHED_WITH_EXCEPTIONS or REVISION_REQUESTED, got: "
+                f"{decision}")
         if not (by or "").strip():
             raise ValidationError("'by' (approver name) is required")
         dispatch, _bn = _rdispatch_for(case_id,
@@ -2414,13 +2531,25 @@ def record_approval(case_id: str, decision: str, by: str,
             out = orch.record_approval(decision=decision,
                                        by=str(by).strip(),
                                        reasoning=reasoning or "",
-                                       acknowledge_findings=ack)
+                                       acknowledge_findings=ack,
+                                       revision_findings=rev_findings)
         except ValueError as exc:
             raise ValidationError(str(exc))
         except RuntimeError as exc:
             raise ConflictError(
                 f"approval rejected by the controller: {exc}")
         records = _rapprove_records(cd)
+        if decision == "REVISION_REQUESTED":
+            _emit(case_id, "APPROVAL_RECORDED", {"decision": decision,
+                                                 "real": True})
+            return {"case_id": case_id, "ok": True, "decision": decision,
+                    "decision_id": out.get("decision_id"),
+                    "status": out.get("status"),
+                    "finding_ids": out.get("finding_ids"),
+                    "rebuild_from": out.get("rebuild_from"),
+                    "revision": _revision_info(
+                        out.get("revision_requests_used", 0)),
+                    "result": None}
         result = _real_statestore.read_json_or_none(cd / "result.json")
         _emit(case_id, "APPROVAL_RECORDED", {"decision": decision,
                                              "real": True})
@@ -2435,11 +2564,21 @@ def record_approval(case_id: str, decision: str, by: str,
         raise ConflictError(
             f"case {case_id} is {c.state['status']}, not PENDING_APPROVAL; "
             "approval is only recorded at the human gate")
-    if decision not in ("APPROVED", "REJECTED"):
+    if decision not in ("APPROVED", "REJECTED", "REVISION_REQUESTED"):
         raise ValidationError(
-            f"decision must be APPROVED or REJECTED, got: {decision}")
+            "decision must be APPROVED, REJECTED or REVISION_REQUESTED, got: "
+            f"{decision}")
     if not (by or "").strip():
         raise ValidationError("'by' (approver name) is required")
+    if _real_orchestrator is not None:
+        try:
+            _real_orchestrator.Orchestrator._require_reasoning(decision,
+                                                              reasoning)
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+    if decision == "REVISION_REQUESTED":
+        return _demo_request_revision(c, case_id, str(by).strip(), reasoning,
+                                      rev_findings)
     _DEMO_COUNTERS["approval"] += 1
     ts = _now_iso()
     did = f"apr-{_DEMO_COUNTERS['approval']:04d}"

@@ -25,7 +25,8 @@ versions/registry.json    prompts/ (cards)       references/ (pinned knowledge)
 ```json
 {
   "case_id": "intc-fy2026q3-20261030",
-  "status": "CREATED|RUNNING|PENDING_APPROVAL|APPROVED|REJECTED|BLOCKED|EXHAUSTED|STOPPED|CLOSED",
+  "status": "CREATED|RUNNING|PENDING_APPROVAL|ESCALATED|APPROVED|REJECTED|BLOCKED|EXHAUSTED|STOPPED|CLOSED",
+  "revision_requests": 0,                          // REVISION_REQUESTED decisions so far (max 2); absent = 0
   "pending": {
     "role": "generator|critic|approval",          // which team is next
     "request_id": "req-0007",
@@ -223,9 +224,14 @@ open findings + required evidence + unchanged criteria + delta-scope statement.
 
 ```json
 {"decision_id":"apr-0001","case_id":"...","candidate_id":"...",
- "decision":"APPROVED|REJECTED","by":"Gaetano Marco Chiantia",
+ "decision":"APPROVED|REJECTED|PUBLISHED_WITH_EXCEPTIONS|REVISION_REQUESTED","by":"Gaetano Marco Chiantia",
  "ts":"...","reasoning":"...","expected_evidence_refs": [...]}
 ```
+`reasoning` is required (at least 15 characters) for every decision except APPROVED.
+REVISION_REQUESTED is not terminal and writes no `result.json`; its record adds
+`finding_ids` (the human findings, ledger rows with `source_critic: "human"` and
+`raised_by`), `budget_grant` (+2 rounds), `revision_request` (1 or 2) and
+`from_status`. The repair packet it issues is `rounds/round-NNN/revision-packet-K.json`.
 ```json
 {"case_id":"...","terminal":"APPROVED|REJECTED|BLOCKED|EXHAUSTED|STOPPED",
  "candidate_id":"...","report_version":"v3-<candidate8>",

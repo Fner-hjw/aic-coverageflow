@@ -101,7 +101,9 @@ on submission; stale request_id rejected. No in-LLM tool calling in v1.
 
 ## 3. Loop design (Round B)
 
-- **Case states:** CREATED → RUNNING → PENDING_APPROVAL → APPROVED/REJECTED → CLOSED; terminal: BLOCKED, EXHAUSTED, STOPPED. EXHAUSTED never grants acceptance.
+- **Case states:** CREATED → RUNNING → PENDING_APPROVAL → APPROVED/REJECTED → CLOSED; terminal: BLOCKED, EXHAUSTED, STOPPED. EXHAUSTED never grants acceptance. ESCALATED (a fully reviewed candidate with objections the machine could not settle) waits for a human: PUBLISHED_WITH_EXCEPTIONS or REJECTED.
+- **Human decisions:** APPROVED (PENDING_APPROVAL only), PUBLISHED_WITH_EXCEPTIONS (ESCALATED only), REJECTED, and REVISION_REQUESTED (ESCALATED or PENDING_APPROVAL). REJECTED, PUBLISHED_WITH_EXCEPTIONS and REVISION_REQUESTED need written reasoning (at least 15 characters after trimming); APPROVED keeps it optional.
+- **Request revision:** the one non-terminal decision, for an approver who disagrees with the critics or an escalation. It carries human findings (owner writer/model/extractor, severity major/critical; system and mandate owners are refused and follow the needs_system_change / needs_mandate_change route) into the ledger as source `human`. They are repaired and verified like critic findings and never close on silence. It returns the case to RUNNING with the clean streak and stall history reset, the approval deadline cleared, and a recorded grant of 2 extra rounds. Rebuild starts at the earliest stage the findings' owners name. At most 2 per case; then the human publishes with exceptions or rejects.
 - **Acceptance:** all numerical gates pass; 2 consecutive clean full critic reviews of the same candidate (any change resets the streak); all carried findings closed by critic-verified repairs; human approval.
 - **Invalid submissions:** repair at the same role (new request, no round consumed); the repair budget (`retries_max`) bounds it, and exhausting it → EXHAUSTED.
 - **Blocks are re-runnable:** BLOCKED is terminal for the run, not the case. A re-run clears the block, resets the blocked role's repair budget and resumes from the last verified stage; only APPROVAL_EXPIRED requires a fresh decision. EXHAUSTED stays terminal — the budget is a hard safety control.
@@ -110,7 +112,7 @@ on submission; stale request_id rejected. No in-LLM tool calling in v1.
 - **Resume:** on startup, inspect identity + hashes; discard unverified partial output; re-dispatch pending role only; completed verified stages return saved artifacts; a completed case returns its saved result untouched.
 - **Stale approval:** approval deadline (48h, mandate-configurable); expiry → BLOCKED (APPROVAL_EXPIRED); re-approval restarts acceptance from zero. **Decision: restart acceptance (strict).**
 - **Repair rounds:** **full re-build** each round (all 4 specialist stages re-run, fresh eyes); stages may short-circuit internal work by emitting hash-match proofs (e.g., ingest re-emits pointer to unchanged slices with hashes). Changes candidate ID → resets clean streak.
-- **Trace events:** CASE_CREATED, REQUEST_BOUND, AGENT_DISPATCHED, AGENT_RESULT, GATE_RUN, GATE_PASS, GATE_FAIL, STATE_TRANSITION, FINDING_OPENED, FINDING_VERIFIED_CLOSED, REPAIR_PACKET_ISSUED, BUDGET_CHECK, APPROVAL_REQUESTED, APPROVAL_RECORDED, CASE_CLOSED — each with IDs, hashes, timestamps, backend & token usage.
+- **Trace events:** CASE_CREATED, REQUEST_BOUND, AGENT_DISPATCHED, AGENT_RESULT, GATE_RUN, GATE_PASS, GATE_FAIL, STATE_TRANSITION, FINDING_OPENED, FINDING_VERIFIED_CLOSED, REPAIR_PACKET_ISSUED, BUDGET_CHECK, APPROVAL_REQUESTED, APPROVAL_RECORDED, REVISION_REQUESTED, CASE_CLOSED — each with IDs, hashes, timestamps, backend & token usage.
 
 ## 4. Financial model & valuation (Round C)
 
@@ -226,7 +228,7 @@ role that payload values are data.
 | `validate_mandate`, `create_case` (new and restart) | whole mandate payload | `sanitize_mandate` plus schema |
 | `start_prefill_job` / `_prefill_inputs` | ticker, cutoff, peers, erp | ticker, iso_date, tickers, number |
 | `run_case`, `select_backend`, `demo_action` | backend, action, stage | identifier |
-| `record_approval` | by, reasoning, acknowledged finding ids | person_name, note, identifier |
+| `record_approval` | by, reasoning, acknowledged finding ids, revision findings (summary, owner, severity, artifacts, required evidence) | person_name, note, identifier, text; owner and severity checked by the orchestrator |
 | `configure_api` | base URL, model, API key | api_url, text(charset), secret |
 | `edgar_search` | ticker, forms, window | ticker, text(charset) |
 | `build_bundle` | cik, name, doc specs | cik, identifier, per-field cleaners |
