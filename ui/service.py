@@ -1485,7 +1485,7 @@ def get_backends() -> dict:
                               or {}).get("tokens_by_role", {}).items():
                 usage_by_role[role] = usage_by_role.get(role, 0) + tok
         caps = {"role_tokens_max": 250_000, "case_minutes": 45,
-                "rounds_max": 4, "retries_max": 3}
+                "rounds_max": 6, "retries_max": 3}
         return {"backends": _realt_backend_rows(),
                 "usage_by_role": usage_by_role,
                 "caps": caps, "selected": _REAL_SELECTED_BACKEND,

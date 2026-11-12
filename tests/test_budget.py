@@ -109,7 +109,7 @@ def test_clock_stops_during_approval_pause():
 
 def test_limit_parsing_from_mandate_and_defaults():
     b = budget.BudgetTracker(limits={})
-    assert b.limits.rounds_max == 4
+    assert b.limits.rounds_max == 6
     assert b.limits.retries_max == 3
     assert b.limits.case_minutes == 120   # two ~25-minute live rounds plus headroom
     # the default has to afford the rounds budget it sits next to: a 4-round

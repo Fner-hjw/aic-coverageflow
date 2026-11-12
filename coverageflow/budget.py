@@ -20,7 +20,11 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 DEFAULT_LIMITS = {
-    "rounds_max": 4,
+    # Four rounds left no room: approval needs two clean reviewed rounds in a
+    # row, so one real critic finding used half the budget. Rounds that only
+    # repair mechanical gate failures are counted apart (mechanical_rounds_max).
+    "rounds_max": 6,
+    "mechanical_rounds_max": 4,
     "retries_max": 3,
     # Measured on the live Intel case (Codex, 2026-11-12): one full round is
     # ~25 minutes (ingest ~1, extraction ~13, model ~1, writer, four critics)
@@ -82,7 +86,10 @@ def _opt_float(v: Any) -> float | None:
 @dataclass
 class Limits:
     """Immutable per-case budget limits (from mandate.limits, with defaults)."""
-    rounds_max: int = 4
+    rounds_max: int = 6
+    # rebuilds that only re-run the writer to fix gate findings (an unmarked
+    # number) are not review rounds; they have their own, separate cap
+    mechanical_rounds_max: int = 4
     retries_max: int = 3
     case_minutes: float = 120.0
     role_tokens_max: int = 60000
@@ -108,6 +115,8 @@ class Limits:
             efforts[str(role)] = effort
         return cls(
             rounds_max=int(d.get("rounds_max", DEFAULT_LIMITS["rounds_max"])),
+            mechanical_rounds_max=int(d.get(
+                "mechanical_rounds_max", DEFAULT_LIMITS["mechanical_rounds_max"])),
             retries_max=int(d.get("retries_max", DEFAULT_LIMITS["retries_max"])),
             case_minutes=float(d.get("case_minutes", DEFAULT_LIMITS["case_minutes"])),
             role_tokens_max=int(d.get("role_tokens_max", DEFAULT_LIMITS["role_tokens_max"])),
@@ -178,6 +187,7 @@ class BudgetTracker:
         used = used or {}
         self.used: dict[str, Any] = {
             "rounds": int(used.get("rounds", 0)),
+            "mechanical_rounds": int(used.get("mechanical_rounds", 0)),
             "elapsed_minutes": float(used.get("elapsed_minutes", 0.0)),
             "tokens_by_role": dict(used.get("tokens_by_role", {})),
             # carried across state round-trips: dropping it reset every retry
@@ -215,6 +225,7 @@ class BudgetTracker:
     def used_state(self) -> dict:
         return {
             "rounds": self.used["rounds"],
+            "mechanical_rounds": self.used.get("mechanical_rounds", 0),
             "elapsed_minutes": round(self.used["elapsed_minutes"], 3),
             "tokens_by_role": dict(self.used["tokens_by_role"]),
             "retries_by_role": dict(self.used.get("retries_by_role") or {}),
@@ -226,6 +237,7 @@ class BudgetTracker:
     def limits_state(self) -> dict:
         return {
             "rounds_max": self.limits.rounds_max,
+            "mechanical_rounds_max": self.limits.mechanical_rounds_max,
             "retries_max": self.limits.retries_max,
             "case_minutes": self.limits.case_minutes,
             "role_tokens_max": self.limits.role_tokens_max,
@@ -295,6 +307,13 @@ class BudgetTracker:
 
     def note_round(self) -> None:
         self.used["rounds"] += 1
+
+    def try_mechanical_round(self) -> bool:
+        """Spend a mechanical (writer-only gate repair) round if one is left."""
+        if self.used.get("mechanical_rounds", 0) >= self.limits.mechanical_rounds_max:
+            return False
+        self.used["mechanical_rounds"] = self.used.get("mechanical_rounds", 0) + 1
+        return True
 
     def used_rounds(self) -> int:
         return int(self.used["rounds"])
