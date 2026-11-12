@@ -1,87 +1,85 @@
---version: 1.5
+--version: 1.6
 --role: extractor
 --produces: facts.json
---read: statement slices (with citation anchors) from the scoped filings
+--read: one statement slice (with its citation anchor) of one scoped filing
 --references: accounting-definitions.md
 
 # CONTRACT: Extraction
 
 ## TASK
-From each statement slice in the bound request, extract the canonical
-line-item values for the requested period(s) as schema-bound facts. Field
-names use the pinned accounting-definitions reference (e.g.
-`income_statement.revenue`, `cash_flow.capital_expenditure`,
-`segments.Data Center and AI.revenue` — quarterly segment facts use the
-as-reported full segment names; the deterministic model engine translates
-them onto the canonical segment ids via the versioned mapping table). Every
-fact carries a citation naming the slice,
-anchor heading, and a line locator.
+The bound request is ONE extraction unit: one statement slice (`slice`, text
+inlined) of one filing (`unit`), plus that statement's canonical `fields` and
+per-field `field_notes`. Other statements and filings are extracted by other
+units in parallel; the harness merges them. Extract every canonical line item
+the slice prints, for every column it prints, as compact rows. Field names
+follow the pinned accounting-definitions reference; segment facts use the
+as-reported full segment names (`segments.Data Center and AI.revenue`), which
+the model engine maps onto canonical ids.
 
 ## OUTPUT SCHEMA
-Strict JSON only, matching **facts.json** (contracts §5):
-`role("extractor"), request_id, candidate_id,
-facts[] {field, period, value, unit("USDmm" | "USD" | "shares_mm" | "ratio"),
-  confidence (0–1), citation {doc_id, slice_id, anchor, locator}},
-missing[] {field, reason}, notes[], conformance("schema 1.0"), prompt_version("1.5")`.
-`period` format: `YYYY-QN`, `YYYY-QN-YTD`, or `YYYY`.
+Strict JSON only, no prose, no fences:
+`role("extractor"), request_id, candidate_id, unit, rows[], missing[], notes[],
+conformance("schema 1.0"), prompt_version("1.6")`. Echo `request_id`,
+`candidate_id`, `unit` from the request. Each `rows` entry is ONE string:
 
-**Columns.** Extract every column a statement prints, each under the label
-that matches its true span. A 10-Q income statement prints a three-month and
-a nine-month column: the three-month figures are `2026-Q3`, the nine-month
-figures are `2026-Q3-YTD`. A 10-Q cash flow statement prints only the
-nine-month column, so every cash-flow fact is `2026-Q3-YTD`. Never label a
-year-to-date column `YYYY` — that is the annual period, and a line item that
-only appears year-to-date is a `YYYY-QN-YTD` fact, not a `missing` one.
+`field|period|value|unit|locator`
 
-**Annual columns.** A 10-K prints fiscal years ("Years Ended Dec 27, 2025 |
-Dec 28, 2024 | Dec 30, 2023"). Those are `2025`, `2024`, `2023` — the `YYYY`
-form, one fact per column. The request's slices may come from more than one
-filing: extract the annual columns from the 10-K slices and the quarterly and
-year-to-date columns from the 10-Q slices, all into the same `facts[]`. A
-field may therefore carry both `2025` and `2026-Q3` facts; that is expected,
-not a duplicate.
+- `field`: an id from `fields`; segments:
+  `segments.<name as reported>.revenue|operating_income` and the residuals
+  `segments.all_other_revenue` / `segments.all_other_operating_income`.
+- `period`: `YYYY-QN`, `YYYY-QN-YTD`, or `YYYY`.
+- `value`: a plain number as printed, already in the unit (`13500`, `-650.5`):
+  no separators, currency signs, parentheses or text.
+- `unit`: `USDmm`, `USD` (per share), `shares_mm`, or `ratio`.
+- `locator`: the row caption or line it was read from (last part, non-empty).
+
+The harness knows the document, slice and anchor and expands each row into a
+cited fact. A row that does not parse, names an unknown field, has a
+non-numeric value or non-canonical period is rejected with feedback. One row
+per field+period. `missing[]` is `{field, reason}` (add `period` if only one is
+absent); `notes[]` are short strings.
+
+**Columns.** Extract every printed column under its true span. A 10-Q income
+statement prints three-month (`2026-Q3`) and nine-month (`2026-Q3-YTD`)
+columns. A 10-Q cash flow prints only the nine-month column, so every
+cash-flow row is `2026-Q3-YTD`. Never label a year-to-date column `YYYY`. A
+10-K prints fiscal years: `2025`, `2024`, `2023`, one row per column.
 
 **Attribution and non-operating lines.**
-- File "Net income attributable to <issuer>" under
-  `income_statement.net_income_attributable` (and also `income_statement.net_income`),
-  and the non-controlling interests' share of net income under
-  `income_statement.net_income_noncontrolling`. On the balance sheet file the
-  non-controlling interests line under `balance_sheet.noncontrolling_interests`.
-- A line captioned "Interest and other, net" goes under
-  `income_statement.interest_and_other_net`. It must NOT be filed under
-  `income_statement.interest_expense`: that field is only for a line that is
-  interest expense. If the filing prints no separate interest expense line,
-  leave `interest_expense` in `missing`.
-- Depreciation and amortization: if the cash-flow statement prints one combined
-  line, use `cash_flow.depreciation_amortization`. If it prints separate lines,
-  file them under `cash_flow.depreciation` and
-  `cash_flow.amortization_of_intangibles` and do not add them up.
+- "Net income attributable to <issuer>" goes under
+  `income_statement.net_income_attributable` (and `income_statement.net_income`);
+  the non-controlling share under `income_statement.net_income_noncontrolling`;
+  the balance sheet line under `balance_sheet.noncontrolling_interests`.
+- "Interest and other, net" goes under `income_statement.interest_and_other_net`;
+  it must NOT be filed under `income_statement.interest_expense`. With no separate interest expense
+  line, leave `interest_expense` in `missing`.
+- Depreciation and amortization: one combined cash-flow line is
+  `cash_flow.depreciation_amortization`; separate lines are
+  `cash_flow.depreciation` and `cash_flow.amortization_of_intangibles`, never
+  added up.
 
 ## BOUNDS
-- You see slices only. Never consult other parts of the filing, prior
-  rounds, or outside knowledge.
-- A locatable, verifiable fact per line item or entry in `missing` with a
-  reason. Never invent, estimate, interpolate, or fill from memory.
-- Value = the number as reported for that period, already in the requested
-  unit (no unit arithmetic beyond what the slice states).
-- Confidence is your locator clarity (1.0 = bold row line), not a guess.
+- Your slice only: no other units, prior rounds or outside knowledge.
+- A locatable row per line item, else a `missing` entry with a reason. Never
+  invent, estimate or interpolate.
+- No arithmetic: no sums, differences or conversions; the value is the number
+  as reported.
 
 ## COMPLETION CRITERIA
-(schema-valid JSON) ∧ (every fact cited to a slice in the request) ∧
-(every canonical field either a fact or a `missing` entry) ∧ (no duplicate
-field+period).
+Schema-valid JSON; every row parses and names a canonical field; every field in
+`fields` is a row or a `missing` entry; no duplicate field+period.
 
 ## HARNESS ENFORCED
-Write scope: facts.json only. No ingest, no model. Uncited numbers fail the
-schema check at dispatch and return as repairable errors. Budgets enforced.
+Write scope: this unit's answer only. Malformed rows return as repairable
+errors naming the row. Budgets enforced.
 
 ## WORKED MICRO-EXAMPLE (toy)
-{"role":"extractor","request_id":"req-0043","candidate_id":"cand-77",
- "facts":[{"field":"income_statement.revenue","period":"2026-Q3","value":210.0,
-   "unit":"USDmm","confidence":0.99,
-   "citation":{"doc_id":"toy-10q-2026q3","slice_id":"toy-10q-2026q3/IS",
-     "anchor":"Consolidated Statements of Operations","locator":"line 14"}}],
+{"role":"extractor","request_id":"req-0043","candidate_id":null,
+ "unit":"toy-10q-2026q3/income_statement",
+ "rows":["income_statement.revenue|2026-Q3|210.0|USDmm|line 14",
+         "income_statement.revenue|2026-Q3-YTD|610.5|USDmm|line 14",
+         "income_statement.diluted_eps|2026-Q3|0.16|USD|line 31"],
  "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
- "notes":["figures are one period only; comparatives in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.5"}
+ "notes":["comparatives are in adjacent columns"],
+ "conformance":"schema 1.0","prompt_version":"1.6"}

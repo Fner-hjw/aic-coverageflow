@@ -193,7 +193,7 @@ class TestRepoCards:
             # 1.0 baseline; edited cards bump (extractor 1.2: period labels
             # for year-to-date columns; model/critic_lead 1.1: request_id;
             # writer 1.3: a marker cites the clause it closes; extractor 1.4: attribution + interest_and_other_net; writer 1.4: units, no process text, changes-since-last)
-            assert meta["version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5"), role
+            assert meta["version"] in ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"), role
             assert meta["role"] == role
             assert meta["produces"] == produces
 

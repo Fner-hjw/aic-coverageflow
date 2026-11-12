@@ -59,6 +59,12 @@ _SCHEMA_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
         "role", "request_id", "candidate_id", "facts", "missing", "notes",
         "conformance", "prompt_version",
     ),
+    # one extraction unit's compact answer; the orchestrator expands the rows
+    # and merges the units into facts.json
+    "facts-unit.json": (
+        "role", "request_id", "candidate_id", "unit", "rows", "missing",
+        "notes", "conformance", "prompt_version",
+    ),
     "forecast_assumptions.json": (
         "role", "horizon_years", "segments", "margin_glide",
         "terminal_basis", "conformance", "prompt_version",
@@ -88,7 +94,7 @@ _SCHEMA_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
 # so the per-artifact required-key check below never ran in the real pipeline.
 ROLE_OUTPUT_SCHEMA: dict[str, str] = {
     "ingest": "ingest-report.json",
-    "extractor": "facts.json",
+    "extractor": "facts-unit.json",
     "model": "forecast_assumptions.json",
     "writer": "report.md",
     **{f"critic_c{i}": "critic-report.json" for i in range(1, 5)},
