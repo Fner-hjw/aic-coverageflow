@@ -213,6 +213,32 @@ def parse_row(row: Any, catalogue: dict) -> tuple[dict | None, str | None]:
             "unit": unit, "locator": locator}, None
 
 
+_UNPRINTED = frozenset({"?", "n/a", "na", "none", "null", "-", "—", "–", ""})
+
+
+def _fact_index(facts: list[dict], key: tuple[str, str]) -> int:
+    for i, f in enumerate(facts):
+        if (f["field"], f["period"]) == key:
+            return i
+    return -1
+
+
+def _unprinted_row(row: Any, catalogue: dict) -> dict | None:
+    """``field|period|?|unit|locator`` as a missing entry, else None."""
+    if not isinstance(row, str):
+        return None
+    parts = [p.strip() for p in row.split("|", 4)]
+    if len(parts) != 5 or parts[2].lower() not in _UNPRINTED:
+        return None
+    field, period = parts[0], parts[1]
+    if not field_known(field, catalogue) or not PERIOD_RE.match(period):
+        return None
+    if re.fullmatch(r"\d{4}", period):
+        period = f"FY{period}"
+    return {"field": field, "period": period,
+            "reason": "the extractor could not read a value for it in the slice"}
+
+
 def _anchor_of(slice_entry: dict, kind: str) -> str:
     anchors = slice_entry.get("anchors") or {}
     return str(anchors.get("heading") or anchors.get("first_line") or kind)
@@ -232,12 +258,21 @@ def expand_unit(parsed: dict, unit: dict, catalogue: dict
     facts: list[dict] = []
     seen: dict[tuple[str, str], int] = {}
     anchor = _anchor_of(unit["slice"], unit["kind"])
+    unprinted: list[dict] = []
     for i, row in enumerate(rows):
         got, err = parse_row(row, catalogue)
         if err:
+            # the extractor marking a figure it could not read ('?', 'n/a') is
+            # an honest "missing", not a malformed row worth a whole retry
+            blank = _unprinted_row(row, catalogue)
+            if blank:
+                unprinted.append(blank)
+                continue
             errors.append(f"rows[{i}] {str(row)[:90]!r}: {err}")
             continue
         key = (got["field"], got["period"])
+        if key in seen and facts[_fact_index(facts, key)]["value"] == got["value"]:
+            continue    # the same row twice: keep one
         if key in seen:
             errors.append(f"rows[{i}] duplicates rows[{seen[key]}] "
                           f"({got['field']} {got['period']}): one row per "
@@ -254,6 +289,12 @@ def expand_unit(parsed: dict, unit: dict, catalogue: dict
     missing, merr = _clean_missing(parsed.get("missing"))
     if merr:
         errors.append(merr)
+    for blank in unprinted:
+        if not any(m["field"] == blank["field"] and m.get("period") == blank.get("period")
+                   for m in missing) and not any(
+                (f["field"], f["period"]) == (blank["field"], blank.get("period"))
+                for f in facts):
+            missing.append(blank)
     notes = parsed.get("notes")
     if notes is None:
         notes = []

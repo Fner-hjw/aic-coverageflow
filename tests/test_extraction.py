@@ -143,9 +143,22 @@ class TestExpandUnit:
         assert "2 invalid entries" in err and "rows[1]" in err and "rows[2]" in err
         assert "intc-10q-2026q3/income_statement" in err
 
-    def test_a_duplicate_field_period_is_rejected(self):
-        err, _ = ex.expand_unit({"rows": [GOOD, GOOD]}, _unit(), CAT)
+    def test_an_identical_duplicate_row_collapses(self):
+        err, got = ex.expand_unit({"rows": [GOOD, GOOD]}, _unit(), CAT)
+        assert err is None and len(got["facts"]) == 1
+
+    def test_a_conflicting_duplicate_field_period_is_rejected(self):
+        other = GOOD.replace(GOOD.split("|")[2], "999")
+        err, _ = ex.expand_unit({"rows": [GOOD, other]}, _unit(), CAT)
         assert "duplicates rows[0]" in err
+
+    def test_an_unreadable_value_becomes_a_missing_entry(self):
+        field, period = GOOD.split("|")[:2]
+        err, got = ex.expand_unit(
+            {"rows": [GOOD, f"{field.replace('revenue', 'cost_of_revenue')}|{period}|?|USDmm|x"]},
+            _unit(), CAT)
+        assert err is None and len(got["facts"]) == 1
+        assert got["missing"] and got["missing"][0]["period"] == period
 
     def test_no_rows_and_nothing_missing_is_rejected(self):
         err, _ = ex.expand_unit({"rows": []}, _unit(), CAT)
