@@ -383,7 +383,7 @@ def gate_terminal_reconciliation(valuation: dict, mandate: dict) -> tuple[bool, 
     def f(v, spec):
         return "n/a" if v is None else format(v, spec)
 
-    return False, [_finding(
+    finding = _finding(
         "terminal_reconciliation", "terminal:outside-tolerance",
         f"exit-multiple terminal value {f(tv_exit, ',.0f')} (multiple {f(mult, '.1f')}x) "
         f"and Gordon terminal value {f(tv_g, ',.0f')} (growth {f(g, '.2%')}) "
@@ -392,10 +392,77 @@ def gate_terminal_reconciliation(valuation: dict, mandate: dict) -> tuple[bool, 
         f"the exit multiple implies terminal growth of {f(imp_g, '.2%')}",
         ["valuation.json"],
         required_evidence="terminal assumptions (exit multiple, terminal growth, "
-                          "WACC) that reconcile within the mandate tolerance")]
+                          "WACC) that reconcile within the mandate tolerance")
+    # read back by the controller next round to tell "the repair moved the
+    # ratio" from "nothing a role can change is moving it"
+    finding["metrics"] = {"ratio": ratio}
+    return False, [finding]
 
 
 terminal_reconciliation = gate_terminal_reconciliation
+
+
+# ---------------------------------------------------------------------------
+# terminal feasibility: can ANY forecast satisfy the gate under this mandate?
+# ---------------------------------------------------------------------------
+
+DEFAULT_EBIT_TO_EBITDA_MAX = 0.95
+
+
+def terminal_feasibility(mandate: dict) -> dict:
+    """Best terminal-value ratio any forecast could reach under the mandate.
+
+    The engine's Gordon value is ``NOPAT * (1+g) / (WACC - g)`` less working
+    capital, and its exit value is ``multiple * EBITDA``. So
+    ``TV_gordon / EBITDA <= (1 - tax) * (EBIT/EBITDA) * (1+g) / (WACC - g)``.
+    The model role can move EBIT/EBITDA (and nothing else in that bound); the
+    WACC, growth, tax rate and exit multiple are mandate inputs. With EBIT /
+    EBITDA at its ceiling (``terminal_ebit_to_ebitda_max``, default 0.95, as
+    depreciation is never ~0) the ratio ``TV_exit / TV_gordon`` is as low as it
+    can go. If that is still above the gate limit, no role can repair it.
+    """
+    a = (mandate or {}).get("assumptions") or {}
+    try:
+        w, g = float(a["wacc"]), float(a["terminal_growth"])
+        mult = float(a["exit_multiple_ebitda"])
+        tax = float(a.get("tax_rate", 0.21))
+    except (KeyError, TypeError, ValueError):
+        return {"checked": False}
+    if g >= w or mult <= 0:
+        return {"checked": False}
+    hard = float(a.get("terminal_gate_ratio_max", 3.0))
+    cap = float(a.get("terminal_ebit_to_ebitda_max", DEFAULT_EBIT_TO_EBITDA_MAX))
+    best_multiple = (1.0 - tax) * cap * (1.0 + g) / (w - g)
+    best_ratio = mult / best_multiple
+    return {
+        "checked": True, "feasible": best_ratio <= hard,
+        "best_case_ratio": best_ratio, "gate_ratio_max": hard,
+        "best_case_gordon_multiple": best_multiple,
+        "wacc": w, "terminal_growth": g, "exit_multiple": mult,
+        "tax_rate": tax, "ebit_to_ebitda_max": cap,
+        "max_exit_multiple": hard * best_multiple,
+    }
+
+
+def terminal_feasibility_finding(mandate: dict) -> dict | None:
+    """A mandate-owned finding when the gate cannot be met, else None."""
+    r = terminal_feasibility(mandate)
+    if not r.get("checked") or r["feasible"]:
+        return None
+    f = _finding(
+        "terminal_reconciliation", "terminal:mandate-infeasible",
+        f"the mandate cannot pass the terminal gate: exit multiple "
+        f"{r['exit_multiple']:.1f}x with WACC {r['wacc']:.2%} and terminal growth "
+        f"{r['terminal_growth']:.2%} gives a terminal-value ratio of at least "
+        f"{r['best_case_ratio']:.2f} even at EBIT/EBITDA {r['ebit_to_ebitda_max']:.0%}, "
+        f"above the gate limit {r['gate_ratio_max']:.1f}x. Under this WACC and growth "
+        f"the exit multiple can be at most {r['max_exit_multiple']:.1f}x",
+        ["mandate.json"],
+        required_evidence="a mandate whose exit multiple, WACC and terminal growth "
+                          "can reconcile within the gate limit")
+    f["owner"] = "mandate"
+    f["metrics"] = r
+    return f
 
 
 # ---------------------------------------------------------------------------

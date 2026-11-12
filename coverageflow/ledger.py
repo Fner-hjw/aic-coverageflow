@@ -252,6 +252,30 @@ class FindingsLedger:
         self.save()
         return finding_id
 
+    def owner_of(self, finding_id: str) -> str | None:
+        for r in self._rows:
+            if r["finding_id"] == finding_id:
+                return r.get("owner")
+        raise LookupError(f"unknown finding: {finding_id}")
+
+    def reassign_owner(self, finding_id: str, owner: str, why: str) -> None:
+        """Move an open finding to another owner (e.g. role -> mandate).
+
+        The previous owner is kept on the row, so the ledger still shows who
+        was asked to fix it first.
+        """
+        if owner not in OWNERS:
+            raise ValueError(f"unknown owner: {owner}")
+        for r in self._rows:
+            if r["finding_id"] == finding_id:
+                if r.get("owner") != owner:
+                    r.setdefault("owner_history", []).append(
+                        {"owner": r.get("owner"), "reason": why})
+                    r["owner"] = owner
+                    self.save()
+                return
+        raise LookupError(f"unknown finding: {finding_id}")
+
     def close_finding(self, finding_id: str, *, critic: str, round: int,
                       verified_evidence: dict) -> bool:
         """Close a finding ONLY with critic-verified evidence (artifact+sha256).

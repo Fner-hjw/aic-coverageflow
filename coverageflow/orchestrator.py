@@ -47,6 +47,7 @@ budget.used.retries_by_role.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -644,6 +645,21 @@ class Orchestrator:
                     {"missing": missing,
                      "inputs_dir": str(self.case_dir / "inputs")})
                 return self._summary(state, "case blocked: inputs missing")
+            # A defect in a human-owned input that no forecast can cure is
+            # known before any role runs: stop now, not after four rounds.
+            pre = gates.terminal_feasibility_finding(self.mandate())
+            if pre is not None:
+                led = self.ledger()
+                pre["source_critic"] = "gate:terminal_reconciliation"
+                fid = led.open_finding(pre, round=0)
+                self._trace(event="FINDING_OPENED",
+                            detail={"finding_id": fid, "summary": pre["summary"],
+                                    "gate": "terminal_reconciliation",
+                                    "preflight": True})
+                self._stop_for_owner(state, led)
+                return self._summary(
+                    state, "case blocked (needs_mandate_change): "
+                           + pre["summary"])
             state["status"] = "RUNNING"
             state["pending"]["case_clock_started"] = self.now()
             state["pending"]["stage"] = None
@@ -2035,6 +2051,12 @@ class Orchestrator:
                 reproduced.setdefault(outcome.gate, set()).add(
                     ledger_mod.compute_dedup_key(f))
                 fid = led.open_finding(f, round=arts.round)
+                if self._repair_did_not_move(arts.round, outcome.gate, f):
+                    # the owning role was told and the figure did not move:
+                    # whatever fixes it is not in that role's hands
+                    was = led.owner_of(fid)
+                    led.reassign_owner(
+                        fid, "mandate", f"unchanged after a {was} repair round")
                 self._trace(event="FINDING_OPENED",
                             candidate_id=state["candidate"]["candidate_id"],
                             round=arts.round, role=outcome.gate,
@@ -2076,6 +2098,32 @@ class Orchestrator:
                                 "finding_count": len(report.finding_dicts)})
             self._issue_repair_packet(state, arts, led,
                                       note="numerical gate failures")
+
+    def _repair_did_not_move(self, round_no: int, gate: str, f: dict,
+                             rel_tol: float = 0.02) -> bool:
+        """Did this gate finding come back with the same figure as last round?
+
+        Only findings that carry ``metrics['ratio']`` (terminal reconciliation)
+        take part. True when the previous round raised the same finding with a
+        ratio within ``rel_tol``: a repair round happened in between, so the
+        role that owns it had its chance.
+        """
+        now = (f.get("metrics") or {}).get("ratio")
+        if now is None or round_no <= 1:
+            return False
+        prev_path = self.case_dir / self._rel_gates(round_no - 1)
+        try:
+            prev = json.loads(prev_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        for res in prev.get("results") or []:
+            if res.get("gate") != gate:
+                continue
+            for pf in res.get("findings") or []:
+                before = (pf.get("metrics") or {}).get("ratio")
+                if pf.get("dedup_key") == f.get("dedup_key") and before:
+                    return abs(now - before) <= rel_tol * abs(before)
+        return False
 
     def _rel_gates(self, round_no: int) -> str:
         return f"rounds/round-{round_no:03d}/numerical/gates.json"
