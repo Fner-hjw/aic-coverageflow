@@ -1604,6 +1604,7 @@ class TestSlicesAreProducedByTheHarness:
         # them itself, so disable that to exercise the harness path
         monkeypatch.setattr(_stub.StubDispatch, "_write_slices",
                             staticmethod(lambda call, parsed: None))
+        monkeypatch.setattr(Orchestrator, "INGEST_IN_CODE", False)
         orch, dispatch, clk, case_dir = build_env(tmp_path)
         # replace the placeholder filing with the hand-written mini 10-Q
         import shutil

@@ -199,3 +199,20 @@ def test_writer_schema_matches_the_envelope_keys():
     from coverageflow.dispatch import WRITER_JSON_SCHEMA, _SCHEMA_REQUIRED_KEYS
     assert tuple(WRITER_JSON_SCHEMA["required"]) == _SCHEMA_REQUIRED_KEYS["report.md"]
     assert WRITER_JSON_SCHEMA["additionalProperties"] is False
+
+
+def test_ingest_is_built_in_code_when_the_slicer_finds_the_statements(tmp_path):
+    import shutil
+    from pathlib import Path
+    orch, dispatch, clk, case_dir = build_env(tmp_path)
+    fixture = Path(__file__).parent / "fixtures" / "mini-10q.htm"
+    shutil.copyfile(fixture, case_dir / "inputs" / "intc-10q-2026q3.htm")
+    for path in (case_dir / "inputs" / "slices").rglob("*.txt"):
+        path.unlink()
+    orch.run()
+    assert dispatch.calls_of("ingest") == []
+    events = [e["event"] for e in statestore.read_trace(case_dir)]
+    assert "INGEST_BUILT" in events
+    report = json.loads(next(case_dir.glob("rounds/round-001/generator/ingest-report.json")).read_text())
+    assert report["slices"] and report["classification"]["form"] == "10-Q"
+    assert load_state(case_dir)["budget"]["used"]["tokens_by_role"]["ingest"] == 0

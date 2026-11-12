@@ -1261,7 +1261,8 @@ class Orchestrator:
         # deadline on tool calls without emitting output, so a rebuild could
         # never get past its first stage.
         if stage == "ingest" and not self._artifact_intact(rel):
-            self._carry_ingest_forward(state, budget, arts)
+            if not self._carry_ingest_forward(state, budget, arts):
+                self._build_ingest_in_code(state, budget, arts, rel)
         if stage == "extractor":
             self._carry_extractor_forward(state, budget, arts)
         if stage == "model":
@@ -2427,7 +2428,8 @@ class Orchestrator:
                         "filed": doc.get("filed"), "role": role})
         return out
 
-    def _anchor_candidates(self) -> dict[str, list[dict]]:
+    def _anchor_candidates(self, only: set[str] | None = None
+                           ) -> dict[str, list[dict]]:
         """The slices each input document yields, computed by the slicer.
 
         Ingest's card says it does not read whole filings -- the request gives
@@ -2443,6 +2445,8 @@ class Orchestrator:
             doc_id = doc.get("doc_id")
             path = self.case_dir / str(doc.get("path") or "")
             if not doc_id or not path.is_file():
+                continue
+            if only is not None and doc_id not in only:
                 continue
             try:
                 slices = slicer.candidate_slices(path, str(doc.get("form") or ""))
@@ -2460,6 +2464,72 @@ class Orchestrator:
                 entries.append(entry)
             out[doc_id] = entries
         return out
+
+    # Tests of the ingest ROLE (declared slices, hash repair) turn this off.
+    INGEST_IN_CODE = True
+    # the slicer's kind names, and the card's names for them
+    _INGEST_KINDS = {"income_statement": "income_statement",
+                     "balance_sheet": "balance_sheet",
+                     "cash_flow": "cash_flow", "cash_flow_statement": "cash_flow",
+                     "segments": "segments", "md_and_a": "mda", "mda": "mda"}
+
+    def _build_ingest_in_code(self, state: dict, budget: budget_mod.BudgetTracker,
+                              arts: Arts, rel: str) -> bool:
+        """Write the ingest report without a model call, when it is a copy.
+
+        The ingest card says to copy the scoped documents' slices out of the
+        slicer's anchor candidates verbatim and classify the trigger; the
+        harness then verifies every hash. When the slicer found an income
+        statement for every scoped document that is all there is to do, and a
+        model call spent ~50 s and ~44k tokens on it. When it did not (an
+        unreadable filing), return False and let the role handle it.
+        """
+        scope = self._extraction_scope()
+        if not self.INGEST_IN_CODE or not scope:
+            return False
+        cands = self._anchor_candidates({d["doc_id"] for d in scope})
+        slices: list[dict] = []
+        for doc in scope:
+            mine = [dict(c, kind=self._INGEST_KINDS[c["kind"]])
+                    for c in cands.get(doc["doc_id"], [])
+                    if c.get("kind") in self._INGEST_KINDS]
+            if not any(c["kind"] == "income_statement" for c in mine):
+                return False
+            slices.extend(mine)
+        trigger = next((d for d in scope if d.get("role") == "trigger"), scope[0])
+        from . import _prompt_assembly as pa
+        card = pa.default_root() / "prompts" / "ingest.md"
+        version = pa.parse_role_card(card)["version"] if card.is_file() else "1.0"
+        payload = {"case_id": state["case_id"], "round": arts.round,
+                   "input_manifest": self.input_manifest(),
+                   "mandate": self.mandate(), "built_by": "controller"}
+        req_id = self._bind_request(state, "ingest", payload, None)
+        report = {
+            "role": "ingest", "request_id": req_id, "candidate_id": None,
+            "doc_id": trigger["doc_id"],
+            "classification": {
+                "form": trigger.get("form"),
+                "affects": ["extraction", "model", "valuation", "report"],
+                "reason": "new filing's statements supersede prior-period "
+                          "estimates"},
+            "slices": slices, "superseded": [],
+            "conformance": "schema 1.0", "prompt_version": version,
+        }
+        err = self._materialize_slices(report)
+        if err is not None:
+            return False
+        self._write_artifact(state, budget, arts, "generator",
+                             STAGE_ARTIFACT["ingest"], report)
+        statestore.atomic_write_text(
+            self.case_dir / arts.rel("generator", INGEST_INPUTS_SIDECAR),
+            statestore.sha256_json(self.input_manifest()) + "\n")
+        budget.add_tokens("ingest", 0, 0)
+        self._sync_budget(state, budget)
+        self._trace(event="INGEST_BUILT",
+                    detail={"artifact": rel, "request_id": req_id,
+                            "built_by": "controller", "slices": len(slices)},
+                    round=arts.round)
+        return True
 
     def _ingest_report_reusable(self, prev: int, manifest_sha: str) -> dict | None:
         """The previous round's ingest report, if it still describes our inputs.
