@@ -6,7 +6,7 @@ AI Coding in Finance (Fall 2026), final project.
 
 **Author:** Gaetano Marco Chiantia · **Student ID:** 25210660138
 
-**Repository:** local Git repository (no hosted remote); the full development history is in the `.git/` directory included in the submission ZIP.
+**Repository:** <https://github.com/Fner-hjw/aic-coverageflow>. The submission ZIP contains the same repository with its complete `.git/` history, so everything can be reviewed offline.
 
 ---
 
