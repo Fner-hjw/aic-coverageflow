@@ -1,4 +1,4 @@
---version: 1.7
+--version: 1.8
 --role: extractor
 --produces: facts.json
 --read: one statement slice (with its citation anchor) of one scoped filing
@@ -19,7 +19,7 @@ the model engine maps onto canonical ids.
 ## OUTPUT SCHEMA
 Strict JSON only, no prose, no fences:
 `role("extractor"), request_id, candidate_id, unit, rows[], missing[], notes[],
-conformance("schema 1.0"), prompt_version("1.7")`. Echo `request_id`,
+conformance("schema 1.0"), prompt_version("1.8")`. Echo `request_id`,
 `candidate_id`, `unit` from the request. Each `rows` entry is ONE string:
 
 `field|period|value|unit|locator`
@@ -39,11 +39,13 @@ non-numeric value or non-canonical period is rejected with feedback. One row
 per field+period. `missing[]` is `{field, reason}` (add `period` if only one is
 absent); `notes[]` are short strings.
 
-**Columns.** Extract every printed column under its true span. A 10-Q income
-statement prints three-month (`2026-Q3`) and nine-month (`2026-Q3-YTD`)
-columns. A 10-Q cash flow prints only the nine-month column, so every
-cash-flow row is `2026-Q3-YTD`. Never label a year-to-date column as a fiscal year. A
-10-K prints fiscal years: `FY2025`, `FY2024`, `FY2023`, one row per column.
+**Columns.** Extract every printed column under its true span, the prior-year
+comparatives included: the twelve-month base is built from them. A Q3 10-Q
+income statement prints four columns: three months `2026-Q3` and `2025-Q3`,
+nine months `2026-Q3-YTD` and `2025-Q3-YTD`. Its cash-flow statement prints the
+two nine-month columns, `2026-Q3-YTD` and `2025-Q3-YTD`. A 10-K prints fiscal
+years: `FY2025`, `FY2024`, `FY2023`, one row per column. Never label a
+year-to-date column as a fiscal year.
 
 **Attribution and non-operating lines.**
 - "Net income attributable to <issuer>" goes under
@@ -86,4 +88,4 @@ errors naming the row. Budgets enforced.
  "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
  "notes":["comparatives are in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.7"}
+ "conformance":"schema 1.0","prompt_version":"1.8"}

@@ -369,6 +369,12 @@ def _attributable_net_income(model: "Model", p: str) -> float | None:
             nci = model.series.get(k, {}).get(p)
             if nci is not None:
                 return ni - nci
+        # A company with no non-controlling interests (AMD) prints no NCI
+        # line and no "attributable" subtotal in any period: its net income
+        # is the attributable figure. If an NCI line exists in some other
+        # period, a missing one here is a gap, not an absence, so no tie.
+        if not any(model.series.get(k) for k in NCI_KEYS):
+            return ni
     return None
 
 
@@ -444,9 +450,17 @@ def _sanity_bounds(model: Model) -> None:
         for p, v in model.series.get(f, {}).items():
             if v < 0:
                 raise BoundsViolation(f"negative revenue in {p}: {v}")
-    for p, v in model.series.get("cash_flow.capital_expenditure", {}).items():
-        if v < 0:
-            raise BoundsViolation(f"negative capex in {p}: {v} (sign convention: positive = spent)")
+    # Capital expenditure is an outflow by definition, and filings print it
+    # either way: Intel as "Additions to property, plant and equipment 13,704",
+    # AMD as "Purchases of property and equipment (546)". The extractor copies
+    # what is printed, so the sign is normalised here (positive = spent) and
+    # recorded, rather than rejecting a correctly copied figure.
+    capex = model.series.get("cash_flow.capital_expenditure", {})
+    flipped = {p: "sign_normalised" for p, v in capex.items() if v < 0}
+    for p in flipped:
+        capex[p] = -capex[p]
+    if flipped:
+        model.checks.setdefault("capex_sign", {}).update(flipped)
     for p, v in model.series.get("income_statement.diluted_shares_outstanding", {}).items():
         if v <= 0:
             raise BoundsViolation(f"non-positive diluted share count in {p}: {v}")

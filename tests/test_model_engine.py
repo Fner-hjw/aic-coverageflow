@@ -328,11 +328,21 @@ def test_eps_attributable_derived_from_ni_minus_nci():
     assert d["checks"]["eps_linkage"]["2026-Q3"] == "ok"
 
 
-def test_eps_not_computable_without_attributable_ni():
+def test_eps_not_computable_when_nci_exists_but_this_period_lacks_it():
     payload = mini_facts_payload()
     _drop(payload, "income_statement.net_income_attributable")
+    # an NCI line in another period: a missing one here is a gap, not absence
+    payload["facts"].append({"field": "income_statement.net_income_noncontrolling",
+                             "period": "2025-Q3", "value": 10.0, "unit": "USDmm"})
     d = build_model(Facts.from_payload(payload), "1.0").to_dict()
     assert d["checks"]["eps_linkage"]["2026-Q3"] == "not_computable"
+
+
+def test_eps_ties_on_net_income_when_the_company_has_no_nci():
+    payload = mini_facts_payload()           # AMD: no NCI line in any period
+    _drop(payload, "income_statement.net_income_attributable")
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    assert d["checks"]["eps_linkage"]["2026-Q3"] == "ok"
 
 
 def test_eps_off_by_rounding_widening_now_fails():
@@ -511,3 +521,16 @@ def test_da_components_are_summed_into_the_combined_field():
     da = d["series"]["cash_flow.depreciation_amortization"]
     da = da.get("values", da) if isinstance(da, dict) else da
     assert da["2026-Q3"] == 970.0
+
+
+def test_capex_printed_as_an_outflow_is_sign_normalised():
+    payload = mini_facts_payload()
+    caps = [f for f in payload["facts"] if f["field"] == "cash_flow.capital_expenditure"]
+    assert caps, "fixture carries capex"
+    for f in caps:
+        f["value"] = -abs(f["value"])          # AMD prints "(546)"
+    d = build_model(Facts.from_payload(payload), "1.0").to_dict()
+    cx = d["series"]["cash_flow.capital_expenditure"]
+    cx = cx.get("values", cx)
+    assert all(v > 0 for k, v in cx.items() if not isinstance(v, dict))
+    assert set(d["checks"]["capex_sign"].values()) == {"sign_normalised"}
