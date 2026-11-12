@@ -43,6 +43,9 @@ class AgentResult:
     # True when the failure is not repairable by the role (e.g. its inputs are
     # absent): the orchestrator blocks the case instead of spending retries.
     blocking: bool = False
+    # Why a blocking failure blocks: "missing_inputs" (default) or
+    # "backend_unavailable" (quota / rate limit: wait, then re-run).
+    block_code: str | None = None
     # Reported spend in USD (claude envelope total_cost_usd); None when the
     # backend does not report cost.
     cost_usd: float | None = None

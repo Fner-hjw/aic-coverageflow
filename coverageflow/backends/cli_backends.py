@@ -74,6 +74,13 @@ def _extract_usage(obj: object) -> tuple[int | None, int | None]:
     return inp, out if isinstance(out, int) else None
 
 
+# A provider refusing work for account reasons: no retry within the case
+# clock can succeed, so the case pauses (blocked) instead of burning retries.
+_UNAVAILABLE_RE = re.compile(
+    r"usage limit|rate limit|rate_limit|quota|insufficient_quota|"
+    r"too many requests|\b429\b|billing|credit balance", re.I)
+
+
 class _TempFiles:
     """Cleanup handle for several temp files (the runner calls ``unlink``)."""
 
@@ -116,6 +123,10 @@ class _CliBackendBase:
     # When True the prompt is written to the child's stdin (never argv);
     # _build_args then must not include it.
     prompt_via_stdin: bool = False
+
+    def _error_from_stdout(self, stdout: str) -> str | None:
+        """The provider's own error message, when its output stream has one."""
+        return None
     model: str | None = None
 
     def __init__(self, cli_path: str | None = None) -> None:
@@ -205,17 +216,19 @@ class _CliBackendBase:
                         f"(exit {returncode}) but produced a complete artifact"
                     )
                 return result
+            reported = self._error_from_stdout(stdout)
+            detail = reported or f"stderr tail: {_stderr_tail(stderr) or '(empty)'}"
+            unavailable = bool(_UNAVAILABLE_RE.search(f"{reported or ''} {stderr}"))
             return AgentResult(
                 ok=False,
                 output_text=stdout or None,
-                error=(
-                    f"backend {self.name}: exit code {returncode}; "
-                    f"stderr tail: {_stderr_tail(stderr) or '(empty)'}"
-                ),
+                error=f"backend {self.name}: exit code {returncode}; {detail}",
                 backend=self.name,
                 elapsed_seconds=elapsed,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
+                blocking=unavailable,
+                block_code="backend_unavailable" if unavailable else None,
             )
 
         result = self._normalize_output(stdout)
@@ -476,6 +489,21 @@ class CodexBackend(_CliBackendBase):
             cleanup = _TempFiles(path)
         args.append("-")  # prompt is read from stdin, never argv
         return args, cleanup
+
+    def _error_from_stdout(self, stdout: str) -> str | None:
+        """Message of the last ``error`` / ``turn.failed`` event, if any."""
+        found = None
+        for line in stdout.splitlines():
+            try:
+                obj = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(obj, dict) or obj.get("type") not in ("error", "turn.failed"):
+                continue
+            msg = obj.get("message") or (obj.get("error") or {}).get("message")
+            if isinstance(msg, str) and msg:
+                found = msg
+        return found
 
     def _normalize_output(self, stdout: str) -> AgentResult:
         message: str | None = None

@@ -158,3 +158,29 @@ def test_cost_cap_default_unlimited():
     t = BudgetTracker({})
     t.add_cost(1e6)
     assert t.check_dispatch("writer")[0]
+
+
+def test_codex_usage_limit_blocks_instead_of_spending_retries(monkeypatch):
+    from coverageflow.backends import cli_backends as cb
+    stream = "\n".join([
+        '{"type":"thread.started","thread_id":"t"}',
+        '{"type":"turn.started"}',
+        '{"type":"error","message":"You\\u2019ve hit your usage limit. Try again at 3:52 AM."}',
+        '{"type":"turn.failed","error":{"message":"You\\u2019ve hit your usage limit. Try again at 3:52 AM."}}',
+    ])
+    be = cb.CodexBackend(cli_path="codex")
+    monkeypatch.setattr(be, "_run", lambda *a, **k: (stream, "", 1, False))
+    monkeypatch.setattr(be, "_build_args", lambda *a, **k: (["exec", "-"], None))
+    monkeypatch.setattr(be, "_resolve", lambda: "codex")
+    res = be.invoke(make_call(), "prompt")
+    assert not res.ok and res.blocking and res.block_code == "backend_unavailable"
+    assert "usage limit" in res.error
+
+
+def test_codex_error_event_message_is_extracted():
+    from coverageflow.backends import cli_backends as cb
+    be = cb.CodexBackend(cli_path="codex")
+    out = '{"type":"turn.failed","error":{"message":"You have hit your usage limit."}}'
+    assert be._error_from_stdout(out) == "You have hit your usage limit."
+    assert cb._UNAVAILABLE_RE.search("You have hit your usage limit.")
+    assert not cb._UNAVAILABLE_RE.search("schema validation failed")

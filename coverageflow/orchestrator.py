@@ -909,8 +909,11 @@ class Orchestrator:
         if not getattr(result, "blocking", False):
             return
         error = getattr(result, "error", None)
-        self.blocked(state, "missing_inputs",
-                     f"role {role} cannot run: {error}",
+        code = getattr(result, "block_code", None) or "missing_inputs"
+        hint = (" The provider refused the call (usage or rate limit); re-run "
+                "the case once it is available again. Retries are not spent."
+                if code == "backend_unavailable" else "")
+        self.blocked(state, code, f"role {role} cannot run: {error}.{hint}",
                      {"role": role, "error": error})
         raise StopLoop()
 
@@ -2355,6 +2358,7 @@ class Orchestrator:
                 pending, self._dispatch_concurrently([c for *_, c in pending])):
             result = self._finish_dispatch(state, budget, role, call, result)
             while True:
+                self._block_if_unrunnable(state, role, result)
                 err = self._validate_submission(role, call.request_id, result)
                 if err is None:
                     state["pending"]["retry_count"] = 0
