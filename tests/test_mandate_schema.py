@@ -44,7 +44,8 @@ def test_newer_keys_are_described():
     a["forecast_bounds"].update(operating_margin_floor=0.0, operating_margin_ceiling=0.4,
                                 capex_pct_bounds=[0.05, 0.3])
     m["limits"].update(stall_rounds=2, case_cost_usd_max=5.0, call_cost_usd_max=1.0,
-                       cost_usd_max=1.0, role_timeouts={"writer": 600})
+                       cost_usd_max=1.0, role_timeouts={"writer": 600},
+                       role_efforts={"extractor": "low", "writer": None})
     assert mandate_check.schema_errors(m) == []
 
 

@@ -204,3 +204,33 @@ def test_grant_survives_a_state_round_trip():
     assert again.limits.rounds_max == 8
     assert again.used_tokens("model") == 0
     assert len(again.used["grants"]) == 1
+
+
+# ---------------------------------------------------------------- role efforts
+def test_default_role_effort_is_medium_for_the_extractor_only():
+    lim = budget.Limits.from_dict({})
+    assert budget.DEFAULT_ROLE_EFFORT == {"extractor": "medium"}
+    assert lim.effort_for("extractor") == "medium"
+    assert lim.effort_for("writer") is None
+    assert lim.effort_for("critic_c1") is None
+
+
+def test_mandate_role_efforts_override_and_can_restore_the_backend_default():
+    lim = budget.Limits.from_dict({"role_efforts": {
+        "extractor": "low", "writer": "high", "critic": "low"}})
+    assert lim.effort_for("extractor") == "low"
+    assert lim.effort_for("writer") == "high"
+    assert lim.effort_for("critic_c3") == "low"
+    assert budget.Limits.from_dict(
+        {"role_efforts": {"extractor": None}}).effort_for("extractor") is None
+    assert budget.Limits.from_dict(
+        {"role_efforts": {"extractor": "default"}}).effort_for("extractor") is None
+
+
+def test_role_efforts_survive_the_state_round_trip():
+    b = budget.BudgetTracker({"role_efforts": {"writer": "high"}})
+    state = {"budget": b.limits_state()}
+    state["budget"]["used"] = b.used_state()
+    again = budget.BudgetTracker.from_state(state)
+    assert again.limits.effort_for("writer") == "high"
+    assert again.limits.effort_for("extractor") == "medium"

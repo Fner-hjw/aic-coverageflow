@@ -186,3 +186,45 @@ def test_codex_error_event_message_is_extracted():
     assert be._error_from_stdout(out) == "You have hit your usage limit."
     assert cb._UNAVAILABLE_RE.search("You have hit your usage limit.")
     assert not cb._UNAVAILABLE_RE.search("schema validation failed")
+
+
+# ---------------------------------------------------------------- role effort
+def _effort_call(effort):
+    call = make_call()
+    budget = dict(call.budget)
+    if effort:
+        budget["reasoning_effort"] = effort
+    return RoleCall(role=call.role, request_id=call.request_id,
+                    candidate_id=call.candidate_id, role_card=call.role_card,
+                    payload=call.payload, output_schema=call.output_schema,
+                    budget=budget, write_scope=call.write_scope)
+
+
+def test_codex_role_effort_overrides_the_adapter_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("CF_CODEX_EFFORT", raising=False)
+    argv, res = _argv(tmp_path, monkeypatch, cli.CodexBackend(),
+                      call=_effort_call("medium"))
+    assert 'model_reasoning_effort="medium"' in argv
+    assert 'model_reasoning_effort="high"' not in argv
+    assert res.reasoning_effort == "medium"
+
+
+def test_codex_without_role_effort_keeps_the_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("CF_CODEX_EFFORT", raising=False)
+    argv, res = _argv(tmp_path, monkeypatch, cli.CodexBackend(),
+                      call=_effort_call(None))
+    assert 'model_reasoning_effort="high"' in argv
+    assert res.reasoning_effort == "high"
+
+
+def test_claude_role_effort_overrides_the_adapter_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("CF_CLAUDE_EFFORT", raising=False)
+    argv, res = _argv(tmp_path, monkeypatch, cli.ClaudeBackend(),
+                      call=_effort_call("low"))
+    assert argv[argv.index("--effort") + 1] == "low"
+    assert res.reasoning_effort == "low"
+    other = tmp_path / "default"
+    other.mkdir()
+    argv, res = _argv(other, monkeypatch, cli.ClaudeBackend(),
+                      call=_effort_call(None))
+    assert argv[argv.index("--effort") + 1] == "medium"

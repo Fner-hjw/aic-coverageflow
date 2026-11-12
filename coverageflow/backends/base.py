@@ -54,6 +54,9 @@ class AgentResult:
     tokens_cached: int | None = None
     # Model name the backend was configured with, for trace metadata.
     model: str | None = None
+    # Reasoning effort the call actually ran at (role override or the
+    # backend's own default), for trace metadata.
+    reasoning_effort: str | None = None
 
     def failed(self, error: str) -> "AgentResult":
         """Return a copy of this result marked failed with `error`.
@@ -75,6 +78,7 @@ class AgentResult:
             cost_usd=self.cost_usd,
             tokens_cached=self.tokens_cached,
             model=self.model,
+            reasoning_effort=self.reasoning_effort,
         )
 
 

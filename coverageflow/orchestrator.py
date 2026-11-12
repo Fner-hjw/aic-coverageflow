@@ -772,6 +772,13 @@ class Orchestrator:
             self.exhausted(state, budget, reason)
             raise StopLoop()
         req_id = self._bind_request(state, role, payload, candidate_id)
+        call_budget = {"tokens_max": budget.limits.role_tokens_max,
+                       "timeout_seconds": budget.limits.timeout_for(role),
+                       "cost_usd_max": budget.limits.call_cost_usd_max}
+        effort = budget.limits.effort_for(role)
+        if effort:
+            # absent = the backend's own default effort
+            call_budget["reasoning_effort"] = effort
         call = RoleCall(role=role, request_id=req_id, candidate_id=candidate_id,
                         # version/sha are resolved from the card on disk by
                         # dispatch, so the trace records what actually ran
@@ -780,9 +787,7 @@ class Orchestrator:
                         # the artifact this role must emit, so dispatch can
                         # enforce its required top-level keys
                         payload=payload, output_schema=output_schema_for(role),
-                        budget={"tokens_max": budget.limits.role_tokens_max,
-                                "timeout_seconds": budget.limits.timeout_for(role),
-                                "cost_usd_max": budget.limits.call_cost_usd_max},
+                        budget=call_budget,
                         write_scope=write_scope,
                         workdir=str(self.case_dir))
         self._trace(event="AGENT_DISPATCHED", request_id=req_id, role=role,
@@ -806,6 +811,12 @@ class Orchestrator:
         detail = {"ok": bool(getattr(result, "ok", False)),
                   "error": getattr(result, "error", None)}
         detail.update(dispatch_trace.get("detail") or {})
+        # what the call actually ran as: the adapter's model and the effort
+        # in force (role override or the backend default)
+        detail["model"] = getattr(result, "model", None)
+        detail["reasoning_effort"] = (
+            getattr(result, "reasoning_effort", None)
+            or call.budget.get("reasoning_effort"))
         self._trace(event="AGENT_RESULT", request_id=req_id, role=role,
                     candidate_id=candidate_id, round=state["pending"]["round"],
                     backend=getattr(result, "backend", None),
