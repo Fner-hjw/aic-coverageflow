@@ -319,6 +319,77 @@ def initial_state(case_id: str, config_versions: dict | None = None) -> dict:
 class StopLoop(RuntimeError):
     """Internal control-flow signal: a terminal state was written mid-loop."""
 
+class EngineRepair(RuntimeError):
+    """An engine rejected the candidate; a repair packet has been issued.
+
+    Raised out of the model stage after the finding is opened and the next
+    round is queued. ``_advance`` catches it so the loop carries on into the
+    rebuild (unlike StopLoop, which ends the run).
+    """
+
+
+# Valuation-engine BoundsViolation messages that describe the forecast
+# PROPOSAL (the model role's output). Any other bounds violation concerns the
+# mandate's own assumptions, which no role can repair.
+_PROPOSAL_VIOLATION = re.compile(
+    r"proposal omits|growth points|horizon mismatch|margin glide|"
+    r"outside mandate bounds|below mandate (?:floor|ceiling)|"
+    r"above mandate (?:floor|ceiling)|path .*(?:below|above|outside)",
+    re.IGNORECASE)
+_MODEL_CHECK_KINDS = (
+    ("gross profit reconciliation", "gross_profit_reconciliation"),
+    ("eps linkage", "eps_linkage"),
+    ("segment revenue reconciliation", "segment_reconciliation"),
+    ("missing required fact", "missing_required_fact"),
+    ("facts payload is empty", "missing_required_fact"),
+    ("negative revenue", "fact_bounds"),
+    ("negative capex", "fact_bounds"),
+    ("non-positive diluted share", "fact_bounds"),
+)
+_ENGINE_PERIOD = re.compile(r"\bin (FY\d{4}|\d{4}(?:-Q\d)?(?:-YTD)?)\b")
+_ENGINE_EVIDENCE = {
+    "gross_profit_reconciliation": (
+        "gross profit must equal revenue minus cost of revenue in the "
+        "named period: re-read the income statement, use the cost line gross "
+        "profit is computed from, and correct whichever row was mis-read"),
+    "eps_linkage": (
+        "diluted EPS must equal net income attributable divided by diluted "
+        "shares in the named period: re-read all three lines and correct the "
+        "row that was mis-read (attribution, share count or EPS)"),
+    "segment_reconciliation": (
+        "canonical segment revenues plus the residual must sum to total "
+        "revenue in the named period: re-read the segment table and add any "
+        "missing or mis-named segment row"),
+}
+
+
+def classify_engine_error(engine: str, exc: BaseException
+                          ) -> tuple[str | None, str, str]:
+    """(owner, check_kind, period) for an engine exception.
+
+    ``owner`` is None when the exception is not a fact or proposal defect
+    (a code bug, a mandate defect): the case then blocks as before.
+    """
+    from coverageflow import model_engine, valuation_engine
+    msg = str(exc)
+    low = msg.lower()
+    period = (_ENGINE_PERIOD.search(msg) or [None, ""])[1]
+    if engine == "model_engine":
+        if isinstance(exc, model_engine.ModelEngineError):
+            for needle, kind in _MODEL_CHECK_KINDS:
+                if needle in low:
+                    return "extractor", kind, period
+            return "extractor", "model_engine_violation", period
+        return None, "", ""
+    if isinstance(exc, valuation_engine.MissingFactError):
+        if "mandate assumption" in low:
+            return None, "", ""
+        return "extractor", "valuation_missing_fact", ""
+    if isinstance(exc, valuation_engine.BoundsViolation) \
+            and _PROPOSAL_VIOLATION.search(msg):
+        return "model", "forecast_proposal", ""
+    return None, "", ""
+
 
 class InputVerificationError(RuntimeError):
     """A case cannot start: its manifest references inputs that are absent.
@@ -710,7 +781,10 @@ class Orchestrator:
                  arts: Arts) -> None:
         stage = state["pending"]["stage"]
         if stage in STAGE_ORDER[:STAGE_ORDER.index("gates")]:
-            self._run_build_stage(state, budget, arts, stage)
+            try:
+                self._run_build_stage(state, budget, arts, stage)
+            except EngineRepair:
+                return      # repair packet issued: the loop starts the rebuild
         elif stage == "gates":
             self._run_gates(state, budget, arts)
         elif stage == "critics":
@@ -1478,15 +1552,8 @@ class Orchestrator:
             model = self.gate_engine.build_model_fn(
                 facts, state["config_versions"]["mapping_tables"])
         except Exception as exc:
-            # A deterministic engine rejecting its inputs is a fact-quality
-            # problem, not a crash: block with the precise violation so the
-            # case can be repaired and re-run instead of stranding RUNNING.
-            self.blocked(
-                state, "engine_violation",
-                f"the model engine rejected the extracted facts: {exc}",
-                {"stage": "model", "error": str(exc),
-                 "facts_sha256": statestore.sha256_json(facts)})
-            raise StopLoop()
+            self._engine_failed(state, arts, "model_engine", exc,
+                                statestore.sha256_json(facts))
         model = model.to_dict() if hasattr(model, "to_dict") else dict(model)
         # The declared input digest must be the digest of the artifact AS
         # WRITTEN. atomic_write_json pretty-prints, so sha256_json(obj) is the
@@ -1506,12 +1573,8 @@ class Orchestrator:
             valuation = self.gate_engine.value_fn(
                 model, forecast, mandate["assumptions"])
         except Exception as exc:
-            self.blocked(
-                state, "engine_violation",
-                f"the valuation engine rejected the model: {exc}",
-                {"stage": "valuation", "error": str(exc),
-                 "facts_sha256": model["input_facts_sha256"]})
-            raise StopLoop()
+            self._engine_failed(state, arts, "valuation_engine", exc,
+                                model["input_facts_sha256"])
         valuation = (valuation.to_dict() if hasattr(valuation, "to_dict")
                      else dict(valuation))
         valuation["input_facts_sha256"] = model["input_facts_sha256"]
@@ -1523,12 +1586,94 @@ class Orchestrator:
             arts.files[rel] = sha
             arts.content[rel] = payload
             self._verified[rel] = sha
+        # both engines ran clean on this candidate: an engine finding they
+        # raised on an earlier round is verified fixed
+        self._close_engine_findings(state, arts, "model_engine", model_rel)
+        self._close_engine_findings(state, arts, "valuation_engine",
+                                    valuation_rel)
         # deterministic engines spend no tokens, but the per-role ledger must
         # still name the role or the cap check cannot be completed for it
         budget.add_tokens("engines", 0, 0)
         self._sync_budget(state, budget)
         self._transition(state, "RUNNING", "RUNNING", verified=model_rel,
                          detail={"engine_artifacts": [model_rel, valuation_rel]})
+
+    def _engine_failed(self, state: dict, arts: Arts, engine: str,
+                       exc: BaseException, facts_sha: str) -> None:
+        """An engine rejected its inputs. Repair when a role can, else block.
+
+        A reconciliation, linkage or missing-field violation is a defect in
+        the extracted facts (owner extractor); a forecast proposal the
+        valuation engine cannot use is the model role's (owner model). Both
+        open a blocking ledger finding and go through the same repair packet
+        a failed gate uses, so the next round re-runs the owning stage with
+        the exact violation carried. Anything else (a code bug, a mandate
+        defect) keeps the engine_violation block.
+        """
+        owner, kind, period = classify_engine_error(engine, exc)
+        stage = "model" if engine == "model_engine" else "valuation"
+        if owner is None:
+            what = ("the extracted facts" if engine == "model_engine"
+                    else "the model")
+            self.blocked(
+                state, "engine_violation",
+                f"the {engine.replace('_', ' ')} rejected {what}: {exc}",
+                {"stage": stage, "error": str(exc), "facts_sha256": facts_sha})
+            raise StopLoop()
+        msg = str(exc)
+        check = f"engine:{kind}" + (f":{period}" if period else "")
+        if owner == "extractor":
+            artifacts = ["facts.json"]
+            evidence = _ENGINE_EVIDENCE.get(kind) or (
+                "facts.json must carry every field and period the engine "
+                "needs, each read from the cited statement line")
+            evidence = (f"{evidence}. The {engine.replace('_', ' ')} must run "
+                        f"clean on the repaired facts: {msg}")
+        else:
+            artifacts = ["forecast_assumptions.json"]
+            evidence = ("forecast_assumptions.json must give every segment in "
+                        "segment_slugs a growth path of horizon length, and "
+                        "keep every path inside the mandate forecast bounds; "
+                        f"the valuation engine must accept it: {msg}")
+        finding = {"finding_id": check, "source_critic": f"engine:{engine}",
+                   "check_id": check, "severity": "major", "owner": owner,
+                   "summary": msg, "affected_artifacts": artifacts,
+                   "required_evidence": evidence}
+        led = self.ledger()
+        fid = led.open_finding(finding, round=arts.round)
+        cand = state["candidate"]["candidate_id"]
+        self._trace(event="FINDING_OPENED", candidate_id=cand,
+                    round=arts.round, role=engine,
+                    detail={"finding_id": fid, "summary": msg,
+                            "engine": engine, "owner": owner,
+                            "check_id": check})
+        self._issue_repair_packet(
+            state, arts, led,
+            note=f"{engine.replace('_', ' ')} rejected the candidate")
+        self._persist(state)
+        raise EngineRepair(msg)
+
+    def _close_engine_findings(self, state: dict, arts: Arts, engine: str,
+                               rel: str) -> None:
+        """Close open findings of *engine*: it ran clean on this candidate."""
+        sha = self._verified.get(rel)
+        if not sha:
+            return
+        led = self.ledger()
+        src = f"engine:{engine}"
+        for row in led.open_findings():
+            if row.get("source_critic") != src:
+                continue
+            led.close_finding(row["finding_id"], critic=src, round=arts.round,
+                              verified_evidence={"artifact": rel,
+                                                 "sha256": sha})
+            self._trace(event="FINDING_VERIFIED_CLOSED",
+                        candidate_id=state["candidate"]["candidate_id"],
+                        round=arts.round, role=engine, artifact=rel,
+                        artifact_sha256=sha,
+                        detail={"finding_id": row["finding_id"],
+                                "reason": f"{engine} runs clean on the "
+                                          "repaired candidate"})
 
     # ------------------------------------------------------------- candidate
     def _candidate_artifact_list(self, arts: Arts) -> list[dict]:
