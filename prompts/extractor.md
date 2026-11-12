@@ -39,8 +39,8 @@ non-numeric value or non-canonical period is rejected with feedback. One row
 per field+period. `missing[]` is `{field, reason}` (add `period` if only one is
 absent); `notes[]` are short strings.
 
-**Columns.** Extract every printed column under its true span, the prior-year
-comparatives included: the twelve-month base is built from them. A Q3 10-Q
+**Columns.** Extract every printed column under its true span,
+prior-year comparatives included. A Q3 10-Q
 income statement prints four columns: three months `2026-Q3` and `2025-Q3`,
 nine months `2026-Q3-YTD` and `2025-Q3-YTD`. Its cash-flow statement prints the
 two nine-month columns, `2026-Q3-YTD` and `2025-Q3-YTD`. A 10-K prints fiscal
