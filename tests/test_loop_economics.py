@@ -181,3 +181,21 @@ def test_value_check_leaves_derived_figures_and_unverifiable_cites_alone():
     # no values supplied: check is off
     assert gates.gate_report_evidence_links(
         "## V\nterminal growth 2.5 [EV:dcf.wacc].\n", idx)[0]
+
+
+def test_autolink_binds_an_unambiguous_number_and_leaves_the_rest():
+    from coverageflow.orchestrator import autolink_numbers
+    idx, vals = _values()
+    note = "## V\nThe exit multiple is 21.5x. The spread is 13.7 points [EV:dcf.upside].\n"
+    out, n = autolink_numbers(note, idx, vals)
+    # 21.5x is held only by the exit-multiple key; 13.7 was already linked
+    assert n == 1 and "21.5x [EV:assumptions.exit_multiple_ebitda]" in out
+    # nothing the sentence is about holds this number: left for the writer
+    out2, n2 = autolink_numbers("## V\nRevenue was 162,809.4.\n", idx, vals)
+    assert n2 == 0 and out2.endswith("162,809.4.\n")
+
+
+def test_writer_schema_matches_the_envelope_keys():
+    from coverageflow.dispatch import WRITER_JSON_SCHEMA, _SCHEMA_REQUIRED_KEYS
+    assert tuple(WRITER_JSON_SCHEMA["required"]) == _SCHEMA_REQUIRED_KEYS["report.md"]
+    assert WRITER_JSON_SCHEMA["additionalProperties"] is False

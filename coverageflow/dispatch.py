@@ -92,6 +92,26 @@ _SCHEMA_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
 # Which artifact each role emits. The orchestrator used to pass the literal
 # string "references/schemas/1.0" for every role, which is not a registry key,
 # so the per-artifact required-key check below never ran in the real pipeline.
+# Strict decode-time schema for the writer's envelope (Codex --output-schema).
+# A writer that answered in prose cost a whole ~75 s call to be told "not valid
+# JSON"; with the schema it cannot. Same keys as _SCHEMA_REQUIRED_KEYS.
+WRITER_JSON_SCHEMA: dict = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["role", "request_id", "candidate_id", "report_md",
+                 "citations", "conformance", "prompt_version"],
+    "properties": {
+        "role": {"type": "string", "enum": ["writer"]},
+        "request_id": {"type": "string"},
+        "candidate_id": {"type": ["string", "null"]},
+        "report_md": {"type": "string"},
+        "citations": {"type": "array", "items": {"type": "string"}},
+        "conformance": {"type": "string"},
+        "prompt_version": {"type": "string"},
+    },
+}
+
+
 ROLE_OUTPUT_SCHEMA: dict[str, str] = {
     "ingest": "ingest-report.json",
     "extractor": "facts-unit.json",

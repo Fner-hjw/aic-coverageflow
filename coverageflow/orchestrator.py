@@ -330,6 +330,69 @@ def initial_state(case_id: str, config_versions: dict | None = None) -> dict:
 
 
 
+_UNIT_AFTER_NUMBER = re.compile(r"^(?:%|x\b|mm\b|bn\b|m\b|k\b)")
+
+
+def autolink_numbers(report_md: str, evidence_index: dict,
+                     evidence_values: dict) -> tuple[str, int]:
+    """Attach [EV:key] to unlinked numbers whose key is unambiguous.
+
+    A number the note states without a marker is bound to the leaf key that
+    holds exactly that value and whose name the sentence talks about (the
+    same test the cited-value check uses). It is done only when one key
+    clearly wins, so the writer is spared a ~75 s retry for the easy cases
+    and sees only the numbers that need a judgment. Returns the note and the
+    count linked.
+    """
+    if not report_md or not evidence_values:
+        return report_md, 0
+    ok, findings = gates.gate_report_evidence_links(report_md, evidence_index)
+    todo: dict[int, list[tuple[int, str]]] = {}
+    for f in findings:
+        m = re.match(r"unlinked-number:(\d+):(\d+):(.+)$", f.get("dedup_key", ""))
+        if m:
+            todo.setdefault(int(m[1]), []).append((int(m[2]), m[3]))
+    if not todo:
+        return report_md, 0
+    parents = {k.rsplit(".", 1)[0] for k in evidence_values if "." in k}
+    leaves = [k for k in evidence_values if k not in parents]
+    lines = report_md.split("\n")
+    done = 0
+    for ln, items in todo.items():
+        line = lines[ln - 1]
+        words = set(re.findall(r"[a-z]+", line.lower()))
+        plan: list[tuple[int, str]] = []        # (insert offset, key)
+        for ts, tok in sorted(items):
+            parsed = gates._token_number(tok)
+            if parsed is None or ("." not in tok and abs(parsed[0]) < 100):
+                plan = []
+                break
+            num, dec = parsed
+            scored = []
+            for k in leaves:
+                if not any(gates._num_matches(num, dec, v)
+                           for v in evidence_values[k]):
+                    continue
+                toks = {t for t in re.split(r"[._]", k.lower())
+                        if t.isalpha() and t not in gates._KEY_STOPWORDS}
+                if toks & words:
+                    scored.append((-len(toks & words), len(k), k))
+            scored.sort()
+            if not scored or (len(scored) > 1 and scored[0][0] == scored[1][0]):
+                plan = []       # one number the harness cannot place: the
+                break           # writer gets the whole line, no half-markers
+            end = ts + len(tok)
+            tail = _UNIT_AFTER_NUMBER.match(line[end:])
+            if tail:
+                end += tail.end()
+            plan.append((end, scored[0][2]))
+        for end, key in sorted(plan, reverse=True):     # right to left
+            line = f"{line[:end]} [EV:{key}]{line[end:]}"
+        done += len(plan)
+        lines[ln - 1] = line
+    return "\n".join(lines), done
+
+
 _FLAGGED_LINE = re.compile(r"\bline (\d+)\b")
 
 
@@ -933,6 +996,9 @@ class Orchestrator:
             call_budget["reasoning_effort"] = effort
         if role == "extractor":
             call_budget["json_schema"] = extraction.UNIT_JSON_SCHEMA
+        elif role == "writer":
+            from .dispatch import WRITER_JSON_SCHEMA
+            call_budget["json_schema"] = WRITER_JSON_SCHEMA
         call = RoleCall(role=role, request_id=req_id, candidate_id=candidate_id,
                         # version/sha are resolved from the card on disk by
                         # dispatch, so the trace records what actually ran
@@ -1246,6 +1312,17 @@ class Orchestrator:
                 # is handed their paths
                 err = self._materialize_slices(result.parsed)
             if err is None and role == "writer":
+                linked, n_linked = autolink_numbers(
+                    result.parsed["report_md"], self._evidence_index(arts),
+                    self._evidence_values(arts))
+                if n_linked:
+                    result.parsed["report_md"] = linked
+                    self._trace(event="STATE_TRANSITION",
+                                detail={"autolinked_numbers": n_linked},
+                                role="writer", round=state["pending"]["round"],
+                                request_id=state["pending"]["request_id"],
+                                candidate_id=state["candidate"]["candidate_id"])
+            if err is None and role == "writer":
                 # An unlinked number is a malformed note, not a failed round:
                 # send the gate's messages back to the writer alone. Only when
                 # the retry budget is spent does the note go on to the gates
@@ -1266,7 +1343,11 @@ class Orchestrator:
                            ("case_id", "round", "mandate", "bundle")
                            if k in payload}
                 payload["evidence_keys"] = sorted(self._evidence_index(arts))
-                payload["previous_draft"] = prev_draft
+                # the old header names the old request id; a writer that
+                # copies it back is rejected as a stale echo
+                payload["previous_draft"] = re.sub(
+                    r"(\*\*Request:\*\*\s*)req-\d+",
+                    r"\1<this request's id>", prev_draft)
                 err = (err + "\nPATCH ONLY: `previous_draft` is your last note. "
                        "Return it with only the flagged line(s) "
                        f"{sorted(flagged_lines)} corrected (add the [EV:<key>] "
