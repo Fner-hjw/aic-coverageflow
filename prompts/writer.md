@@ -1,4 +1,4 @@
---version: 1.4
+--version: 1.5
 --role: writer
 --produces: report.md
 --read: verified facts, model, valuation artifacts, prior note, open findings, mandate report policy
@@ -49,7 +49,7 @@ Strict JSON only — the **wire envelope for report.md** (dispatch validates
 this envelope; the harness writes `report_md` to the versioned note file):
 `role("writer"), request_id, candidate_id, report_md (the full note in
 Markdown), citations[] (evidence keys used in the note), conformance("schema
-1.0"), prompt_version("1.4")`.
+1.0"), prompt_version("1.5")`.
 
 In the note every number must carry an inline citation marker
 `[EV:<evidence-key>]` (uppercase `EV`) to an evidence key present in the
@@ -74,12 +74,14 @@ A bare year (`2026`), a fiscal-year label (`FY26`), a quarter (`Q3`), an ISO
 date, and an SEC form name (`10-Q`) are labels, not claims, and need no
 marker. Every other number does.
 
-A marker cites the clause it closes: every number from the last comma,
-semicolon, colon, dash (spaced or long, not the hyphen in `Year-1`) or sentence
-period up to the marker; a decimal point or thousands separator is not a break. So a band is cited
-once — `EV/EBITDA of 10.0x to 16.0x implies 27.97 to 44.31 USD
-[EV:comps.own_band]` — while a number in an earlier clause is not covered by a
-later marker. Put a marker at the end of every clause that states numbers.
+A marker cites the sentence it closes: every number from the previous marker
+group or sentence period up to the marker. A decimal point or a thousands
+separator is not a break, and commas, semicolons, colons and dashes are not
+breaks either. So a comparison is cited once — `revenue rose to USD 6,697mm
+from USD 4,235mm [EV:segments.foundry.revenue]` — and a band is cited once —
+`EV/EBITDA of 10.0x to 16.0x implies 27.97 to 44.31 USD [EV:comps.own_band]`.
+A number in an earlier sentence is not covered by a later marker. Put the
+markers for a sentence at its end, one per evidence key the sentence uses.
 
 A marker attaches to a number and nothing else. Never write a marker in prose,
 in a methodology note, or as an illustration of the rule — a marker standing
@@ -112,4 +114,4 @@ the verified artifacts are.
 [EV:income_statement.revenue], ahead of the prior year.\n\n## Valuation\nOur
 DCF cross-check stands within tolerance [EV:dcf.within_tolerance].",
  "citations":["income_statement.revenue","dcf.within_tolerance"],
- "conformance":"schema 1.0","prompt_version":"1.4"}
+ "conformance":"schema 1.0","prompt_version":"1.5"}

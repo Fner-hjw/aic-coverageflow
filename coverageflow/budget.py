@@ -32,7 +32,12 @@ DEFAULT_LIMITS = {
     # ~20k tokens for the heavy roles, so a 60k cap guaranteed EXHAUSTED on
     # any case that needed a second round — the cap has to afford the rounds
     # budget it sits next to, or it is not a runaway guard, it is a trap.
-    "role_tokens_max": 250000,
+    # Live Intel case (Codex, 2026-11-12): one writer call reads ~67k tokens,
+    # and a round can dispatch the writer up to 1 + retries_max times. Four
+    # rounds of that is ~1.07M; 250k was spent by four writer attempts in
+    # round 1. The cost cap (USD) is the spending guard; this is a runaway
+    # guard and must afford the rounds and retries it sits next to.
+    "role_tokens_max": 1200000,
     "approval_hours": 48,
     # stop after this many consecutive reviewed rounds in which the set of
     # open blocking findings did not shrink

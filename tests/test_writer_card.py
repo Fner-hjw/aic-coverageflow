@@ -13,7 +13,7 @@ CARD = ROOT / "prompts" / "writer.md"
 def test_version_bumped_and_example_matches():
     text = CARD.read_text("utf-8")
     ver = pa.parse_role_card(CARD)["version"]
-    assert ver == "1.4"
+    assert ver == "1.5"
     assert set(re.findall(r'prompt_version\("([^"]+)"\)', text)) == {ver}
     assert set(re.findall(r'"prompt_version":"([^"]+)"', text)) == {ver}
 

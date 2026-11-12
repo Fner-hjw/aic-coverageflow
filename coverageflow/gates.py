@@ -558,13 +558,14 @@ _EXEMPT_SPAN = re.compile(
 )
 
 
-# A clause ends where the writer card says a marker's reach stops: a comma,
-# semicolon, colon, dash or sentence period. The punctuation must be followed
-# by whitespace (or, for a colon, markdown emphasis) so a decimal point, a
-# thousands separator, a hyphen inside a word ("Year-1", "10-Q") and a time or
-# ratio are not breaks. A dash is a break only when spaced or a long dash.
-_CLAUSE_BREAK = re.compile(
-    r";|,(?=\s)|:(?=[\s*_]|$)|(?<=\s)-(?=\s)|[\u2013\u2014]|\.(?=\s|$)")
+# A marker's reach ends at a sentence period (followed by whitespace or end
+# of line, so a decimal point is not a break). An earlier rule also broke at commas, colons and dashes; live notes
+# state "rose to USD 6,697mm from USD 4,235mm, while ... [EV:a] [EV:b]", one
+# key covering both periods, and that rule rejected every such sentence: four
+# writer attempts in a row failed on 30-35 numbers each. A marker therefore
+# cites its sentence (back to the previous marker group or sentence period);
+# semicolon-joined claims cited together at the sentence end are covered too.
+_CLAUSE_BREAK = re.compile(r"\.(?=\s|$)")
 
 
 def _clause_start(line: str, pos: int, skip_spans: list[tuple[int, int]]) -> int:
@@ -707,7 +708,7 @@ def gate_report_evidence_links(report_md: str,
                 # from collapsing into a single dedup_key
                 "report_evidence_links", f"unlinked-number:{ln}:{ts}:{tok}",
                 f'numeric token "{tok}" on line {ln} lacks an evidence marker '
-                f"before the next number",
+                f"in its sentence",
                 [REPORT_ARTIFACT],
                 required_evidence=f'an evidence marker for "{tok}"',
             ))

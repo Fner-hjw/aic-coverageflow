@@ -114,7 +114,7 @@ def test_limit_parsing_from_mandate_and_defaults():
     assert b.limits.case_minutes == 120   # two ~25-minute live rounds plus headroom
     # the default has to afford the rounds budget it sits next to: a 4-round
     # case re-dispatches each role up to 4 times
-    assert b.limits.role_tokens_max == 250000
+    assert b.limits.role_tokens_max == 1200000
     assert b.limits.approval_hours == 48
 
 

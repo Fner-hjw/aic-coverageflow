@@ -446,7 +446,7 @@ def default_mandate(case_id: str, ticker: str, cutoff: str) -> dict:
             "dcf_comps_tolerance": 0.25,
             **_mandate_assumption_extras(0.104, 0.025, cutoff),
         },
-        "limits": {"role_tokens_max": 250000, "case_minutes": 120,
+        "limits": {"role_tokens_max": 1200000, "case_minutes": 120,
                    "rounds_max": 4, "retries_max": 3, "approval_hours": 48},
         "schema_version": "1.0",
     }

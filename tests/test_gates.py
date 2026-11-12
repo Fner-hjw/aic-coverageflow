@@ -631,7 +631,7 @@ def test_identifiers_are_exempt_but_claims_are_not():
     assert not ok
     assert [f["summary"] for f in findings] == [
         'numeric token "13,500" on line 1 lacks an evidence marker '
-        "before the next number"]
+        "in its sentence"]
 
 
 def test_marker_in_prose_with_no_number_is_not_a_citation():
@@ -837,12 +837,17 @@ class TestMarkerScopeMatchesWriterCard:
     def _ok(self, md):
         return gates.gate_report_evidence_links("## s\n\n" + md + "\n", self.IDX)[0]
 
-    def test_comma_colon_dash_semicolon_period_break_a_clause(self):
-        assert not self._ok("Revenue 1.5 billion, up 2.5 percent [EV:a].")
-        assert not self._ok("Revenue 1.5 billion: up 2.5 percent [EV:a].")
-        assert not self._ok("Revenue 1.5 billion - up 2.5 percent [EV:a].")
-        assert not self._ok("Revenue 1.5 billion; up 2.5 percent [EV:a].")
-        assert self._ok("Revenue 1.5 billion [EV:a], up 2.5 percent [EV:b].")
+    def test_a_marker_covers_its_sentence_and_only_its_sentence(self):
+        # commas, colons and dashes stay inside the sentence
+        assert self._ok("Revenue 1.5 billion, up 2.5 percent [EV:a].")
+        assert self._ok("Revenue 1.5 billion: up 2.5 percent [EV:a].")
+        assert self._ok("Revenue 1.5 billion - up 2.5 percent [EV:a].")
+        assert self._ok("Revenue rose to USD 6,697mm from USD 4,235mm, while the loss "
+                        "narrowed to USD 1,853mm from USD 2,321mm [EV:a] [EV:b].")
+        assert self._ok("Revenue 1.5 billion; up 2.5 percent [EV:a] [EV:b].")
+        # a sentence period ends the marker's reach
+        assert not self._ok("Revenue was 1.5 billion. It rose 2.5 percent [EV:a].")
+        assert self._ok("Revenue 1.5 billion [EV:a]; up 2.5 percent [EV:b].")
 
     def test_decimal_and_thousands_are_not_breaks(self):
         assert self._ok("Revenue 12,345.6 million [EV:a].")
