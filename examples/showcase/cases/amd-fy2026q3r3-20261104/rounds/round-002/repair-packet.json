@@ -1,0 +1,107 @@
+{
+  "round": 2,
+  "candidate_id": "cand-5fcc4675522c",
+  "open_findings": [
+    {
+      "finding_id": "fnd-0001",
+      "critic_ref": "f-c1-2",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 1,
+      "last_seen_round": 1,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "Two segment revenue growth rates cite the consolidated revenue growth key, whose value does not match either stated segment rate.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Cite evidence keys whose values resolve to the Client and Gaming and Embedded Q3 year-over-year revenue growth rates, or remove the growth-rate claims.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0003",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|value-mismatch:34:42:20.0|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"20.0\" on line 34 is cited to [EV:assumptions], [EV:comps.comps_upside], [EV:cross_check_delta], [EV:within_tolerance], none of which holds that value; [EV:forecast.segments.0.growth.3] does",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "a marker for the key that holds \"20.0\", such as forecast.segments.0.growth.3",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|value-mismatch:34:97:25.0|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"25.0\" on line 34 is cited to [EV:assumptions], [EV:comps.comps_upside], [EV:cross_check_delta], [EV:within_tolerance], none of which holds that value; [EV:forecast.segments.0.growth.2] does",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "a marker for the key that holds \"25.0\", such as forecast.segments.0.growth.2",
+      "owner": "writer"
+    }
+  ],
+  "advisory_findings": [
+    {
+      "finding_id": "fnd-0002",
+      "critic_ref": "f1",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c4",
+      "first_seen_round": 1,
+      "last_seen_round": 1,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The note includes process metadata in its header.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control metadata.",
+      "owner": "writer"
+    }
+  ],
+  "required_evidence": [
+    "Cite evidence keys whose values resolve to the Client and Gaming and Embedded Q3 year-over-year revenue growth rates, or remove the growth-rate claims.",
+    "a marker for the key that holds \"20.0\", such as forecast.segments.0.growth.3",
+    "a marker for the key that holds \"25.0\", such as forecast.segments.0.growth.2"
+  ],
+  "unchanged_criteria": {
+    "acceptance": "all numerical gates pass; 2 consecutive full reviews of the same candidate with no blocking finding open; human approval. Minor findings are advisory and do not block.",
+    "forecast_bounds": {
+      "segments": {
+        "Data Center": [
+          -0.05,
+          0.35
+        ],
+        "Client and Gaming": [
+          -0.1,
+          0.2
+        ],
+        "Embedded": [
+          -0.2,
+          0.05
+        ]
+      },
+      "margin_floor_gross": 0.18,
+      "margin_ceiling_gross": 0.55
+    },
+    "cutoff_date": "2026-11-04",
+    "rubric_version": "1.1",
+    "note": "numerical gate failures"
+  },
+  "rebuild_from": "writer",
+  "delta_scope": "partial re-build from the writer stage (earliest stage owned by an open finding); earlier stages are carried forward unchanged under a fresh request binding; the deterministic engines re-run with the model stage; carried findings must be addressed"
+}

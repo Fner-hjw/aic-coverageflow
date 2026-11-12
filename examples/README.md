@@ -92,3 +92,16 @@ The five workspaces total well under 5 MB. The 12 Intel `.htm` filings
 bundle's document IDs + SHA-256 hashes in `inputs/manifest.json`
 (`inputs-manifest.json` in each folder is the exact manifest passed at
 `case new`, trigger document first).
+
+## Live evidence
+
+- `run6-amd-live/`: curated records of the five live Codex cases on AMD
+  (see its README and `docs/live-run-hardening.md`).
+- `showcase/cases/amd-fy2026q3r3-20261104/`: one finished live case kept
+  whole (state, checkpoints, trace, findings ledger, every round, approval
+  record, exports), so it can be opened in the UI. The AMD filings are not
+  duplicated here; `python3 launch.py` copies the case into the workspace and
+  restores them from `data/amd-bundle`, checking each against the case's
+  `inputs/manifest.json` hash. The case was published with exceptions over
+  fnd-0007 before the reasoning and non-waivable rules existed; today that
+  decision would be refused.

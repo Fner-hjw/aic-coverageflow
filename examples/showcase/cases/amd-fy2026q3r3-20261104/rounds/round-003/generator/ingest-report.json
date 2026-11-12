@@ -1,0 +1,127 @@
+{
+  "role": "ingest",
+  "request_id": "req-0025",
+  "candidate_id": "cand-1ac1e69e237b",
+  "doc_id": "amd-10q-2026q3",
+  "classification": {
+    "form": "10-Q",
+    "affects": [
+      "extraction",
+      "model",
+      "valuation",
+      "report"
+    ],
+    "reason": "new filing's statements supersede prior-period estimates"
+  },
+  "slices": [
+    {
+      "slice_id": "amd-10q-2026q3/IS",
+      "kind": "income_statement",
+      "path": "inputs/slices/amd-10q-2026q3/IS.txt",
+      "sha256": "f7058b234a476451f93c7059ad6fb94d94f69a1e72799c665cc053462b2d2402",
+      "anchors": {
+        "heading": "Condensed Consolidated Statements of Operations",
+        "first_line": "Three Months Ended | Nine Months Ended"
+      }
+    },
+    {
+      "slice_id": "amd-10q-2026q3/BS",
+      "kind": "balance_sheet",
+      "path": "inputs/slices/amd-10q-2026q3/BS.txt",
+      "sha256": "11c367f878b9579424c93d933d2ad0b66bcaae54c18bd8faa3e0df5fa452d8c4",
+      "anchors": {
+        "heading": "Condensed Consolidated Balance Sheets",
+        "first_line": "September 26, 2026 | December 27, 2025"
+      }
+    },
+    {
+      "slice_id": "amd-10q-2026q3/CF",
+      "kind": "cash_flow",
+      "path": "inputs/slices/amd-10q-2026q3/CF.txt",
+      "sha256": "242104ab043e58f7e3e314a22a40c8f55f427e0651dadda4b9da5f772d769e00",
+      "anchors": {
+        "heading": "Condensed Consolidated Statements of Cash Flows",
+        "first_line": "Nine Months Ended"
+      }
+    },
+    {
+      "slice_id": "amd-10q-2026q3/SEG",
+      "kind": "segments",
+      "path": "inputs/slices/amd-10q-2026q3/SEG.txt",
+      "sha256": "af2059f56a9a09b6c12875ea02ac433497dfeb105c1b99d28a91212159059a72",
+      "anchors": {
+        "heading": "NOTE 4 – Segment Reporting",
+        "first_line": "NOTE 4 – Segment Reporting"
+      }
+    },
+    {
+      "slice_id": "amd-10q-2026q3/MDA",
+      "kind": "mda",
+      "path": "inputs/slices/amd-10q-2026q3/MDA.txt",
+      "sha256": "d83f47d885e8ba9c1f7f79bdb98eced9484271ae4683f886f91d6fef6a620814",
+      "anchors": {
+        "heading": "ITEM 2. | MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "first_line": "ITEM 2. | MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS"
+      }
+    },
+    {
+      "slice_id": "amd-10k-fy2025/IS",
+      "kind": "income_statement",
+      "path": "inputs/slices/amd-10k-fy2025/IS.txt",
+      "sha256": "1b5ade217ec388b5023e25971419a10e43363deab5092a67cb6965c850f66349",
+      "anchors": {
+        "heading": "Consolidated Statements of Operations",
+        "first_line": "Year Ended"
+      }
+    },
+    {
+      "slice_id": "amd-10k-fy2025/BS",
+      "kind": "balance_sheet",
+      "path": "inputs/slices/amd-10k-fy2025/BS.txt",
+      "sha256": "a598f9a66fee3de733babc49c9f35f2fca3e3c2007d3ad31fcc3c0cffe02355f",
+      "anchors": {
+        "heading": "Consolidated Balance Sheets",
+        "first_line": "December 27, 2025 | December 28, 2024"
+      }
+    },
+    {
+      "slice_id": "amd-10k-fy2025/CF",
+      "kind": "cash_flow",
+      "path": "inputs/slices/amd-10k-fy2025/CF.txt",
+      "sha256": "b2b619f8dc95532a7e44dd6eda18af5384ccd046854660ea4b62fb88be21db23",
+      "anchors": {
+        "heading": "Consolidated Statements of Cash Flows",
+        "first_line": "Year Ended"
+      }
+    },
+    {
+      "slice_id": "amd-10k-fy2025/SEG",
+      "kind": "segments",
+      "path": "inputs/slices/amd-10k-fy2025/SEG.txt",
+      "sha256": "a5d36bc7b84fb06bbc0dcde240e42123e2e9aafc957ca716080008d82336b4bd",
+      "anchors": {
+        "heading": "NOTE 4 – Segment Reporting",
+        "first_line": "NOTE 4 – Segment Reporting"
+      }
+    },
+    {
+      "slice_id": "amd-10k-fy2025/MDA",
+      "kind": "mda",
+      "path": "inputs/slices/amd-10k-fy2025/MDA.txt",
+      "sha256": "e7567d6a5021d1dd017d34b7679b1c06562c348d845e771291a415d24938574f",
+      "anchors": {
+        "heading": "ITEM 7. MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "first_line": "ITEM 7. MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS"
+      }
+    }
+  ],
+  "superseded": [],
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2",
+  "provenance": {
+    "cutoff_date": "2026-11-04",
+    "bundle_id": "amd-2026-11",
+    "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98",
+    "input_manifest_sha256": "961b47e8fa6092bb9317dcfbe94396feb46410ad9b47a36dadb6352a99db271d"
+  }
+}

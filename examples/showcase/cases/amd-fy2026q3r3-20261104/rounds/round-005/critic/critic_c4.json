@@ -1,0 +1,41 @@
+{
+  "role": "critic_c4",
+  "request_id": "req-0047",
+  "candidate_id": "cand-aa8902380152",
+  "round": 5,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C4.1",
+      "result": "fail",
+      "evidence": "report.md: the header includes cutoff, bundle, candidate, and request metadata; the valuation section says the model “flags this gap as outside its tolerance” and refers to “the stated mandate tolerance.”"
+    },
+    {
+      "check_id": "C4.2",
+      "result": "pass",
+      "evidence": "report.md has a Risks section discussing AMD’s Data Center concentration, weaker Client and Gaming revenue, All Other operating losses, rising inventory and receivables, and terminal-value sensitivity."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c4-1",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process and control references.",
+      "evidence": "report.md header contains cutoff, bundle, candidate, and request metadata; valuation text mentions a model flag and mandate tolerance.",
+      "affected_artifacts": [
+        "rounds/round-005/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control text, including harness metadata, model flags, or mandate tolerance references."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "risk_controls"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

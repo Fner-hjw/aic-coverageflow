@@ -1,0 +1,49 @@
+Year Ended
+December 27, 2025 | December 28, 2024 | December 30, 2023
+(In millions)
+Cash flows from operating activities:
+Net income | $ | 4,335 | $ | 1,641 | $ | 854
+Income from discontinued operations, net of tax | ( 66 ) | — | —
+Adjustments to reconcile net income to net cash provided by operating activities:
+Depreciation and amortization | 750 | 671 | 642
+Amortization of acquisition-related intangibles | 2,254 | 2,393 | 2,811
+Stock-based compensation | 1,638 | 1,407 | 1,384
+(Gains) losses on long-term investments, net | ( 341 ) | — | ( 1 )
+Deferred income taxes | 248 | ( 1,163 ) | ( 1,019 )
+Inventory loss at (recovery from) contract manufacturer | ( 67 ) | 65 | —
+Other | 120 | 125 | 45
+Changes in operating assets and liabilities:
+Accounts receivable, net | ( 121 ) | ( 1,865 ) | ( 1,339 )
+Inventories | ( 2,189 ) | ( 1,458 ) | ( 580 )
+Prepaid expenses and other assets | ( 11 ) | 339 | ( 390 )
+Accounts payable | 410 | 3 | ( 519 )
+Accrued and other liabilities | ( 467 ) | 883 | ( 221 )
+Net cash provided by operating activities of continuing operations | 6,493 | 3,041 | 1,667
+Net cash provided by operating activities of discontinued operations | 1,216 | — | —
+Net cash provided by operating activities | 7,709 | 3,041 | 1,667
+Cash flows from investing activities:
+Purchases of property and equipment | ( 974 ) | ( 636 ) | ( 546 )
+Purchases of short-term investments | ( 5,470 ) | ( 1,493 ) | ( 3,722 )
+Proceeds from maturity of short-term investments | 1,765 | 1,416 | 2,687
+Proceeds from sale of short-term investments | 80 | 616 | 300
+Acquisitions, net of cash acquired | ( 1,760 ) | ( 548 ) | ( 131 )
+Related party loan and equity method investment | — | ( 117 ) | —
+Purchases of long-term investments | ( 502 ) | ( 341 ) | ( 11 )
+Other | 10 | 2 | —
+Net cash used in investing activities of continuing operations | ( 6,851 ) | ( 1,101 ) | ( 1,423 )
+Proceeds from divestiture, net of cash divested | 1,356 | — | —
+Purchases of property and equipment | ( 38 ) | — | —
+Net cash provided by investing activities of discontinued operations | 1,318 | — | —
+Net cash used in investing activities | ( 5,533 ) | ( 1,101 ) | ( 1,423 )
+Cash flows from financing activities:
+Proceeds from debt and commercial paper issuance, net of issuance costs | 2,441 | — | —
+Repayment of debt and commercial paper | ( 950 ) | ( 750 ) | —
+Proceeds from sales of common stock through employee equity plans | 285 | 279 | 268
+Repurchases of common stock | ( 1,316 ) | ( 862 ) | ( 985 )
+Stock repurchases for tax withholding on employee equity plans | ( 607 ) | ( 728 ) | ( 427 )
+Settlement of contingent consideration liability | ( 284 ) | — | —
+Other | — | ( 1 ) | ( 2 )
+Net cash used in financing activities | ( 431 ) | ( 2,062 ) | ( 1,146 )
+Net increase (decrease) in cash, cash equivalents and restricted cash | 1,745 | ( 122 ) | ( 902 )
+Cash, cash equivalents and restricted cash at beginning of year | 3,811 | 3,933 | 4,835
+Cash, cash equivalents and restricted cash at end of year | $ | 5,556 | $ | 3,811 | $ | 3,933

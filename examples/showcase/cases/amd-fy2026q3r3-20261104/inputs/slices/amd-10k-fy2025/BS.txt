@@ -1,0 +1,37 @@
+December 27, 2025 | December 28, 2024
+(In millions, except par value amounts)
+ASSETS
+Current assets:
+Cash and cash equivalents | $ | 5,539 | $ | 3,787
+Short-term investments | 5,013 | 1,345
+Accounts receivable, net | 6,315 | 6,192
+Inventories | 7,920 | 5,734
+Prepaid expenses and other current assets | 2,160 | 1,991
+Total current assets | 26,947 | 19,049
+Property and equipment, net | 2,312 | 1,802
+Goodwill | 25,126 | 24,839
+Acquisition-related intangibles, net | 16,705 | 18,930
+Deferred tax assets, net | 384 | 688
+Other non-current assets | 5,452 | 3,918
+Total assets | $ | 76,926 | $ | 69,226
+LIABILITIES AND STOCKHOLDERS’ EQUITY
+Current liabilities:
+Accounts payable | $ | 2,929 | $ | 2,466
+Accrued liabilities | 5,250 | 4,260
+Current portion of long-term debt, net | 874 | —
+Other current liabilities | 402 | 555
+Total current liabilities | 9,455 | 7,281
+Long-term debt, net of current portion | 2,348 | 1,721
+Long-term operating lease liabilities | 625 | 491
+Deferred tax liabilities | 313 | 349
+Other long-term liabilities | 1,186 | 1,816
+Commitments and contingencies (see Note 12)
+Stockholders’ equity:
+Capital stock:
+Common stock, par value $ 0.01 ; shares authorized: 4,000 ; shares issued: 1,695 and 1,680 ; shares outstanding: 1,630 and 1,622 | 17 | 17
+Additional paid-in capital | 63,365 | 61,362
+Treasury stock, at cost (shares held: 65 and 58 ) | ( 7,079 ) | ( 6,106 )
+Retained earnings | 6,699 | 2,364
+Accumulated other comprehensive loss | ( 3 ) | ( 69 )
+Total stockholders’ equity | 62,999 | 57,568
+Total liabilities and stockholders’ equity | $ | 76,926 | $ | 69,226

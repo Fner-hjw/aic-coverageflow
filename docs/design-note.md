@@ -244,7 +244,7 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 All five were produced offline by running the real controller + deterministic
 engines against the frozen Intel bundle (the agent role calls use the offline
 replay/stub dispatch, exactly what the demo control panel in the UI labels
-"scripted rehearsal"). Unit + regression suite — 1053 tests — runs fully offline:
+"scripted rehearsal"). Unit + regression suite — 1057 tests — runs fully offline:
 `python -m pytest tests/`.
 
 ## 7. Second phase: what live runs changed in the design

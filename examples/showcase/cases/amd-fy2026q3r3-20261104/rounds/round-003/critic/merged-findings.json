@@ -1,0 +1,32 @@
+{
+  "round": 3,
+  "candidate_id": "cand-1ac1e69e237b",
+  "findings": [
+    {
+      "finding_id": "c4-1",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note contains process and harness wording.",
+      "evidence": "report.md: “The accepted forecast assumes...” and header “Request: <this request's id>”.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Revise the note to remove process wording and the request placeholder.",
+      "source_critic": "critic_c4",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": false,
+  "fresh_context_proofs": [
+    "critic_c1|req-0031|fresh",
+    "critic_c2|req-0032|fresh",
+    "critic_c3|req-0033|fresh",
+    "critic_c4|req-0034|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

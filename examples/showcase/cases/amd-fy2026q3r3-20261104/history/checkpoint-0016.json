@@ -1,0 +1,29 @@
+{
+  "checkpoint_index": 15,
+  "ts": "2026-11-12T04:14:26Z",
+  "from": "RUNNING",
+  "to": "RUNNING",
+  "verified": "rounds/round-002/generator/model.json",
+  "state_sha256": "sha256:95fda991cd6ab2085b436565b75c683026a4c7a1f94310b43724305f076eb018",
+  "verified_artifacts": {
+    "rounds/round-001/generator/ingest-report.json": "eea4bd9d33891bb52c6de0140f66caf90941a4c8a07246d7b2f3b85f1ec236ca",
+    "rounds/round-001/generator/facts.json": "d9b342b20639b6d326f447142f491dd822e066b788240d1b747e270d067c4d8c",
+    "rounds/round-001/generator/forecast_assumptions.json": "c50a10757ed2110e9a47594edebc0a275d83aebe744e4bc07189662d1aa35494",
+    "rounds/round-001/generator/model.json": "73a189244f6aa07627d08d7dbb57615116b43894f9ed0e5d488cc46c8a19bff2",
+    "rounds/round-001/generator/valuation.json": "fa69718040eb5f66cbf67db80bef843740dc40f69335654ef48cdc6568e07d25",
+    "rounds/round-001/generator/report.md": "6a7b5873c15adb20a9a30bddb447608726b03556fff31ffa330268cdfda2fde5",
+    "rounds/round-001/generator/candidate-manifest.json": "33bb8e51f5e9f6fb465aeeeba8df0565acd3f049734a4d7f053d031e616d0f71",
+    "rounds/round-001/numerical/gates.json": "060f1e4561dc1aa9dba88c559aca0aed874dafe0bdfd5628d2bf824277fcb913",
+    "rounds/round-001/critic/critic_c1.json": "96e2fe251b05a656bfc2bf3d93d6a50da040546df8304a9a0a38eeede1085e76",
+    "rounds/round-001/critic/critic_c2.json": "9795940e754933b5d454ca0b82a19d5c84340f37733f9e2b67008e206be80d53",
+    "rounds/round-001/critic/critic_c3.json": "651eb0e30e4e0629f59a0e5084381e0b862f6a698160f116ec1d3b6eb85cfb85",
+    "rounds/round-001/critic/critic_c4.json": "787c100d8526c1782f3a6e128a8ecd5ed9e9e7cccedc448e5ce94f6f33f819da",
+    "rounds/round-001/critic/merged-findings.json": "d42608e152b1779e8e89f11cd4f68c4c99cbc63252a74050fb88d9a2fdfd9931",
+    "rounds/round-001/repair-packet.json": "f83fbe68bde94b29ca5dc0ebcc29eec9e5461fbfc01b0f50b832bfcbfbbc9cb5",
+    "rounds/round-002/generator/ingest-report.json": "aa9aea64db5a32f8d6a67719f9de1abc049e6f93b61ea2c6c37e7b7cee901b5a",
+    "rounds/round-002/generator/facts.json": "b16d75cfc95f2216df307640ee023541ca0b9b4603badddeee91527bdbfeaaa4",
+    "rounds/round-002/generator/forecast_assumptions.json": "acae995249f3cad565a65ed7c040712c896f4a5da8e5e109b0ab9727b4d084f7",
+    "rounds/round-002/generator/model.json": "4a35d981dd25f97628b6acf8e68b516def72bcb79dc46fe6d5d854c91a31edd2",
+    "rounds/round-002/generator/valuation.json": "deb45fa4d2d11b3d0007aae5df78e64843ce3e290506162b6f19f8cf02f228ac"
+  }
+}

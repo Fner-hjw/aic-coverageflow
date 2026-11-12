@@ -1,0 +1,88 @@
+{
+  "round": 5,
+  "candidate_id": "cand-aa8902380152",
+  "open_findings": [
+    {
+      "finding_id": "fnd-0007",
+      "critic_ref": "c1-5",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 5,
+      "last_seen_round": 5,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.",
+      "affected_artifacts": [
+        "rounds/round-005/generator/report.md"
+      ],
+      "required_evidence": "Cite dcf.base.fcf for the historical FCF amount and comps.comps_price for the relative-valuation indicated price, or otherwise cite ledger entries whose values match those claims.",
+      "owner": "writer"
+    }
+  ],
+  "advisory_findings": [
+    {
+      "finding_id": "fnd-0002",
+      "critic_ref": "f1",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c4",
+      "first_seen_round": 1,
+      "last_seen_round": 5,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The note includes process metadata in its header.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control metadata.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0005",
+      "critic_ref": "c1-1",
+      "dedup_key": "critic_c1|c1.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The cutoff date in the report header lacks an evidence key.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Add an evidence key for the cutoff date or remove the unanchored date.",
+      "owner": "writer"
+    }
+  ],
+  "required_evidence": [
+    "Cite dcf.base.fcf for the historical FCF amount and comps.comps_price for the relative-valuation indicated price, or otherwise cite ledger entries whose values match those claims."
+  ],
+  "unchanged_criteria": {
+    "acceptance": "all numerical gates pass; 2 consecutive full reviews of the same candidate with no blocking finding open; human approval. Minor findings are advisory and do not block.",
+    "forecast_bounds": {
+      "segments": {
+        "Data Center": [
+          -0.05,
+          0.35
+        ],
+        "Client and Gaming": [
+          -0.1,
+          0.2
+        ],
+        "Embedded": [
+          -0.2,
+          0.05
+        ]
+      },
+      "margin_floor_gross": 0.18,
+      "margin_ceiling_gross": 0.55
+    },
+    "cutoff_date": "2026-11-04",
+    "rubric_version": "1.1",
+    "note": "critic findings after full review"
+  },
+  "rebuild_from": "writer",
+  "delta_scope": "partial re-build from the writer stage (earliest stage owned by an open finding); earlier stages are carried forward unchanged under a fresh request binding; the deterministic engines re-run with the model stage; carried findings must be addressed"
+}

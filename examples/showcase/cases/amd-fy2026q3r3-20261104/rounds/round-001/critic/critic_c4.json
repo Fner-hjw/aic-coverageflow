@@ -1,0 +1,41 @@
+{
+  "role": "critic_c4",
+  "request_id": "req-0017",
+  "candidate_id": "cand-04e82b367611",
+  "round": 1,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C4.1",
+      "result": "fail",
+      "evidence": "rounds/round-001/generator/report.md includes process metadata in the header: “Cutoff,” “Bundle,” “Candidate,” and “Request: <this request's id>”."
+    },
+    {
+      "check_id": "C4.2",
+      "result": "pass",
+      "evidence": "rounds/round-001/generator/report.md has a Risks section covering Data Center revenue concentration, Client and Gaming weakness, and inventory exposure."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "f1",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process metadata in its header.",
+      "evidence": "rounds/round-001/generator/report.md: header lines identify the cutoff, bundle, candidate, and request.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control metadata."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "risk_controls"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

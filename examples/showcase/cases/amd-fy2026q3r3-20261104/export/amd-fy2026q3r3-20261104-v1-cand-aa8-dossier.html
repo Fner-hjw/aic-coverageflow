@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AMD Q3 FY2026 update - CoverageFlow Research</title>
+<style>
+:root{--accent:#1a8a4d;--ink:#1c2733;--mute:#51606f;--hair:#cfd8df;--bg:#fff}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#eceeef;color:var(--ink);
+  font-family:Charter,'Bitstream Charter','Sitka Text',Georgia,serif;font-size:16px;line-height:1.5}
+.sans{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+  font-variant-numeric:lining-nums tabular-nums}
+.page{position:relative;max-width:210mm;margin:0 auto;background:var(--bg);padding:0 14mm 12mm;min-height:297mm}
+.draft::before{content:'DRAFT';position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-54deg);
+  font:700 190px/1 -apple-system,'Helvetica Neue',Arial,sans-serif;color:rgba(0,0,0,.07);pointer-events:none;z-index:1000}
+.run{display:flex;justify-content:space-between;align-items:baseline;padding:14mm 0 6px;
+  border-bottom:.5px solid var(--hair);font-size:11px;color:var(--mute)}
+.run b{color:var(--accent);font-size:12px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 292px;column-gap:0;margin-top:8mm}
+.main{padding-right:5.5mm;border-right:.5px solid var(--hair)}
+.side{padding-left:5.5mm}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;font-weight:700;
+  font-size:27px;line-height:1.16;margin:4px 0 8px;letter-spacing:-.005em}
+.byline{font-size:11px;color:var(--mute);padding-bottom:6px;border-bottom:.5px solid var(--hair)}
+ul.kp{list-style:none;margin:12px 0 0;padding:0}
+ul.kp li{position:relative;padding-left:13px;margin:0 0 5px;font-size:14.5px;line-height:1.4}
+ul.kp li::before{content:'';position:absolute;left:0;top:.52em;width:4.5px;height:4.5px;background:var(--accent)}
+ul.kp b{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:13px;color:var(--accent);margin-right:.3em}
+h2{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;font-size:10.5px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin:16px 0 6px;
+  padding-bottom:2px;border-bottom:1px solid var(--accent)}
+.summary p{margin:0 0 7px;hyphens:auto;-webkit-hyphens:auto;text-align:left}
+sup.c{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:.62em;line-height:0;vertical-align:super}
+sup.c a{color:var(--accent);text-decoration:none}
+sup.c a:hover{text-decoration:underline}
+figure.fig{margin:16px 0 8px}
+figure.fig figcaption{font-size:11px;font-weight:700;color:var(--accent);margin-bottom:2px}
+figure.fig svg{width:100%;height:auto;display:block}
+figure.fig svg text{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif!important;font-variant-numeric:lining-nums tabular-nums}
+figure.fig .src{font-size:10px;color:var(--mute);margin:2px 0 0}
+.status{margin-top:16px;border:.5px solid var(--hair);padding:6px 9px;font-size:12px;line-height:1.4}
+.rating{font-size:38px;font-weight:700;color:var(--ink);line-height:1.05;margin:0 0 6px;
+  padding-bottom:5px;border-bottom:1px solid var(--accent)}
+.lab{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--accent)}
+dl.kv{margin:0}
+dl.kv .r{display:flex;justify-content:space-between;align-items:baseline;border-bottom:.5px solid var(--hair);
+  padding:4px 0 3px;font-size:12.5px;flex-wrap:wrap}
+dl.kv dt{color:var(--mute)}
+dl.kv dd{margin:0;font-weight:700;text-align:right}
+dl.kv .nt{flex-basis:100%;text-align:right;font-size:10px;color:var(--mute);line-height:1.25}
+div.fsw{overflow-x:auto}
+table.fs{border-collapse:collapse;width:100%;table-layout:fixed;font-size:10px}
+table.fs col.l{width:27%}
+table.fs th{font-weight:700;text-align:right;padding:0 0 3px 2px;white-space:nowrap;border-bottom:1px solid var(--accent)}
+table.fs td{text-align:right;padding:2.5px 0 2.5px 2px;white-space:nowrap;border-bottom:.5px solid var(--hair)}
+table.fs th:first-child,table.fs td:first-child{text-align:left;font-weight:400;padding-left:0}
+table.fs td .u{font-size:9px;color:var(--mute)}
+.fsn{font-size:9.5px;color:var(--mute);margin:4px 0 0;line-height:1.35}
+.srcline{font-size:10.5px;line-height:1.45;color:var(--mute);margin:4px 0 0}
+.sub{font-size:10px;color:var(--mute);margin:0 0 3px}
+.disc{margin-top:10mm;font-size:9.5px;color:var(--mute);line-height:1.4}
+.foot{display:flex;justify-content:space-between;font-size:10px;color:var(--mute);margin-top:6px;
+  border-top:.5px solid var(--hair);padding-top:4px}
+@media (max-width:760px){
+  .page{padding:0 16px 24px}.run{padding-top:14px}
+  .cols{grid-template-columns:1fr;margin-top:18px}
+  .main{padding-right:0;border-right:0}
+  table.fs{min-width:300px}
+  .side{padding-left:0;margin-top:20px;border-top:.5px solid var(--hair);padding-top:14px}
+  h1{font-size:23px}
+}
+
+/* ---- body: sections, prose, exhibits, controls */
+h2.sec{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;font-size:19px;font-weight:700;
+  letter-spacing:0;text-transform:none;color:var(--ink);margin:30px 0 10px;padding-bottom:4px;border-bottom:1px solid var(--accent);break-after:avoid}
+h3.sub3{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;font-size:14px;margin:10px 0 2px;break-after:avoid}
+.prose{column-count:2;column-gap:7mm;column-rule:.5px solid var(--hair);font-size:15px;line-height:1.45}
+.prose p{margin:0 0 7px;hyphens:auto;-webkit-hyphens:auto}
+.prose ul{margin:0 0 7px;padding-left:14px}
+.prose li{margin:0 0 3px}
+figure.ex,.controls,table.xt{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;font-variant-numeric:lining-nums tabular-nums}
+figure.ex{margin:22px 0 0;break-inside:avoid}
+figure.ex figcaption{font-size:12px;line-height:1.3;padding-bottom:3px;border-bottom:1px solid var(--accent);margin-bottom:2px}
+figure.ex figcaption b{color:var(--accent);margin-right:.7em}
+figure.ex figcaption b+span{font-weight:700}
+figure.ex .unit{font-size:10.5px;color:var(--mute);display:block;font-weight:400}
+figure.ex .exn,figure.ex .src{font-size:10.5px;color:var(--mute);margin:3px 0 0;line-height:1.35}
+figure.ex svg{width:100%;height:auto;display:block}
+figure.ex svg text{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif!important;font-variant-numeric:lining-nums tabular-nums}
+.exrow>*{min-width:0}
+.exrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:7mm;align-items:start}
+.tw{overflow-x:auto}
+table.xt{border-collapse:collapse;width:100%;font-size:12px}
+table.xt th{font-weight:700;text-align:right;padding:3px 0 3px 8px;vertical-align:bottom;border-bottom:1px solid var(--accent);line-height:1.2}
+table.xt td{text-align:right;padding:3px 0 3px 8px;border-bottom:.5px solid var(--hair);white-space:nowrap}
+table.xt th:first-child,table.xt td:first-child{text-align:left;padding-left:0;white-space:normal}
+table.xt tr.total td{font-weight:700}
+table.xt tr.subr td{color:var(--mute)}
+table.xt td.box{outline:1px solid var(--accent);outline-offset:-1px}
+.dg{font-size:.8em;vertical-align:super;line-height:0}
+table.ct{border-collapse:collapse;width:100%;font-size:11.5px;line-height:1.35}
+table.ct th{font-weight:700;text-align:left;padding:3px 8px 3px 0;border-bottom:1px solid var(--accent)}
+table.ct td{text-align:left;padding:3px 8px 3px 0;border-bottom:.5px solid var(--hair);vertical-align:top}
+h3.ch{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin:20px 0 4px}
+.controls{margin-top:30px}
+.controls td:target,.controls td:has(:target){background:#f1f6f3}
+
+@media (max-width:760px){
+  .prose{column-count:1}
+  .exrow{grid-template-columns:minmax(0,1fr);row-gap:0}
+  h2.sec{font-size:17px}
+}
+
+@media print{
+  @page{size:A4;margin:16mm 18mm 18mm;
+    @top-left{content:"CoverageFlow Research  |  Equity Research  |  12 Nov 2026";font:7.5pt -apple-system,'Helvetica Neue',Arial,sans-serif;color:#51606f;border-bottom:.4pt solid #cfd8df;padding-bottom:2mm}
+    @top-right{content:"AMD";font:700 8pt -apple-system,'Helvetica Neue',Arial,sans-serif;color:#1a8a4d;border-bottom:.4pt solid #cfd8df;padding-bottom:2mm}
+    @bottom-left{content:"Published with exceptions  ·  v1-cand-aa8  ·  information cutoff 4 Nov 2026";font:7pt -apple-system,'Helvetica Neue',Arial,sans-serif;color:#51606f}
+    @bottom-right{content:counter(page) " / " counter(pages);font:7pt -apple-system,'Helvetica Neue',Arial,sans-serif;color:#51606f}}
+  html,body{background:#fff}
+  body{font-size:10pt;line-height:1.3}
+  .page{max-width:none;margin:0;padding:0;min-height:0}
+  .run,.foot{display:none}
+  .cover{break-after:page}
+  .cols{grid-template-columns:minmax(0,1fr) 68mm;margin-top:0}
+  table.fs th,table.fs td{padding-left:1px}
+  table.fs col.l{width:26%}
+  .srcline{font-size:6.6pt;line-height:1.25}
+  h1{font-size:19pt}.kicker{font-size:8pt}.byline{font-size:7.5pt}
+  ul.kp li{font-size:10pt}ul.kp b{font-size:9pt}
+  h2{font-size:7.5pt}.lab{font-size:7.5pt}
+  .rating{font-size:25pt}dl.kv .r{font-size:8.5pt}dl.kv .nt{font-size:6.5pt}
+  table.fs{font-size:6.2pt}.fsn,.sub{font-size:6.3pt}
+  figure.fig figcaption{font-size:7.5pt}figure.fig .src{font-size:6.3pt}
+  .status{font-size:7.8pt}.disc{font-size:6.3pt;margin-top:6mm}
+  h2.sec{font-size:12pt;margin:12pt 0 6pt}
+  h3.sub3{font-size:9pt}
+  .prose{font-size:10pt;line-height:1.3}
+  figure.ex{margin-top:9pt}
+  figure.ex figcaption{font-size:7.5pt}figure.ex .unit{font-size:6.5pt}
+  figure.ex .exn,figure.ex .src{font-size:6.4pt}
+  table.xt{font-size:7.2pt}
+  table.xt th,table.xt td{padding-top:1.5pt;padding-bottom:1.5pt}
+  table.ct{font-size:7pt}h3.ch{font-size:7.5pt;margin-top:9pt}
+  .controls{break-before:page;margin-top:0}
+  .page a{color:inherit}
+}
+</style></head>
+<body class=""><div class="page">
+<div class="run sans"><span>CoverageFlow Research &nbsp;|&nbsp; Equity Research &nbsp;|&nbsp; 12 Nov 2026</span><b>AMD</b></div>
+<section class="cover">
+<div class="cols">
+<main class="main">
+<div class="kicker sans">AMD · Q3 FY2026 update</div>
+<h1>Data Center carries the quarter; DCF value is 90% below the price</h1>
+<div class="byline sans">CoverageFlow (automated coverage) · Published with exceptions by Gaetano Marco Chiantia, 12 Nov 2026</div>
+<ul class="kp sans-nums"><li><b>Revenue</b>USD 13,377mm in Q3 FY2026, +44.7% y/y (prior-year quarter USD 9,246mm).</li><li><b>Margins</b>Gross margin 53.9% versus 51.7% a year earlier; operating income USD 2,832mm (+123.0% y/y), operating margin 21.2%.</li><li><b>Earnings</b>Diluted EPS USD 1.46 versus USD 0.75 in the prior-year quarter.</li><li><b>Segments</b>Data Center revenue USD 8,546mm, +96.9% y/y, 63.9% of group; Client and Gaming −8.1% y/y.</li></ul>
+<h2>Summary</h2>
+<div class="summary"><p>AMD delivered a strong quarter, with revenue of USD 13,377mm, up 44.7% year over year, and operating income of USD 2,832mm, up 123.0%<sup class="c"><a href="#n1" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Net revenue">1</a>–<a href="#n4" title="CoverageFlow model engine (model_engine@1.0), derived from filings, derived.operating_income_yoy">4</a></sup>. Gross margin reached 53.9%, compared with 51.7% a year earlier, while diluted EPS increased to USD 1.46 from USD 0.75<sup class="c"><a href="#n5" title="CoverageFlow model engine (model_engine@1.0), derived from filings, derived.gross_margin">5</a>, <a href="#n6" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Diluted earnings per share">6</a></sup>. Data Center led the advance; Client and Gaming revenue and operating income declined year over year<sup class="c"><a href="#n7" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.revenue">7</a>–<a href="#n9" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.operating_income">9</a></sup>. Our thesis is more dependent on Data Center growth, while the quarter’s increase in inventory and accounts receivable raises execution and cash conversion questions<sup class="c"><a href="#n10" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Balance Sheets, Inventories">10</a>, <a href="#n11" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Balance Sheets, Accounts receivable, net">11</a></sup>. The Gordon DCF indicates a target of USD 47.79 per share and a Sell rating; terminal methods diverge materially, so the output warrants caution<sup class="c"><a href="#n12" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.per_diluted_share.gordon">12</a>–<a href="#n14" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.exit_multiple.terminal_value">14</a></sup>.</p></div>
+<figure class="fig sans"><figcaption>Exhibit 1: Revenue by segment, Q3 FY2026 vs Q3 FY2025 (USD mm)</figcaption><div role="img" aria-label="Revenue by segment, Q3 FY2026 vs Q3 FY2025"><svg width="291.968504pt" height="141.732283pt" viewBox="0 0 291.968504 141.732283" version="1.1">
+ 
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 141.732283 
+L 291.968504 141.732283 
+L 291.968504 0 
+L 0 0 
+L 0 141.732283 
+z
+" style="fill: none; opacity: 0"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 2.919685 113.385827 
+L 262.771654 113.385827 
+L 262.771654 4.251969 
+L 2.919685 4.251969 
+L 2.919685 113.385827 
+z
+" style="fill: none; opacity: 0"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 14.731138 113.385827 
+L 44.259771 113.385827 
+L 44.259771 66.406758 
+L 14.731138 66.406758 
+z
+" clip-path="url(#pc85774c970)" style="fill: #b9c2c9"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 101.580058 113.385827 
+L 131.108691 113.385827 
+L 131.108691 69.577656 
+L 101.580058 69.577656 
+z
+" clip-path="url(#pc85774c970)" style="fill: #b9c2c9"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 188.428978 113.385827 
+L 217.957611 113.385827 
+L 217.957611 104.111221 
+L 188.428978 104.111221 
+z
+" clip-path="url(#pc85774c970)" style="fill: #b9c2c9"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 47.733728 113.385827 
+L 77.262361 113.385827 
+L 77.262361 20.899506 
+L 47.733728 20.899506 
+z
+" clip-path="url(#pc85774c970)" style="fill: #1a8a4d"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 134.582648 113.385827 
+L 164.11128 113.385827 
+L 164.11128 73.105686 
+L 134.582648 73.105686 
+z
+" clip-path="url(#pc85774c970)" style="fill: #1a8a4d"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 221.431568 113.385827 
+L 250.9602 113.385827 
+L 250.9602 101.384033 
+L 221.431568 101.384033 
+z
+" clip-path="url(#pc85774c970)" style="fill: #1a8a4d"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1"/>
+     <g id="text_1">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; fill: #1c2733" transform="translate(27.841312 125.945546)">Data Center</text>
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; fill: #1c2733" transform="translate(29.231124 137.637546)">+96.9% y/y</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2"/>
+     <g id="text_2">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; fill: #1c2733" transform="translate(104.333122 125.324061)">Client and Gaming</text>
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; fill: #1c2733" transform="translate(117.91906 137.637546)">−8.1% y/y</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3"/>
+     <g id="text_3">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; fill: #1c2733" transform="translate(202.80062 126.108577)">Embedded</text>
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; fill: #1c2733" transform="translate(202.928964 137.637546)">+29.4% y/y</text>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2"/>
+   <g id="patch_9">
+    <path d="M 2.919685 113.385827 
+L 262.771654 113.385827 
+" style="fill: none; stroke: #b9bec4; stroke-width: 0.5; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_4">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="29.495455" y="61.876881" transform="rotate(-0 29.495455 61.876881)">4,341</text>
+   </g>
+   <g id="text_5">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="116.344374" y="65.047779" transform="rotate(-0 116.344374 65.047779)">4,048</text>
+   </g>
+   <g id="text_6">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="203.193294" y="99.581344" transform="rotate(-0 203.193294 99.581344)">857</text>
+   </g>
+   <g id="text_7">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #1c2733" x="62.498044" y="16.369629" transform="rotate(-0 62.498044 16.369629)">8,546</text>
+   </g>
+   <g id="text_8">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #1c2733" x="149.346964" y="68.575809" transform="rotate(-0 149.346964 68.575809)">3,722</text>
+   </g>
+   <g id="text_9">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #1c2733" x="236.195884" y="96.854156" transform="rotate(-0 236.195884 96.854156)">1,109</text>
+   </g>
+   <g id="legend_1">
+    <g id="patch_10">
+     <path d="M 216.553279 14.835969 
+L 223.033279 14.835969 
+L 223.033279 8.859969 
+L 216.553279 8.859969 
+z
+" style="fill: #b9c2c9"/>
+    </g>
+    <g id="text_10">
+     <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: start; fill: #51606f" x="228.793279" y="14.331969" transform="rotate(-0 228.793279 14.331969)">Q3 FY2025</text>
+    </g>
+    <g id="patch_11">
+     <path d="M 216.553279 27.983169 
+L 223.033279 27.983169 
+L 223.033279 22.007169 
+L 216.553279 22.007169 
+z
+" style="fill: #1a8a4d"/>
+    </g>
+    <g id="text_11">
+     <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: start; fill: #51606f" x="228.793279" y="27.479169" transform="rotate(-0 228.793279 27.479169)">Q3 FY2026</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pc85774c970">
+   <rect x="2.919685" y="4.251969" width="259.851969" height="109.133858"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><p class="src">Source: company filings (Form 10-Q), CoverageFlow model engine.</p></figure>
+<p class="srcline sans"><b>Sources.</b> <b>1, 2, 6, 10, 11</b> AMD Form 10-Q, period ended 26 Sep 2026; <b>3–5, 7–9</b> CoverageFlow model engine; <b>12–14</b> CoverageFlow valuation engine.</p>
+<div class="status sans"><b>Published with exceptions</b>: 1 open finding, <b>fnd-0007</b> (major): The note cites values that do not equal the cited ledger entries.</div>
+</main>
+<aside class="side sans">
+<div class="lab">RATING</div>
+<div class="rating">Sell</div>
+<dl class="kv">
+<div class="r"><dt>Price target</dt><dd>USD 47.79</dd><div class="nt">Gordon DCF; terminal methods disagree</div></div>
+<div class="r"><dt>Price</dt><dd>USD 488.78</dd><div class="nt">close, 4 Nov 2026</div></div>
+<div class="r"><dt>Implied return</dt><dd>−90.2%</dd></div>
+</dl>
+<h2>Key data</h2>
+<dl class="kv"><div class="r"><dt>Market cap</dt><dd>USD 811,864mm</dd><div class="nt">computed: price × diluted shares</div></div><div class="r"><dt>Net cash</dt><dd>USD 8,697mm</dd><div class="nt">Q3 FY2026</div></div><div class="r"><dt>Diluted shares</dt><dd>1,661mm</dd><div class="nt">Q3 FY2026</div></div><div class="r"><dt>WACC</dt><dd>10.0%</dd></div><div class="r"><dt>Terminal growth</dt><dd>2.5%</dd></div></dl>
+<h2>DCF value per share</h2>
+<dl class="kv"><div class="r"><dt>Gordon growth</dt><dd>USD 47.79</dd><div class="nt">target basis; g = 2.5%</div></div><div class="r"><dt>Exit multiple</dt><dd>USD 92.71</dd><div class="nt">21.5x terminal EBITDA</div></div></dl>
+<h2>Financial summary</h2>
+<p class="sub">USD mm unless stated; EPS in USD; fiscal year</p>
+<div class="fsw"><table class="fs"><colgroup><col class="l"><col><col><col><col><col></colgroup><thead><tr><th></th><th>FY24A</th><th>FY25A</th><th>FY26E</th><th>FY27E</th><th>FY28E</th></tr></thead><tbody><tr><td>Revenue</td><td>25,785</td><td>34,639</td><td>41,798</td><td>49,216</td><td>56,512</td></tr><tr><td>Growth y/y</td><td>13.7%</td><td>34.3%</td><td>20.7%</td><td>17.7%</td><td>14.8%</td></tr><tr><td>EBITDA margin</td><td>10.0%</td><td>12.8%</td><td>12.8%</td><td>12.8%</td><td>12.8%</td></tr><tr><td>Diluted EPS</td><td>1.00</td><td>2.65</td><td>n.a.</td><td>n.a.</td><td>n.a.</td></tr><tr><td>Free cash flow</td><td>2,405</td><td>6,697<sup class="dg">†</sup></td><td>3,205</td><td>3,774</td><td>4,334</td></tr></tbody></table></div>
+<p class='fsn'>A = reported, E = CoverageFlow DCF base case. Forecast margins held at the base-year level.</p><p class='fsn'>EPS is not forecast by the model; forecast FCF is unlevered.</p><p class='fsn'><sup class="dg">†</sup> Figure is quoted in open finding fnd-0007.</p>
+</aside>
+</div>
+<p class="disc sans">Generated by CoverageFlow from SEC filings and market data; information cutoff 4 Nov 2026. Automated analysis for a course project; not investment advice.</p>
+</section>
+<h2 class="sec">Results</h2><div class="prose"><p>Quarterly revenue rose to USD 13,377mm from USD 9,246mm in the prior-year quarter<sup class="c"><a href="#n1" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Net revenue">1</a></sup>. Gross profit increased to USD 7,210mm from USD 4,780mm, and gross margin expanded to 53.9% from 51.7%<sup class="c"><a href="#n1" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Net revenue">1</a>, <a href="#n5" title="CoverageFlow model engine (model_engine@1.0), derived from filings, derived.gross_margin">5</a>, <a href="#n15" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Gross profit">15</a></sup>. Operating income grew to USD 2,832mm, with operating margin rising to 21.2% from 13.7%<sup class="c"><a href="#n2" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Operating income">2</a>, <a href="#n16" title="CoverageFlow model engine (model_engine@1.0), derived from filings, derived.operating_margin">16</a></sup>. The improvement reflects revenue growth and higher gross profit, partly offset by higher operating expenses, which increased to USD 4,378mm from USD 3,510mm<sup class="c"><a href="#n15" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Gross profit">15</a>, <a href="#n17" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Total operating expenses">17</a></sup>.</p><p>Net income was USD 2,428mm versus USD 1,243mm, and diluted EPS was USD 1.46 versus USD 0.75<sup class="c"><a href="#n6" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Diluted earnings per share">6</a>, <a href="#n18" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Net income">18</a></sup>. Other income (expense), net was an expense of USD 902mm, compared with income of USD 82mm in the prior-year quarter; interest expense was USD 62mm versus USD 37mm<sup class="c"><a href="#n19" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Other income (expense), net">19</a>, <a href="#n20" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Interest expense">20</a></sup>. The non-operating line partly offset the improvement in operating income. For the nine months ended in Q3, revenue was USD 35,166mm versus USD 24,369mm, while operating income was USD 6,298mm versus USD 1,942mm<sup class="c"><a href="#n1" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Net revenue">1</a>, <a href="#n2" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Operations, Operating income">2</a></sup>.</p><p>Operating cash flow for the nine-month period was USD 6,523mm, up from USD 5,109mm<sup class="c"><a href="#n21" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Cash Flows, Net cash provided by operating activities">21</a></sup>. Cash and cash equivalents at quarter end were USD 7,404mm, and short-term investments were USD 8,372mm<sup class="c"><a href="#n21" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Statements of Cash Flows, Net cash provided by operating activities">21</a>–<a href="#n23" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Balance Sheets, Short-term investments">23</a></sup>. The company reported USD 7,079mm of long-term debt and no current portion of long-term debt; the model’s net-debt measure was negative USD 8,697mm, indicating net cash<sup class="c"><a href="#n24" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Balance Sheets, Long-term debt, net">24</a>–<a href="#n26" title="CoverageFlow model engine (model_engine@1.0), derived from filings, derived.net_debt">26</a></sup>.</p></div><figure class="ex"><figcaption><b>Exhibit 2</b><span>Income statement summary, Q3 FY2026 vs Q3 FY2025</span><span class="unit">USD mm except per share</span></figcaption><div class="tw"><table class="xt"><thead><tr><th></th><th>Q3 FY2026</th><th>Q3 FY2025</th><th>y/y</th><th>9M FY2026</th><th>9M FY2025</th><th>y/y</th></tr></thead><tbody><tr class=""><td>Revenue</td><td>13,377</td><td>9,246</td><td>+44.7%</td><td>35,166</td><td>24,369</td><td>+44.3%</td></tr><tr class=""><td>Gross profit</td><td>7,210</td><td>4,780</td><td>+50.8%</td><td>18,829</td><td>11,575</td><td>+62.7%</td></tr><tr class="subr"><td>Gross margin</td><td>53.9%</td><td>51.7%</td><td>+2.2 pp</td><td>53.5%</td><td>47.5%</td><td>+6.0 pp</td></tr><tr class=""><td>Operating expenses</td><td>4,378</td><td>3,510</td><td>+24.7%</td><td>12,531</td><td>9,633</td><td>+30.1%</td></tr><tr class=""><td>Operating income</td><td>2,832</td><td>1,270</td><td>+123.0%</td><td>6,298</td><td>1,942</td><td>+224.3%</td></tr><tr class="subr"><td>Operating margin</td><td>21.2%</td><td>13.7%</td><td>+7.4 pp</td><td>17.9%</td><td>8.0%</td><td>+9.9 pp</td></tr><tr class=""><td>Net income</td><td>2,428</td><td>1,243</td><td>+95.3%</td><td>6,108</td><td>2,824</td><td>+116.3%</td></tr><tr class=""><td>Diluted EPS (USD)</td><td>1.46</td><td>0.75</td><td>+94.7%</td><td>3.69</td><td>1.73</td><td>+113.3%</td></tr></tbody></table></div><p class="src">Source: company filings (SEC), CoverageFlow model engine (model_engine@1.0).</p></figure><h2 class="sec">Segment detail</h2><div class="prose"><p>Data Center revenue increased to USD 8,546mm from USD 4,341mm, and segment operating income rose to USD 2,882mm from USD 1,074mm<sup class="c"><a href="#n7" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.revenue">7</a>, <a href="#n27" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.operating_income">27</a></sup>. The operating margin increased to 33.7% from 24.7%<sup class="c"><a href="#n7" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.revenue">7</a>, <a href="#n27" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.operating_income">27</a>, <a href="#n28" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.operating_margin">28</a></sup>. Data Center generated the clear majority of quarterly revenue and operating profit growth. Nine-month revenue reached USD 21,039mm, compared with USD 11,255mm, while operating income was USD 6,584mm versus USD 1,851mm<sup class="c"><a href="#n7" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.revenue">7</a>, <a href="#n27" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.operating_income">27</a></sup>.</p><p>Client and Gaming revenue declined to USD 3,722mm from USD 4,048mm<sup class="c"><a href="#n8" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.revenue">8</a></sup>. Segment operating income fell to USD 573mm from USD 867mm, and operating margin narrowed to 15.4% from 21.4%<sup class="c"><a href="#n8" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.revenue">8</a>, <a href="#n9" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.operating_income">9</a>, <a href="#n29" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.operating_margin">29</a></sup>. The nine-month comparison was firmer: revenue increased to USD 11,168mm from USD 10,610mm, though operating income was USD 1,730mm versus USD 2,130mm<sup class="c"><a href="#n8" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.revenue">8</a>, <a href="#n9" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.operating_income">9</a></sup>.</p><p>Embedded revenue advanced to USD 1,109mm from USD 857mm<sup class="c"><a href="#n30" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.revenue">30</a></sup>. Operating income was USD 453mm versus USD 283mm, with margin of 40.8% compared with 33.0%<sup class="c"><a href="#n30" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.revenue">30</a>–<a href="#n32" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.operating_margin">32</a></sup>. Nine-month revenue grew to USD 2,959mm from USD 2,504mm, and operating income rose to USD 1,177mm from USD 886mm<sup class="c"><a href="#n30" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.revenue">30</a>, <a href="#n31" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.operating_income">31</a></sup>. All Other recorded an operating loss of USD 1,076mm, wider than the USD 954mm loss in the prior-year quarter<sup class="c"><a href="#n33" title="AMD Form 10-Q, period ended 26 Sep 2026, NOTE 4 – Segment Reporting, All other">33</a></sup>.</p></div><figure class="ex"><figcaption><b>Exhibit 3</b><span>Segment results, Q3 FY2026</span><span class="unit">USD mm</span></figcaption><div class="tw"><table class="xt"><thead><tr><th></th><th>Revenue Q3 FY2026</th><th>y/y</th><th>% of group</th><th>Op. income</th><th>Op. margin</th><th>Revenue 9M FY2026</th><th>Op. income 9M FY2026</th></tr></thead><tbody><tr class=""><td>Data Center</td><td>8,546</td><td>+96.9%</td><td>63.9%</td><td>2,882</td><td>33.7%</td><td>21,039</td><td>6,584</td></tr><tr class=""><td>Client and Gaming</td><td>3,722</td><td>−8.1%</td><td>27.8%</td><td>573</td><td>15.4%</td><td>11,168</td><td>1,730</td></tr><tr class=""><td>Embedded</td><td>1,109</td><td>+29.4%</td><td>8.3%</td><td>453</td><td>40.8%</td><td>2,959</td><td>1,177</td></tr><tr class=""><td>All other</td><td>n.a.</td><td>n.a.</td><td>n.a.</td><td>−1,076</td><td>n.a.</td><td>n.a.</td><td>−3,193</td></tr><tr class="total"><td>Group</td><td>13,377</td><td>+44.7%</td><td>100.0%</td><td>2,832</td><td>21.2%</td><td>35,166</td><td>6,298</td></tr></tbody></table></div><p class="src">Source: company filings (SEC, segment note), CoverageFlow model engine (model_engine@1.0).</p></figure><h2 class="sec">Outlook</h2><div class="prose"><p>Our forecast path assumes that Data Center remains the principal growth contributor, with growth moderating over time. That direction is consistent with the step-up in Data Center quarterly and nine-month revenue, while the prior-year comparison is increasingly demanding<sup class="c"><a href="#n7" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.revenue">7</a></sup>. The path assumes a more measured contribution from Client and Gaming after its quarterly revenue decline and lower segment operating income<sup class="c"><a href="#n8" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.revenue">8</a>, <a href="#n9" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.operating_income">9</a></sup>. Embedded is modeled as a gradual recovery, supported by the quarterly and nine-month increases in revenue and operating income, while recognizing its history of lower annual revenue<sup class="c"><a href="#n30" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.revenue">30</a>, <a href="#n31" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.embedded.operating_income">31</a></sup>.</p><p>The valuation uses FY2025 as its base because the supplied nine-month cash-flow history does not provide the capital-expenditure inputs needed to construct a trailing twelve-month base. The historical base was revenue of USD 34,639mm, EBITDA of USD 4,444mm, and free cash flow of USD 6,697mm<sup class="c"><a href="#n34" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.base.revenue">34</a>–<a href="#n37" title="CoverageFlow valuation engine (valuation_engine@2.0), comps.applied.ev_ebitda.own_metric">37</a></sup>. Those reported cash flows support the model’s starting point, but they do not remove the uncertainty around sustained growth, margins, or investment needs.</p></div><h2 class="sec">Valuation</h2><div class="prose"><p>The DCF uses a 10.0% WACC and 2.5% terminal growth<sup class="c"><a href="#n13" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.gordon.terminal_value">13</a>, <a href="#n38" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.wacc">38</a>, <a href="#n39" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.gordon.terminal_growth">39</a></sup>. The Gordon method produces equity value of USD 79,383mm and USD 47.79 per diluted share<sup class="c"><a href="#n12" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.per_diluted_share.gordon">12</a>, <a href="#n40" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.equity_value.gordon">40</a></sup>. The exit-multiple method, using 21.5x EBITDA, produces equity value of USD 153,989mm and USD 92.71 per diluted share<sup class="c"><a href="#n14" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.exit_multiple.terminal_value">14</a>, <a href="#n41" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.per_diluted_share.exit_multiple">41</a>–<a href="#n43" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.equity_value.exit_multiple">43</a></sup>. The terminal values are USD 79,354mm under Gordon and USD 190,106mm under the exit-multiple method; the model flags this gap as outside its tolerance<sup class="c"><a href="#n13" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.gordon.terminal_value">13</a>, <a href="#n14" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.exit_multiple.terminal_value">14</a></sup>. We therefore use the Gordon output as the target basis, with the divergence showing how sensitive the DCF is to terminal assumptions.</p><p>The relative valuation applies peer medians to AMD’s FY2025 metrics and yields an indicated value of USD 145.52 per share<sup class="c"><a href="#n44" title="CoverageFlow valuation engine (valuation_engine@2.0), comps.own_band">44</a></sup>. The model’s DCF and relative-valuation cross-check delta is negative 20.0%, within the stated mandate tolerance, although the terminal methods remain far apart<sup class="c"><a href="#n45" title="CoverageFlow valuation engine (valuation_engine@2.0), cross_check_delta">45</a></sup>. The peer-derived EV/EBITDA range is broad, from 18.74x to 153.83x, which limits the precision of a single multiple-based conclusion<sup class="c"><a href="#n44" title="CoverageFlow valuation engine (valuation_engine@2.0), comps.own_band">44</a></sup>. We retain the Gordon target of USD 47.79 per share and Sell rating<sup class="c"><a href="#n12" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.per_diluted_share.gordon">12</a></sup>.</p></div><figure class="ex"><figcaption><b>Exhibit 4</b><span>DCF summary</span><span class="unit">USD mm</span></figcaption><div class="tw"><table class="xt"><thead><tr><th></th><th>FY2025A</th><th>FY2026E</th><th>FY2027E</th><th>FY2028E</th><th>FY2029E</th><th>FY2030E</th></tr></thead><tbody><tr class=""><td>Revenue</td><td>34,639</td><td>41,798</td><td>49,216</td><td>56,512</td><td>63,239</td><td>68,921</td></tr><tr class=""><td>Growth y/y</td><td>+34.3%</td><td>+20.7%</td><td>+17.7%</td><td>+14.8%</td><td>+11.9%</td><td>+9.0%</td></tr><tr class=""><td>EBITDA</td><td>4,444</td><td>5,362</td><td>6,314</td><td>7,250</td><td>8,113</td><td>8,842</td></tr><tr class="subr"><td>EBITDA margin</td><td>12.8%</td><td>12.8%</td><td>12.8%</td><td>12.8%</td><td>12.8%</td><td>12.8%</td></tr><tr class=""><td>EBIT</td><td>3,694</td><td>4,457</td><td>5,248</td><td>6,027</td><td>6,744</td><td>7,350</td></tr><tr class=""><td>Capital expenditure</td><td>1,012</td><td>1,221</td><td>1,438</td><td>1,651</td><td>1,848</td><td>2,014</td></tr><tr class="total"><td>Free cash flow</td><td>6,697<sup class="dg">†</sup></td><td>3,205</td><td>3,774</td><td>4,334</td><td>4,849</td><td>5,285</td></tr><tr class=""><td>Discount factor</td><td>n.a.</td><td>0.9863</td><td>0.8967</td><td>0.8150</td><td>0.7409</td><td>0.6736</td></tr><tr class="total"><td>PV of free cash flow</td><td>n.a.</td><td>3,161</td><td>3,384</td><td>3,532</td><td>3,593</td><td>3,560</td></tr></tbody></table></div><p class="exn">Discounting: year end at WACC 10.0%; valuation date 2026-11-04.</p><p class="exn">Base year: fiscal-year fallback (trailing-twelve-month base could not be built).</p><p class="exn">† Figure is quoted in open finding fnd-0007.</p><p class="src">Source: CoverageFlow valuation engine (valuation_engine@2.0), dcf.years.</p></figure><div class="exrow"><figure class="ex"><figcaption><b>Exhibit 5</b><span>From enterprise value to value per share</span><span class="unit">USD mm</span></figcaption><div class="tw"><table class="xt"><thead><tr><th></th><th>Gordon growth</th><th>Exit multiple</th></tr></thead><tbody><tr class=""><td>PV of free cash flow</td><td>17,230</td><td>17,230</td></tr><tr class=""><td>Terminal value</td><td>79,354</td><td>190,106</td></tr><tr class=""><td>PV of terminal value</td><td>53,456</td><td>128,061</td></tr><tr class="total"><td>Enterprise value</td><td>70,686</td><td>145,292</td></tr><tr class=""><td>Less: net debt (negative = net cash)</td><td>−8,697</td><td>−8,697</td></tr><tr class=""><td>Less: non-controlling interests</td><td>n.a.</td><td>n.a.</td></tr><tr class="total"><td>Equity value</td><td>79,383</td><td>153,989</td></tr><tr class=""><td>Diluted shares (mm)</td><td>1,661</td><td>1,661</td></tr><tr class="total"><td>Value per share (USD)</td><td>47.79</td><td>92.71</td></tr><tr class="subr"><td>Implied terminal EV/EBITDA</td><td>9.0x</td><td>21.5x</td></tr><tr class="subr"><td>Implied terminal growth</td><td>2.5%</td><td>6.7%</td></tr></tbody></table></div><p class="src">Source: CoverageFlow valuation engine (valuation_engine@2.0), dcf.ev / bridge / terminal.</p></figure><figure class="ex"><figcaption><b>Exhibit 6</b><span>Gordon DCF value per share by WACC and terminal growth</span><span class="unit">USD per share</span></figcaption><div class="tw"><table class="xt"><thead><tr><th>WACC / growth</th><th>0.5%</th><th>1.5%</th><th>2.5%</th><th>3.5%</th><th>4.5%</th></tr></thead><tbody><tr class=""><td>6.0%</td><td>66.68</td><td>78.44</td><td>96.91</td><td>130.18</td><td>207.79</td></tr><tr class=""><td>8.0%</td><td>50.09</td><td>55.72</td><td>63.39</td><td>74.48</td><td>91.91</td></tr><tr class=""><td>10.0%</td><td>40.52</td><td>43.73</td><td class="box">47.79</td><td>53.11</td><td>60.35</td></tr><tr class=""><td>12.0%</td><td>34.31</td><td>36.33</td><td>38.79</td><td>41.82</td><td>45.66</td></tr><tr class=""><td>14.0%</td><td>29.95</td><td>31.33</td><td>32.94</td><td>34.85</td><td>37.17</td></tr></tbody></table></div><p class="exn">Rows: WACC; columns: terminal growth. Boxed cell is the base case.</p><p class="src">Source: CoverageFlow valuation engine (valuation_engine@2.0), sensitivity.grid.</p></figure></div><div class="exrow"><figure class="ex"><figcaption><b>Exhibit 7</b><span>Peer multiples</span><span class="unit">as of 4 Nov 2026</span></figcaption><div class="tw"><table class="xt"><thead><tr><th></th><th>EV/EBITDA</th><th>P/E (TTM)</th><th>P/S</th><th>Rev. growth</th></tr></thead><tbody><tr class=""><td>INTC</td><td>153.8x</td><td>n.a.</td><td>5.2x</td><td>−0.5%</td></tr><tr class=""><td>NVDA</td><td>24.2x</td><td>25.2x</td><td>16.0x</td><td>+65.5%</td></tr><tr class=""><td>QCOM</td><td>18.7x</td><td>13.6x</td><td>4.3x</td><td>−2.6%</td></tr><tr class=""><td>AVGO</td><td>n.a.</td><td>41.6x</td><td>17.9x</td><td>+23.9%</td></tr><tr class="total"><td>Median</td><td>24.2x</td><td>n.a.</td><td>10.6x</td><td>n.a.</td></tr></tbody></table></div><p class="src">Source: SEC companyfacts and closing prices (peer block), CoverageFlow valuation engine (valuation_engine@2.0).</p></figure><figure class="ex"><figcaption><b>Exhibit 8</b><span>Relative valuation of AMD</span><span class="unit">USD mm; per share in USD</span></figcaption><div class="tw"><table class="xt"><thead><tr><th></th><th>AMD metric</th><th>Peer median</th><th>Per share</th></tr></thead><tbody><tr class=""><td>EV/EBITDA on FY2025 EBITDA</td><td>4,444</td><td>24.2x</td><td>69.98</td></tr><tr class=""><td>P/S on FY2025 revenue</td><td>34,639</td><td>10.6x</td><td>221.06</td></tr><tr class="total"><td>Comps-implied value (average)</td><td></td><td></td><td>145.52<sup class="dg">†</sup></td></tr></tbody></table></div><p class="exn">Comps-implied value versus price: −70.2%.</p><p class="exn">DCF and relative valuation agree within mandate tolerance.</p><p class="exn">† Figure is quoted in open finding fnd-0007.</p><p class="src">Source: CoverageFlow valuation engine (valuation_engine@2.0), comps.applied.</p></figure></div><figure class="ex"><figcaption><b>Exhibit 9</b><span>Valuation range, USD per share</span><span class="unit">USD per share</span></figcaption><div role="img" aria-label="Valuation range, USD per share"><svg width="493.228346pt" height="119.055118pt" viewBox="0 0 493.228346 119.055118" version="1.1">
+ 
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 119.055118 
+L 493.228346 119.055118 
+L 493.228346 0 
+L 0 0 
+L 0 119.055118 
+z
+" style="fill: none; opacity: 0"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 182.494488 102.387402 
+L 480.897638 102.387402 
+L 480.897638 11.905512 
+L 182.494488 11.905512 
+L 182.494488 102.387402 
+z
+" style="fill: none; opacity: 0"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 202.299987 31.054005 
+L 223.094545 31.054005 
+L 223.094545 22.216239 
+L 202.299987 22.216239 
+z
+" clip-path="url(#pd7364544a2)" style="fill: #1a8a4d"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 212.679003 73.138605 
+L 409.69413 73.138605 
+L 409.69413 64.300839 
+L 212.679003 64.300839 
+z
+" clip-path="url(#pd7364544a2)" style="fill: #1a8a4d"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 231.488718 94.180905 
+L 385.405626 94.180905 
+L 385.405626 85.343139 
+L 231.488718 85.343139 
+z
+" clip-path="url(#pd7364544a2)" style="fill: #1a8a4d"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <defs>
+       <path id="mbc8cce0971" d="M 0 0 
+L 0 2 
+" style="stroke: #51606f; stroke-width: 0.4"/>
+      </defs>
+      <g>
+       <use href="#mbc8cce0971" x="182.494488" y="102.387402" style="fill: #51606f; stroke: #51606f; stroke-width: 0.4"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-size: 7px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="182.494488" y="114.887402" transform="rotate(-0 182.494488 114.887402)">0</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2">
+      <g>
+       <use href="#mbc8cce0971" x="237.003957" y="102.387402" style="fill: #51606f; stroke: #51606f; stroke-width: 0.4"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-size: 7px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="237.003957" y="114.887402" transform="rotate(-0 237.003957 114.887402)">100</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3">
+      <g>
+       <use href="#mbc8cce0971" x="291.513427" y="102.387402" style="fill: #51606f; stroke: #51606f; stroke-width: 0.4"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-size: 7px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="291.513427" y="114.887402" transform="rotate(-0 291.513427 114.887402)">200</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_4">
+      <g>
+       <use href="#mbc8cce0971" x="346.022896" y="102.387402" style="fill: #51606f; stroke: #51606f; stroke-width: 0.4"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-size: 7px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="346.022896" y="114.887402" transform="rotate(-0 346.022896 114.887402)">300</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_5">
+      <g>
+       <use href="#mbc8cce0971" x="400.532365" y="102.387402" style="fill: #51606f; stroke: #51606f; stroke-width: 0.4"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-size: 7px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="400.532365" y="114.887402" transform="rotate(-0 400.532365 114.887402)">400</text>
+     </g>
+    </g>
+    <g id="xtick_6">
+     <g id="line2d_6">
+      <g>
+       <use href="#mbc8cce0971" x="455.041834" y="102.387402" style="fill: #51606f; stroke: #51606f; stroke-width: 0.4"/>
+      </g>
+     </g>
+     <g id="text_6">
+      <text style="font-size: 7px; font-family: 'Source Sans 3'; text-anchor: middle; fill: #51606f" x="455.041834" y="114.887402" transform="rotate(-0 455.041834 114.887402)">500</text>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_7"/>
+     <g id="text_7">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; text-anchor: end; fill: #1c2733" x="178.494488" y="93.462022" transform="rotate(-0 178.494488 93.462022)">Comps, P/S (peer range)</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_8"/>
+     <g id="text_8">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; text-anchor: end; fill: #1c2733" x="178.494488" y="72.419722" transform="rotate(-0 178.494488 72.419722)">Comps, EV/EBITDA (peer range)</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_9"/>
+     <g id="text_9">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; text-anchor: end; fill: #1c2733" x="178.494488" y="51.377422" transform="rotate(-0 178.494488 51.377422)">DCF, exit multiple (21.5x)</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_10"/>
+     <g id="text_10">
+      <text style="font-size: 7.4px; font-family: 'Source Sans 3'; text-anchor: end; fill: #1c2733" x="178.494488" y="30.335122" transform="rotate(-0 178.494488 30.335122)">DCF, Gordon (WACC 8–12%, g 1.5–3.5%)</text>
+     </g>
+    </g>
+   </g>
+   <g id="line2d_11">
+    <path d="M 448.925872 102.387402 
+L 448.925872 11.905512 
+" clip-path="url(#pd7364544a2)" style="fill: none; stroke: #1c2733; stroke-width: 0.8; stroke-linecap: square"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 182.494488 102.387402 
+L 480.897638 102.387402 
+" style="fill: none; stroke: #cfd8df; stroke-width: 0.5; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_11">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: end; fill: #51606f" x="199.912761" y="29.061522" transform="rotate(-0 199.912761 29.061522)">36</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: start; fill: #51606f" x="225.48177" y="29.061522" transform="rotate(-0 225.48177 29.061522)">74</text>
+   </g>
+   <g id="line2d_12">
+    <path d="M 208.545818 26.635122 
+" clip-path="url(#pd7364544a2)" style="fill: none; stroke: #1c2733; stroke-width: 1.5; stroke-linecap: square"/>
+    <defs>
+     <path id="m1719796c2f" d="M -0 3.252691 
+L 3.252691 0 
+L 0 -3.252691 
+L -3.252691 -0 
+z
+"/>
+    </defs>
+    <g clip-path="url(#pd7364544a2)">
+     <use href="#m1719796c2f" x="208.545818" y="26.635122" style="fill: #1c2733"/>
+    </g>
+   </g>
+   <g id="line2d_13">
+    <path d="M 233.02945 47.677422 
+" clip-path="url(#pd7364544a2)" style="fill: none; stroke: #1c2733; stroke-width: 1.5; stroke-linecap: square"/>
+    <g clip-path="url(#pd7364544a2)">
+     <use href="#m1719796c2f" x="233.02945" y="47.677422" style="fill: #1c2733"/>
+    </g>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: start; fill: #1c2733" x="236.610287" y="50.103822" transform="rotate(-0 236.610287 50.103822)">92.71</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: end; fill: #51606f" x="210.291778" y="71.146122" transform="rotate(-0 210.291778 71.146122)">55</text>
+   </g>
+   <g id="text_15">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: start; fill: #51606f" x="412.081355" y="71.146122" transform="rotate(-0 412.081355 71.146122)">417</text>
+   </g>
+   <g id="line2d_14">
+    <path d="M 220.641862 68.719722 
+" clip-path="url(#pd7364544a2)" style="fill: none; stroke: #1c2733; stroke-width: 1.5; stroke-linecap: square"/>
+    <g clip-path="url(#pd7364544a2)">
+     <use href="#m1719796c2f" x="220.641862" y="68.719722" style="fill: #1c2733"/>
+    </g>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: end; fill: #51606f" x="229.101493" y="92.188422" transform="rotate(-0 229.101493 92.188422)">90</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: start; fill: #51606f" x="387.792852" y="92.188422" transform="rotate(-0 387.792852 92.188422)">372</text>
+   </g>
+   <g id="line2d_15">
+    <path d="M 302.990738 89.762022 
+" clip-path="url(#pd7364544a2)" style="fill: none; stroke: #1c2733; stroke-width: 1.5; stroke-linecap: square"/>
+    <g clip-path="url(#pd7364544a2)">
+     <use href="#m1719796c2f" x="302.990738" y="89.762022" style="fill: #1c2733"/>
+    </g>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 7.2px; font-family: 'Source Sans 3'; text-anchor: end; fill: #1c2733" x="447.135453" y="12.714657" transform="rotate(-0 447.135453 12.714657)">Price 488.78</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pd7364544a2">
+   <rect x="182.494488" y="11.905512" width="298.40315" height="90.48189"/>
+  </clipPath>
+ </defs>
+</svg>
+</div><p class="exn">Bars show ranges, diamonds the point estimate (median multiple, base-case DCF); the vertical line is the share price.</p><p class="src">Source: CoverageFlow valuation engine (valuation_engine@2.0), dcf, sensitivity, comps.</p></figure><h2 class="sec">Risks</h2><div class="prose"><p>The principal operating risk is that growth remains concentrated in Data Center while other segments contribute less. Data Center represented 63.9% of quarterly revenue; Client and Gaming revenue declined, and All Other’s operating loss widened<sup class="c"><a href="#n8" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.client_and_gaming.revenue">8</a>, <a href="#n33" title="AMD Form 10-Q, period ended 26 Sep 2026, NOTE 4 – Segment Reporting, All other">33</a>, <a href="#n46" title="CoverageFlow model engine (model_engine@1.0), derived from filings, segments.data_center.revenue_share_of_total">46</a></sup>. A slowdown in the largest segment would therefore weigh heavily on consolidated results.</p><p>Working capital is another watch point. Inventory rose to USD 11,463mm from USD 7,920mm at FY2025, while accounts receivable increased to USD 9,209mm from USD 6,315mm<sup class="c"><a href="#n10" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Balance Sheets, Inventories">10</a>, <a href="#n11" title="AMD Form 10-Q, period ended 26 Sep 2026, Condensed Consolidated Balance Sheets, Accounts receivable, net">11</a></sup>. If shipments or customer collections weaken, these balances could constrain cash conversion. Finally, the terminal-value spread between valuation methods makes the target sensitive to assumptions about long-run growth and exit value; the Gordon DCF is substantially below the exit-multiple result<sup class="c"><a href="#n13" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.gordon.terminal_value">13</a>, <a href="#n14" title="CoverageFlow valuation engine (valuation_engine@2.0), dcf.terminal.exit_multiple.terminal_value">14</a></sup>.</p></div>
+<section class="controls"><h2 class="sec">Sources and controls</h2><h3 class="ch">Input documents</h3><div class="tw"><table class="ct"><thead><tr><th>Document</th><th>Form</th><th>Period ended</th><th>Filed</th><th>SHA-256 (first 12)</th></tr></thead><tbody><tr><td>amd-10k-fy2024</td><td>10-K</td><td>28 Dec 2024</td><td>5 Feb 2025</td><td>9f1e660458aa</td></tr><tr><td>amd-10k-fy2025</td><td>10-K</td><td>27 Dec 2025</td><td>4 Feb 2026</td><td>24724a71abca</td></tr><tr><td>amd-10q-2025q1</td><td>10-Q</td><td>29 Mar 2025</td><td>7 May 2025</td><td>38837430579f</td></tr><tr><td>amd-10q-2025q2</td><td>10-Q</td><td>28 Jun 2025</td><td>6 Aug 2025</td><td>95bda811f43e</td></tr><tr><td>amd-10q-2025q3</td><td>10-Q</td><td>27 Sep 2025</td><td>5 Nov 2025</td><td>c470cdf079a6</td></tr><tr><td>amd-10q-2026q1</td><td>10-Q</td><td>28 Mar 2026</td><td>6 May 2026</td><td>7e04ff77ce5d</td></tr><tr><td>amd-10q-2026q2</td><td>10-Q</td><td>27 Jun 2026</td><td>5 Aug 2026</td><td>2940323fe639</td></tr><tr><td>amd-10q-2026q3</td><td>10-Q</td><td>26 Sep 2026</td><td>4 Nov 2026</td><td>11ee28589c28</td></tr><tr><td>amd-8k-2025-10-27</td><td>8-K</td><td>27 Oct 2025</td><td>27 Oct 2025</td><td>548e7022ca42</td></tr><tr><td>amd-8k-2026-11-03</td><td>8-K</td><td>3 Nov 2026</td><td>3 Nov 2026</td><td>fb8c8664131a</td></tr></tbody></table></div><h3 class="ch">Evidence references</h3><div class="tw"><table class="ct"><thead><tr><th>Ref.</th><th>Source</th><th>Statement</th><th>Items cited</th></tr></thead><tbody><tr><td><span id="n1"></span><span id="n2"></span><span id="n6"></span><span id="n15"></span><span id="n17"></span><span id="n18"></span><span id="n19"></span><span id="n20"></span>1, 2, 6, 15, 17–20</td><td>AMD Form 10-Q, period ended 26 Sep 2026</td><td>Condensed Consolidated Statements of Operations</td><td>Net revenue; Operating income; Diluted earnings per share; Gross profit; Total operating expenses; Net income; Other income (expense), net; Interest expense</td></tr><tr><td><span id="n10"></span><span id="n11"></span><span id="n22"></span><span id="n23"></span><span id="n24"></span><span id="n25"></span>10, 11, 22–25</td><td>AMD Form 10-Q, period ended 26 Sep 2026</td><td>Condensed Consolidated Balance Sheets</td><td>Inventories; Accounts receivable, net; Cash and cash equivalents; Short-term investments; Long-term debt, net; Current portion of long-term debt, net</td></tr><tr><td><span id="n21"></span>21</td><td>AMD Form 10-Q, period ended 26 Sep 2026</td><td>Condensed Consolidated Statements of Cash Flows</td><td>Net cash provided by operating activities</td></tr><tr><td><span id="n33"></span>33</td><td>AMD Form 10-Q, period ended 26 Sep 2026</td><td>NOTE 4 – Segment Reporting</td><td>All other</td></tr><tr><td><span id="n36"></span>36</td><td>AMD Form 10-K, period ended 27 Dec 2025</td><td>Consolidated Statements of Cash Flows</td><td>Purchases of property and equipment</td></tr><tr><td><span id="n3"></span><span id="n4"></span><span id="n5"></span><span id="n7"></span><span id="n8"></span><span id="n9"></span><span id="n16"></span><span id="n26"></span><span id="n27"></span><span id="n28"></span><span id="n29"></span><span id="n30"></span><span id="n31"></span><span id="n32"></span><span id="n46"></span>3–5, 7–9, 16, 26–32, 46</td><td>CoverageFlow model engine</td><td>Model series</td><td>derived: revenue_yoy, operating_income_yoy, gross_margin, operating_margin, net_debt; segments: data_center.revenue, client_and_gaming.revenue, client_and_gaming.operating_income, data_center.operating_income, data_center.operating_margin, client_and_gaming.operating_margin, embedded.revenue, embedded.operating_income, embedded.operating_margin, data_center.revenue_share_of_total</td></tr><tr><td><span id="n12"></span><span id="n13"></span><span id="n14"></span><span id="n34"></span><span id="n35"></span><span id="n37"></span><span id="n38"></span><span id="n39"></span><span id="n40"></span><span id="n41"></span><span id="n42"></span><span id="n43"></span><span id="n44"></span><span id="n45"></span>12–14, 34, 35, 37–45</td><td>CoverageFlow valuation engine</td><td>Valuation outputs</td><td>dcf: per_diluted_share.gordon, terminal.gordon.terminal_value, terminal.exit_multiple.terminal_value, base.revenue, base.ebitda_margin, wacc, terminal.gordon.terminal_growth, equity_value.gordon, per_diluted_share.exit_multiple, equity_value.exit_multiple; comps: applied.ev_ebitda.own_metric, own_band; assumptions: exit_multiple_ebitda; cross_check_delta: cross_check_delta</td></tr></tbody></table></div><h3 class="ch">Decision record</h3><div class="tw"><table class="ct"><thead><tr><th>Record</th><th>Decision</th><th>By</th><th>Date</th><th>Reasoning</th></tr></thead><tbody><tr><td>apr-0001</td><td>PUBLISHED_WITH_EXCEPTIONS</td><td>Gaetano Marco Chiantia</td><td>12 Nov 2026</td><td>Approved.</td></tr></tbody></table></div><h3 class="ch">Open findings at publication</h3><div class="tw"><table class="ct"><thead><tr><th>Finding</th><th>Severity</th><th>Summary</th></tr></thead><tbody><tr><td>fnd-0007</td><td>major</td><td>The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.</td></tr></tbody></table></div><h3 class="ch">Provenance</h3><div class="tw"><table class="ct"><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Information cutoff</td><td>4 Nov 2026</td></tr><tr><td>Case</td><td>amd-fy2026q3r3-20261104</td></tr><tr><td>Candidate</td><td>cand-aa8902380152</td></tr><tr><td>Report version</td><td>v1-cand-aa8</td></tr><tr><td>Evidence bundle</td><td>amd-2026-11 (sha256 a529f4f58c89)</td></tr><tr><td>Model engine</td><td>model_engine@1.0</td></tr><tr><td>Valuation engine</td><td>valuation_engine@2.0</td></tr><tr><td>Fact extraction prompt</td><td>1.8</td></tr></tbody></table></div><p class="disc sans">Generated by CoverageFlow from SEC filings and market data; information cutoff 4 Nov 2026. Automated analysis for a course project; not investment advice.</p></section>
+<div class="foot sans"><span>Published with exceptions &middot; v1-cand-aa8 &middot; information cutoff 4 Nov 2026</span></div>
+</div></body></html>

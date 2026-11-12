@@ -1,0 +1,13 @@
+{
+  "checkpoint_index": 4,
+  "ts": "2026-11-12T04:10:22Z",
+  "from": "RUNNING",
+  "to": "RUNNING",
+  "verified": "rounds/round-001/generator/forecast_assumptions.json",
+  "state_sha256": "sha256:06a8c68c377e970387f4b26a3a9f0b840c10bf70c0e5045c1a54868aeb6ce58c",
+  "verified_artifacts": {
+    "rounds/round-001/generator/ingest-report.json": "2d637228ae9c8f5e6393504b01850a68c3a3d57a327bbace3888638b96f3f1df",
+    "rounds/round-001/generator/facts.json": "8f731fa789710111505a7009069b82eaeabdd8c63a10eb5e170a4110c2390478",
+    "rounds/round-001/generator/forecast_assumptions.json": "b8410d905831d5214e4eb12e8d53a7312479d20636c1cc8c24e28ea944862bb2"
+  }
+}

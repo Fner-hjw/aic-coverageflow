@@ -1,0 +1,73 @@
+{
+  "case_id": "amd-fy2026q3r3-20261104",
+  "terminal": "PUBLISHED_WITH_EXCEPTIONS",
+  "candidate_id": "cand-aa8902380152",
+  "report_version": "v1-cand-aa8",
+  "reason": {
+    "code": "PUBLISHED_WITH_EXCEPTIONS",
+    "message": "published with exceptions by Gaetano Marco Chiantia; 1 open blocking finding(s) recorded",
+    "detail": {
+      "by": "Gaetano Marco Chiantia",
+      "exceptions": [
+        {
+          "finding_id": "fnd-0007",
+          "severity": "major",
+          "summary": "The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.",
+          "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md"
+        }
+      ]
+    }
+  },
+  "budget_final": {
+    "rounds_max": 4,
+    "mechanical_rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 120.0,
+    "role_tokens_max": 1200000,
+    "approval_hours": 48.0,
+    "stall_rounds": 2,
+    "role_timeouts": {
+      "default": 240.0,
+      "ingest": 420.0,
+      "extractor": 1200.0,
+      "model": 300.0,
+      "writer": 600.0,
+      "critic": 480.0
+    },
+    "role_efforts": {
+      "extractor": "medium"
+    },
+    "call_cost_usd_max": null,
+    "case_cost_usd_max": null,
+    "used": {
+      "rounds": 4,
+      "mechanical_rounds": 0,
+      "elapsed_minutes": 18.482,
+      "tokens_by_role": {
+        "ingest": 0,
+        "extractor": 181459,
+        "model": 48113,
+        "engines": 0,
+        "writer": 596503,
+        "critic_c1": 234939,
+        "critic_c2": 140121,
+        "critic_c3": 92518,
+        "critic_c4": 82753
+      },
+      "retries_by_role": {
+        "writer:report_evidence_links:r1": 2,
+        "writer:report_evidence_links:r2": 3,
+        "writer:report_evidence_links:r3": 2,
+        "writer:report_evidence_links:r5": 1
+      },
+      "grants": [],
+      "reused_roles": {
+        "ingest": 3,
+        "extractor": 3,
+        "model": 3
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "closed_ts": "2026-11-12T08:44:35Z"
+}

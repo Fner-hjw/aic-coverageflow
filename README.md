@@ -20,7 +20,7 @@ When a covered company files a new 10-Q, 10-K or 8-K, an analyst has to update t
 
 ## What it produces
 
-A sample output from a real run on AMD's Q3 FY2026 10-Q (live model calls, real filings), re-rendered from the case's saved artifacts:
+A sample output from a real run on AMD's Q3 FY2026 10-Q (live model calls, real filings), re-rendered from the case's saved artifacts. The whole case ships with the repository and opens in the UI (see [Quick start](#quick-start)):
 
 | Cover page | Valuation page |
 |---|---|
@@ -114,7 +114,10 @@ python3 launch.py
 
 The launcher creates the virtualenv and installs dependencies on first run, asks once which backend to use (**offline demo** needs no account or keys: everything runs for real except the model calls, which are scripted; or an OpenAI-compatible API; or a logged-in headless CLI: `claude`, `codex`, `kimi`, `vibe`), creates a workspace with a ready-to-run Intel case, starts the web UI and opens it. Answers are saved to `.coverageflow-launch.json` (`--configure` to redo them). Flags: `--port N`, `--no-browser`, `--yes`.
 
-In the UI: open the Intel case, press **Run**, watch the rounds, gates, critics and trace, then decide on the **Approval** tab and export the note as PDF, HTML or Excel.
+The workspace opens with two cases:
+
+- **`intc-fy2026q3-20261030`** (Intel, ready to run): press **Run** and watch the rounds, gates, critics and trace (seconds with the offline demo backend), then decide on the **Approval** tab and export the note as PDF, HTML or Excel.
+- **`amd-fy2026q3r3-20261104`** (AMD, finished): the real live run behind the sample note above, shipped in `examples/showcase/`. Nothing needs to run: open it to read its trace, findings ledger, critic reports, round artifacts, approval record and exports. It is closed, so it cannot be re-run or changed by accident; the launcher copies it into the workspace once and restores its filings from `data/amd-bundle` with a hash check.
 
 ### Manual setup
 
@@ -123,7 +126,7 @@ Python 3.11+. The test suite and the five offline evidence runs need no network 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest -q            # 1053 tests, offline
+.venv/bin/python -m pytest -q            # 1057 tests, offline
 ```
 
 `requirements.txt`: `pytest`, `openpyxl`, `fastapi`, `uvicorn`, `httpx`, `websockets`, `matplotlib` (charts in the note and the diagram; the note renders without charts if it is missing). The PDF needs `pdflatex` (TeX Live with the XCharter and Source Sans fonts); without it the `.tex` source is the deliverable.
@@ -171,6 +174,7 @@ Start at `examples/README.md`; each offline run has a `commands.sh` that reprodu
 4. **run4, no-leakage perturbation** (`examples/run4-perturbation`): re-runs are byte-identical, and a post-cutoff 8-K injected into the manifest is rejected by the gate.
 5. **run5, evolution** (`examples/run5-evolution`): a scoped change passes regression and is approved; an over-broad change is refused; an approved version is rolled back and a case runs under the rolled-back version.
 6. **run6, live AMD runs** (`examples/run6-amd-live`): five live Codex cases on AMD's filings, from the first exhausted run to the last escalated one, which drove the hardening documented in `docs/live-run-hardening.md`.
+7. **showcase, a finished live case** (`examples/showcase/cases/amd-fy2026q3r3-20261104`): the complete case directory of the AMD run that was published with exceptions (state, checkpoints, trace, ledger, every round, approval record, exports), minus the filings, which are in `data/amd-bundle`. `python3 launch.py` installs it into the workspace so it can be inspected in the UI.
 
 ## Development history
 
@@ -211,10 +215,10 @@ It covers the case dashboard, starting coverage (mandate form with market-data p
 | `prompts/` | versioned role cards: ingest, extractor, model, writer, critics C1-C4 |
 | `references/` | harness preamble, critic rubric, model and mandate schemas, segment mappings, accounting definitions, note template |
 | `data/intel-bundle/`, `data/amd-bundle/` | frozen EDGAR snapshots with manifests and hashes |
-| `examples/` | the evidence runs |
+| `examples/` | the evidence runs, and `showcase/` with a complete finished live case the launcher installs |
 | `docs/` | task spec, design note, design decisions, contracts, diagnosis, hardening log, diagram, sample note |
 | `scripts/` | bundle fetcher, diagram generator, evidence curation, prompt measurement, ZIP builder |
-| `tests/` | 1053 offline tests |
+| `tests/` | 1057 offline tests |
 
 ## Testing
 
@@ -222,7 +226,7 @@ It covers the case dashboard, starting coverage (mandate form with market-data p
 .venv/bin/python -m pytest -q
 ```
 
-1053 tests cover the state machine, gates, ledger, budgets, resume, registry, engines, slicer, extraction, dispatch and prompt assembly, backends (including record/replay), the human decisions (revision, reasoning, non-waivable findings), the note and workbook exports, the API and UI service, and input sanitising. No test needs network access or a model.
+1057 tests cover the state machine, gates, ledger, budgets, resume, registry, engines, slicer, extraction, dispatch and prompt assembly, backends (including record/replay), the human decisions (revision, reasoning, non-waivable findings), the note and workbook exports, the API and UI service, and input sanitising. No test needs network access or a model.
 
 ## Limitations
 

@@ -1,0 +1,32 @@
+Year Ended
+December 27, 2025 | December 28, 2024 | December 30, 2023
+(In millions, except per share amounts)
+Net revenue | $ | 34,639 | $ | 25,785 | $ | 22,680
+Cost of sales | 16,456 | 12,114 | 11,278
+Amortization of acquisition-related intangibles | 1,031 | 946 | 942
+Total cost of sales | 17,487 | 13,060 | 12,220
+Gross profit | 17,152 | 12,725 | 10,460
+Research and development | 8,091 | 6,456 | 5,872
+Marketing, general and administrative | 4,144 | 2,735 | 2,318
+Amortization of acquisition-related intangibles | 1,223 | 1,448 | 1,869
+Restructuring charges | — | 186 | —
+Total operating expenses | 13,458 | 10,825 | 10,059
+Operating income | 3,694 | 1,900 | 401
+Interest expense | ( 131 ) | ( 92 ) | ( 106 )
+Other income (expense), net | 577 | 181 | 197
+Income from continuing operations before income taxes and equity income | 4,140 | 1,989 | 492
+Income tax provision (benefit) | ( 103 ) | 381 | ( 346 )
+Equity income in investee | 26 | 33 | 16
+Income from continuing operations, net of tax | 4,269 | 1,641 | 854
+Income from discontinued operations, net of tax | 66 | — | —
+Net income | $ | 4,335 | $ | 1,641 | $ | 854
+Earnings per share
+Earnings from continuing operations - basic | $ | 2.63 | $ | 1.01 | $ | 0.53
+Earnings from discontinued operations - basic | 0.04 | — | —
+Basic earnings per share | $ | 2.67 | $ | 1.01 | $ | 0.53
+Earnings from continuing operations - diluted | $ | 2.61 | $ | 1.00 | $ | 0.53
+Earnings from discontinued operations - diluted | 0.04 | — | —
+Diluted earnings per share | $ | 2.65 | $ | 1.00 | $ | 0.53
+Shares used in per share calculation
+Basic | 1,624 | 1,620 | 1,614
+Diluted | 1,636 | 1,637 | 1,625

@@ -1,0 +1,29 @@
+{
+  "role": "critic_c4",
+  "request_id": "req-0038",
+  "candidate_id": "cand-1ac1e69e237b",
+  "round": 4,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C4.1",
+      "result": "pass",
+      "evidence": "rounds/round-003/generator/report.md contains no findings, budgets, or harness instructions; its header metadata does not introduce process or control text into the note."
+    },
+    {
+      "check_id": "C4.2",
+      "result": "pass",
+      "evidence": "The Risks section discusses AMD-specific Data Center concentration, Client and Gaming weakness, inventory and receivables, cash flows, and terminal valuation sensitivity."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "risk_controls"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

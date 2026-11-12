@@ -99,5 +99,5 @@ or reject. The recorded evidence was left as it was.
 Every behavioural change has a unit test and was replayed against the
 recorded live notes before being trusted (for example the cited-value check
 reproduces exactly the two terminal-assumption findings the round-3 critic
-raised). The full offline suite (1053 tests) and the five offline evidence
+raised). The full offline suite (1057 tests) and the five offline evidence
 runs are rerun on a clean clone before submission.

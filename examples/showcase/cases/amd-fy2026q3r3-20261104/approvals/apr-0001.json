@@ -1,0 +1,26 @@
+{
+  "decision_id": "apr-0001",
+  "case_id": "amd-fy2026q3r3-20261104",
+  "candidate_id": "cand-aa8902380152",
+  "decision": "PUBLISHED_WITH_EXCEPTIONS",
+  "by": "Gaetano Marco Chiantia",
+  "ts": "2026-11-12T08:44:35Z",
+  "reasoning": "Approved.",
+  "expected_evidence_refs": [
+    "rounds/round-005/generator/ingest-report.json",
+    "rounds/round-005/generator/facts.json",
+    "rounds/round-005/generator/forecast_assumptions.json",
+    "rounds/round-005/generator/report.md",
+    "rounds/round-005/generator/model.json",
+    "rounds/round-005/generator/valuation.json"
+  ],
+  "exceptions": [
+    {
+      "finding_id": "fnd-0007",
+      "severity": "major",
+      "summary": "The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md"
+    }
+  ],
+  "escalation_reason": "rounds"
+}

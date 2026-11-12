@@ -1,0 +1,49 @@
+{
+  "round": 1,
+  "candidate_id": "cand-04e82b367611",
+  "findings": [
+    {
+      "finding_id": "f-c1-2",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "Two segment revenue growth rates cite the consolidated revenue growth key, whose value does not match either stated segment rate.",
+      "evidence": "report.md: Client and Gaming revenue fell 8.1% and Embedded revenue grew 29.4%; both cite [EV:derived.revenue_yoy]. model.json derived.revenue_yoy is consolidated Q3 growth of 44.7%. Segment growth is supported by the respective segment revenue series, not this key.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Cite evidence keys whose values resolve to the Client and Gaming and Embedded Q3 year-over-year revenue growth rates, or remove the growth-rate claims.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "conflict_group": "numbers:rounds/round-001/generator/report.md",
+      "disagreeing_critics": [
+        "critic_c2"
+      ]
+    },
+    {
+      "finding_id": "f1",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process metadata in its header.",
+      "evidence": "rounds/round-001/generator/report.md: header lines identify the cutoff, bundle, candidate, and request.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control metadata.",
+      "source_critic": "critic_c4",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": true,
+  "fresh_context_proofs": [
+    "critic_c1|req-0014|fresh",
+    "critic_c2|req-0015|fresh",
+    "critic_c3|req-0016|fresh",
+    "critic_c4|req-0017|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

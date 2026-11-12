@@ -1,0 +1,48 @@
+Nine Months Ended
+September 26, 2026 | September 27, 2025
+(In millions)
+Cash flows from operating activities:
+Net income | $ | 6,108 | $ | 2,824
+Income from discontinued operations, net of tax | ( 3 ) | ( 175 )
+Adjustments to reconcile net income to net cash provided by operating activities:
+Depreciation and amortization | 666 | 556
+Amortization of acquisition-related intangibles | 1,629 | 1,697
+Stock-based compensation | 1,513 | 1,152
+Gains from long-term investments, net | ( 616 ) | ( 61 )
+Non-cash impact of warrants issued to customers, net | 1,179 | —
+Deferred income taxes | ( 427 ) | 18
+Recovery of inventory loss at contract manufacturer | — | ( 67 )
+Other | 105 | 90
+Changes in operating assets and liabilities:
+Accounts receivable, net | ( 2,894 ) | ( 7 )
+Inventories | ( 3,543 ) | ( 1,579 )
+Prepaid expenses and other assets | ( 2,061 ) | ( 259 )
+Accounts payable | 4,483 | 998
+Accrued and other liabilities | 384 | ( 998 )
+Net cash provided by operating activities of continuing operations | 6,523 | 4,189
+Net cash provided by operating activities of discontinued operations | — | 920
+Net cash provided by operating activities | 6,523 | 5,109
+Cash flows from investing activities:
+Purchases of property and equipment | ( 1,845 ) | ( 752 )
+Purchases of short-term investments | ( 6,754 ) | ( 2,110 )
+Proceeds from maturity of short-term investments | 3,044 | 982
+Proceeds from sale of short-term investments | 366 | 66
+Purchases of long-term investments | ( 1,082 ) | ( 432 )
+Acquisitions, net of cash acquired | ( 129 ) | ( 1,716 )
+Other | ( 15 ) | —
+Net cash used in investing activities of continuing operations | ( 6,415 ) | ( 3,962 )
+Purchases of property and equipment | — | ( 30 )
+Payment for working capital adjustment on divestiture | ( 243 ) | —
+Net cash used in investing activities of discontinued operations | ( 243 ) | ( 30 )
+Net cash used in investing activities | ( 6,658 ) | ( 3,992 )
+Cash flows from financing activities:
+Proceeds from debt and commercial paper issuance, net of issuance costs | 4,726 | 2,441
+Repayment of debt and commercial paper | ( 875 ) | ( 950 )
+Proceeds from sales of common stock through employee equity plans | 210 | 169
+Repurchases of common stock | ( 221 ) | ( 1,316 )
+Stock repurchases for tax withholding on employee equity plans | ( 1,836 ) | ( 447 )
+Other | ( 21 ) | —
+Net cash provided by (used in) financing activities of continuing operations | 1,983 | ( 103 )
+Net increase in cash, cash equivalents and restricted cash | 1,848 | 1,014
+Cash, cash equivalents and restricted cash at beginning of period | 5,556 | 3,811
+Cash, cash equivalents and restricted cash at end of period | $ | 7,404 | $ | 4,825

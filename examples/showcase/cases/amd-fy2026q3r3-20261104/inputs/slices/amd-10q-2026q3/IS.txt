@@ -1,0 +1,31 @@
+Three Months Ended | Nine Months Ended
+September 26, 2026 | September 27, 2025 | September 26, 2026 | September 27, 2025
+(In millions, except per share amounts)
+Net revenue | $ | 13,377 | $ | 9,246 | $ | 35,166 | $ | 24,369
+Cost of sales | 5,910 | 4,206 | 15,559 | 12,023
+Amortization of acquisition-related intangibles | 257 | 260 | 778 | 771
+Total cost of sales | 6,167 | 4,466 | 16,337 | 12,794
+Gross profit | 7,210 | 4,780 | 18,829 | 11,575
+Research and development | 2,803 | 2,139 | 7,728 | 5,761
+Marketing, general and administrative | 1,298 | 1,069 | 3,952 | 2,946
+Amortization of acquisition-related intangibles | 277 | 302 | 851 | 926
+Total operating expenses | 4,378 | 3,510 | 12,531 | 9,633
+Operating income | 2,832 | 1,270 | 6,298 | 1,942
+Interest expense | ( 62 ) | ( 37 ) | ( 136 ) | ( 95 )
+Other income (expense), net | ( 902 ) | 82 | ( 139 ) | 219
+Income from continuing operations before income taxes and equity income | 1,868 | 1,315 | 6,023 | 2,066
+Income tax provision (benefit) | ( 555 ) | 153 | ( 65 ) | ( 558 )
+Equity income in investee | 5 | 10 | 17 | 25
+Income from continuing operations, net of tax | 2,428 | 1,172 | 6,105 | 2,649
+Income from discontinued operations, net of tax | — | 71 | 3 | 175
+Net income | $ | 2,428 | $ | 1,243 | $ | 6,108 | $ | 2,824
+Earnings per share
+Basic earnings from continuing operations | $ | 1.48 | $ | 0.72 | $ | 3.74 | $ | 1.63
+Basic earnings from discontinued operations | — | 0.04 | — | 0.11
+Basic earnings per share | $ | 1.48 | $ | 0.76 | $ | 3.74 | $ | 1.74
+Diluted earnings from continuing operations | $ | 1.46 | $ | 0.71 | $ | 3.69 | $ | 1.62
+Diluted earnings from discontinued operations | — | 0.04 | — | 0.11
+Diluted earnings per share | $ | 1.46 | $ | 0.75 | $ | 3.69 | $ | 1.73
+Shares used in per share calculation
+Basic | 1,636 | 1,626 | 1,633 | 1,623
+Diluted | 1,661 | 1,641 | 1,657 | 1,632

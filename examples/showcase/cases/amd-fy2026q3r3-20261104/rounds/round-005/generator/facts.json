@@ -1,0 +1,3940 @@
+{
+  "role": "extractor",
+  "request_id": "req-0040",
+  "candidate_id": "cand-aa8902380152",
+  "facts": [
+    {
+      "field": "income_statement.revenue",
+      "period": "2026-Q3",
+      "value": 13377.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.revenue",
+      "period": "2025-Q3",
+      "value": 9246.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.revenue",
+      "period": "2026-Q3-YTD",
+      "value": 35166.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.revenue",
+      "period": "2025-Q3-YTD",
+      "value": 24369.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "2026-Q3",
+      "value": 6167.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "2025-Q3",
+      "value": 4466.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "2026-Q3-YTD",
+      "value": 16337.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "2025-Q3-YTD",
+      "value": 12794.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "2026-Q3",
+      "value": 7210.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "2025-Q3",
+      "value": 4780.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "2026-Q3-YTD",
+      "value": 18829.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "2025-Q3-YTD",
+      "value": 11575.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "2026-Q3",
+      "value": 2803.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "2025-Q3",
+      "value": 2139.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "2026-Q3-YTD",
+      "value": 7728.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "2025-Q3-YTD",
+      "value": 5761.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "2026-Q3",
+      "value": 1298.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "2025-Q3",
+      "value": 1069.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "2026-Q3-YTD",
+      "value": 3952.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "2025-Q3-YTD",
+      "value": 2946.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "2026-Q3",
+      "value": 4378.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "2025-Q3",
+      "value": 3510.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "2026-Q3-YTD",
+      "value": 12531.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "2025-Q3-YTD",
+      "value": 9633.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "2026-Q3",
+      "value": 2832.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "2025-Q3",
+      "value": 1270.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "2026-Q3-YTD",
+      "value": 6298.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "2025-Q3-YTD",
+      "value": 1942.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "2026-Q3",
+      "value": -62.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "2025-Q3",
+      "value": -37.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "2026-Q3-YTD",
+      "value": -136.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "2025-Q3-YTD",
+      "value": -95.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "2026-Q3",
+      "value": -902.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "2025-Q3",
+      "value": 82.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "2026-Q3-YTD",
+      "value": -139.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "2025-Q3-YTD",
+      "value": 219.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "2026-Q3",
+      "value": 1868.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "2025-Q3",
+      "value": 1315.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "2026-Q3-YTD",
+      "value": 6023.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "2025-Q3-YTD",
+      "value": 2066.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "2026-Q3",
+      "value": -555.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "2025-Q3",
+      "value": 153.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "2026-Q3-YTD",
+      "value": -65.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "2025-Q3-YTD",
+      "value": -558.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.net_income",
+      "period": "2026-Q3",
+      "value": 2428.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "income_statement.net_income",
+      "period": "2025-Q3",
+      "value": 1243.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "income_statement.net_income",
+      "period": "2026-Q3-YTD",
+      "value": 6108.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "income_statement.net_income",
+      "period": "2025-Q3-YTD",
+      "value": 2824.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "2026-Q3",
+      "value": 1.48,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "2025-Q3",
+      "value": 0.76,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "2026-Q3-YTD",
+      "value": 3.74,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "2025-Q3-YTD",
+      "value": 1.74,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "2026-Q3",
+      "value": 1.46,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "2025-Q3",
+      "value": 0.75,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "2026-Q3-YTD",
+      "value": 3.69,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "2025-Q3-YTD",
+      "value": 1.73,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "2026-Q3",
+      "value": 1661.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "2025-Q3",
+      "value": 1641.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "2026-Q3-YTD",
+      "value": 1657.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "2025-Q3-YTD",
+      "value": 1632.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/IS",
+        "anchor": "Condensed Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "balance_sheet.cash_and_equivalents",
+      "period": "2026-Q3",
+      "value": 7404.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Cash and cash equivalents"
+      }
+    },
+    {
+      "field": "balance_sheet.cash_and_equivalents",
+      "period": "FY2025",
+      "value": 5539.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Cash and cash equivalents"
+      }
+    },
+    {
+      "field": "balance_sheet.short_term_investments",
+      "period": "2026-Q3",
+      "value": 8372.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Short-term investments"
+      }
+    },
+    {
+      "field": "balance_sheet.short_term_investments",
+      "period": "FY2025",
+      "value": 5013.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Short-term investments"
+      }
+    },
+    {
+      "field": "balance_sheet.accounts_receivable",
+      "period": "2026-Q3",
+      "value": 9209.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accounts receivable, net"
+      }
+    },
+    {
+      "field": "balance_sheet.accounts_receivable",
+      "period": "FY2025",
+      "value": 6315.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accounts receivable, net"
+      }
+    },
+    {
+      "field": "balance_sheet.inventories",
+      "period": "2026-Q3",
+      "value": 11463.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Inventories"
+      }
+    },
+    {
+      "field": "balance_sheet.inventories",
+      "period": "FY2025",
+      "value": 7920.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Inventories"
+      }
+    },
+    {
+      "field": "balance_sheet.total_current_assets",
+      "period": "2026-Q3",
+      "value": 39471.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total current assets"
+      }
+    },
+    {
+      "field": "balance_sheet.total_current_assets",
+      "period": "FY2025",
+      "value": 26947.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total current assets"
+      }
+    },
+    {
+      "field": "balance_sheet.property_plant_equipment_net",
+      "period": "2026-Q3",
+      "value": 3929.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Property and equipment, net"
+      }
+    },
+    {
+      "field": "balance_sheet.property_plant_equipment_net",
+      "period": "FY2025",
+      "value": 2312.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Property and equipment, net"
+      }
+    },
+    {
+      "field": "balance_sheet.goodwill",
+      "period": "2026-Q3",
+      "value": 25470.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Goodwill"
+      }
+    },
+    {
+      "field": "balance_sheet.goodwill",
+      "period": "FY2025",
+      "value": 25126.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Goodwill"
+      }
+    },
+    {
+      "field": "balance_sheet.intangible_assets_net",
+      "period": "2026-Q3",
+      "value": 15101.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Acquisition-related intangibles, net"
+      }
+    },
+    {
+      "field": "balance_sheet.intangible_assets_net",
+      "period": "FY2025",
+      "value": 16705.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Acquisition-related intangibles, net"
+      }
+    },
+    {
+      "field": "balance_sheet.deferred_tax_assets",
+      "period": "2026-Q3",
+      "value": 821.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Deferred tax assets"
+      }
+    },
+    {
+      "field": "balance_sheet.deferred_tax_assets",
+      "period": "FY2025",
+      "value": 384.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Deferred tax assets"
+      }
+    },
+    {
+      "field": "balance_sheet.total_assets",
+      "period": "2026-Q3",
+      "value": 94812.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total assets"
+      }
+    },
+    {
+      "field": "balance_sheet.total_assets",
+      "period": "FY2025",
+      "value": 76926.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total assets"
+      }
+    },
+    {
+      "field": "balance_sheet.accounts_payable",
+      "period": "2026-Q3",
+      "value": 7756.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accounts payable"
+      }
+    },
+    {
+      "field": "balance_sheet.accounts_payable",
+      "period": "FY2025",
+      "value": 2929.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accounts payable"
+      }
+    },
+    {
+      "field": "balance_sheet.accrued_liabilities",
+      "period": "2026-Q3",
+      "value": 6231.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accrued liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.accrued_liabilities",
+      "period": "FY2025",
+      "value": 5250.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accrued liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.short_term_debt",
+      "period": "2026-Q3",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Current portion of long-term debt, net"
+      }
+    },
+    {
+      "field": "balance_sheet.short_term_debt",
+      "period": "FY2025",
+      "value": 874.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Current portion of long-term debt, net"
+      }
+    },
+    {
+      "field": "balance_sheet.total_current_liabilities",
+      "period": "2026-Q3",
+      "value": 14486.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total current liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.total_current_liabilities",
+      "period": "FY2025",
+      "value": 9455.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total current liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.long_term_debt",
+      "period": "2026-Q3",
+      "value": 7079.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Long-term debt, net"
+      }
+    },
+    {
+      "field": "balance_sheet.long_term_debt",
+      "period": "FY2025",
+      "value": 2348.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Long-term debt, net"
+      }
+    },
+    {
+      "field": "balance_sheet.common_stock",
+      "period": "2026-Q3",
+      "value": 16.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Common stock"
+      }
+    },
+    {
+      "field": "balance_sheet.common_stock",
+      "period": "FY2025",
+      "value": 17.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Common stock"
+      }
+    },
+    {
+      "field": "balance_sheet.additional_paid_in_capital",
+      "period": "2026-Q3",
+      "value": 61769.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Additional paid-in capital"
+      }
+    },
+    {
+      "field": "balance_sheet.additional_paid_in_capital",
+      "period": "FY2025",
+      "value": 63365.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Additional paid-in capital"
+      }
+    },
+    {
+      "field": "balance_sheet.treasury_stock",
+      "period": "2026-Q3",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Treasury stock, at cost"
+      }
+    },
+    {
+      "field": "balance_sheet.treasury_stock",
+      "period": "FY2025",
+      "value": -7079.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Treasury stock, at cost"
+      }
+    },
+    {
+      "field": "balance_sheet.retained_earnings",
+      "period": "2026-Q3",
+      "value": 6720.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Retained earnings"
+      }
+    },
+    {
+      "field": "balance_sheet.retained_earnings",
+      "period": "FY2025",
+      "value": 6699.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Retained earnings"
+      }
+    },
+    {
+      "field": "balance_sheet.accumulated_other_comprehensive_income",
+      "period": "2026-Q3",
+      "value": -116.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accumulated other comprehensive loss"
+      }
+    },
+    {
+      "field": "balance_sheet.accumulated_other_comprehensive_income",
+      "period": "FY2025",
+      "value": -3.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Accumulated other comprehensive loss"
+      }
+    },
+    {
+      "field": "balance_sheet.total_stockholders_equity",
+      "period": "2026-Q3",
+      "value": 68389.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total stockholders’ equity"
+      }
+    },
+    {
+      "field": "balance_sheet.total_stockholders_equity",
+      "period": "FY2025",
+      "value": 62999.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/BS",
+        "anchor": "Condensed Consolidated Balance Sheets",
+        "locator": "Total stockholders’ equity"
+      }
+    },
+    {
+      "field": "cash_flow.net_income",
+      "period": "2026-Q3-YTD",
+      "value": 6108.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "cash_flow.net_income",
+      "period": "2025-Q3-YTD",
+      "value": 2824.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "cash_flow.depreciation_amortization",
+      "period": "2026-Q3-YTD",
+      "value": 666.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Depreciation and amortization"
+      }
+    },
+    {
+      "field": "cash_flow.depreciation_amortization",
+      "period": "2025-Q3-YTD",
+      "value": 556.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Depreciation and amortization"
+      }
+    },
+    {
+      "field": "cash_flow.stock_based_compensation",
+      "period": "2026-Q3-YTD",
+      "value": 1513.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Stock-based compensation"
+      }
+    },
+    {
+      "field": "cash_flow.stock_based_compensation",
+      "period": "2025-Q3-YTD",
+      "value": 1152.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Stock-based compensation"
+      }
+    },
+    {
+      "field": "cash_flow.deferred_taxes",
+      "period": "2026-Q3-YTD",
+      "value": -427.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Deferred income taxes"
+      }
+    },
+    {
+      "field": "cash_flow.deferred_taxes",
+      "period": "2025-Q3-YTD",
+      "value": 18.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Deferred income taxes"
+      }
+    },
+    {
+      "field": "cash_flow.operating_activities_other",
+      "period": "2026-Q3-YTD",
+      "value": 105.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Other (operating activities)"
+      }
+    },
+    {
+      "field": "cash_flow.operating_activities_other",
+      "period": "2025-Q3-YTD",
+      "value": 90.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Other (operating activities)"
+      }
+    },
+    {
+      "field": "cash_flow.operating_cash_flow",
+      "period": "2026-Q3-YTD",
+      "value": 6523.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by operating activities"
+      }
+    },
+    {
+      "field": "cash_flow.operating_cash_flow",
+      "period": "2025-Q3-YTD",
+      "value": 5109.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by operating activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_cash_flow",
+      "period": "2026-Q3-YTD",
+      "value": -6658.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_cash_flow",
+      "period": "2025-Q3-YTD",
+      "value": -3992.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.financing_cash_flow",
+      "period": "2026-Q3-YTD",
+      "value": 1983.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by (used in) financing activities of continuing operations"
+      }
+    },
+    {
+      "field": "cash_flow.financing_cash_flow",
+      "period": "2025-Q3-YTD",
+      "value": -103.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by (used in) financing activities of continuing operations"
+      }
+    },
+    {
+      "field": "cash_flow.cash_at_end_of_period",
+      "period": "2026-Q3-YTD",
+      "value": 7404.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Cash, cash equivalents and restricted cash at end of period"
+      }
+    },
+    {
+      "field": "cash_flow.cash_at_end_of_period",
+      "period": "2025-Q3-YTD",
+      "value": 4825.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/CF",
+        "anchor": "Condensed Consolidated Statements of Cash Flows",
+        "locator": "Cash, cash equivalents and restricted cash at end of period"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "2026-Q3",
+      "value": 8546.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "2025-Q3",
+      "value": 4341.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "2026-Q3-YTD",
+      "value": 21039.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "2025-Q3-YTD",
+      "value": 11255.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "2026-Q3",
+      "value": 3722.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "2025-Q3",
+      "value": 4048.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "2026-Q3-YTD",
+      "value": 11168.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "2025-Q3-YTD",
+      "value": 10610.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "2026-Q3",
+      "value": 1109.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "2025-Q3",
+      "value": 857.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "2026-Q3-YTD",
+      "value": 2959.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "2025-Q3-YTD",
+      "value": 2504.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "2026-Q3",
+      "value": 2882.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "2025-Q3",
+      "value": 1074.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "2026-Q3-YTD",
+      "value": 6584.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "2025-Q3-YTD",
+      "value": 1851.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Data Center"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "2026-Q3",
+      "value": 573.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "2025-Q3",
+      "value": 867.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "2026-Q3-YTD",
+      "value": 1730.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "2025-Q3-YTD",
+      "value": 2130.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "2026-Q3",
+      "value": 453.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "2025-Q3",
+      "value": 283.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "2026-Q3-YTD",
+      "value": 1177.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "2025-Q3-YTD",
+      "value": 886.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Embedded"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "2026-Q3",
+      "value": -1076.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "All other"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "2025-Q3",
+      "value": -954.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "All other"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "2026-Q3-YTD",
+      "value": -3193.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "All other"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "2025-Q3-YTD",
+      "value": -2925.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10q-2026q3",
+        "slice_id": "amd-10q-2026q3/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "All other"
+      }
+    },
+    {
+      "field": "income_statement.revenue",
+      "period": "FY2025",
+      "value": 34639.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.revenue",
+      "period": "FY2024",
+      "value": 25785.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.revenue",
+      "period": "FY2023",
+      "value": 22680.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Net revenue"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "FY2025",
+      "value": 17487.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "FY2024",
+      "value": 13060.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.cost_of_revenue",
+      "period": "FY2023",
+      "value": 12220.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Total cost of sales"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "FY2025",
+      "value": 17152.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "FY2024",
+      "value": 12725.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.gross_profit",
+      "period": "FY2023",
+      "value": 10460.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Gross profit"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "FY2025",
+      "value": 8091.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "FY2024",
+      "value": 6456.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.research_and_development",
+      "period": "FY2023",
+      "value": 5872.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Research and development"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "FY2025",
+      "value": 4144.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "FY2024",
+      "value": 2735.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.selling_general_and_administrative",
+      "period": "FY2023",
+      "value": 2318.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Marketing, general and administrative"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "FY2025",
+      "value": 13458.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "FY2024",
+      "value": 10825.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_expenses",
+      "period": "FY2023",
+      "value": 10059.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Total operating expenses"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "FY2025",
+      "value": 3694.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "FY2024",
+      "value": 1900.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.operating_income",
+      "period": "FY2023",
+      "value": 401.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Operating income"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "FY2025",
+      "value": -131.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "FY2024",
+      "value": -92.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.interest_expense",
+      "period": "FY2023",
+      "value": -106.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Interest expense"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "FY2025",
+      "value": 577.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "FY2024",
+      "value": 181.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.other_non_operating_income",
+      "period": "FY2023",
+      "value": 197.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Other income (expense), net"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "FY2025",
+      "value": 4140.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "FY2024",
+      "value": 1989.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_before_tax",
+      "period": "FY2023",
+      "value": 492.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Income from continuing operations before income taxes and equity income"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "FY2025",
+      "value": -103.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "FY2024",
+      "value": 381.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.income_tax_expense",
+      "period": "FY2023",
+      "value": -346.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Income tax provision (benefit)"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "FY2025",
+      "value": 2.67,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "FY2024",
+      "value": 1.01,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.basic_eps",
+      "period": "FY2023",
+      "value": 0.53,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Basic earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "FY2025",
+      "value": 2.65,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "FY2024",
+      "value": 1.0,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_eps",
+      "period": "FY2023",
+      "value": 0.53,
+      "unit": "USD",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Diluted earnings per share"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "FY2025",
+      "value": 1636.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "FY2024",
+      "value": 1637.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "income_statement.diluted_shares_outstanding",
+      "period": "FY2023",
+      "value": 1625.0,
+      "unit": "shares_mm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/IS",
+        "anchor": "Consolidated Statements of Operations",
+        "locator": "Diluted"
+      }
+    },
+    {
+      "field": "balance_sheet.cash_and_equivalents",
+      "period": "FY2024",
+      "value": 3787.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Cash and cash equivalents"
+      }
+    },
+    {
+      "field": "balance_sheet.short_term_investments",
+      "period": "FY2024",
+      "value": 1345.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Short-term investments"
+      }
+    },
+    {
+      "field": "balance_sheet.accounts_receivable",
+      "period": "FY2024",
+      "value": 6192.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Accounts receivable, net"
+      }
+    },
+    {
+      "field": "balance_sheet.inventories",
+      "period": "FY2024",
+      "value": 5734.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Inventories"
+      }
+    },
+    {
+      "field": "balance_sheet.total_current_assets",
+      "period": "FY2024",
+      "value": 19049.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Total current assets"
+      }
+    },
+    {
+      "field": "balance_sheet.property_plant_equipment_net",
+      "period": "FY2024",
+      "value": 1802.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Property and equipment, net"
+      }
+    },
+    {
+      "field": "balance_sheet.goodwill",
+      "period": "FY2024",
+      "value": 24839.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Goodwill"
+      }
+    },
+    {
+      "field": "balance_sheet.intangible_assets_net",
+      "period": "FY2024",
+      "value": 18930.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Acquisition-related intangibles, net"
+      }
+    },
+    {
+      "field": "balance_sheet.deferred_tax_assets",
+      "period": "FY2024",
+      "value": 688.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Deferred tax assets, net"
+      }
+    },
+    {
+      "field": "balance_sheet.total_assets",
+      "period": "FY2024",
+      "value": 69226.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Total assets"
+      }
+    },
+    {
+      "field": "balance_sheet.accounts_payable",
+      "period": "FY2024",
+      "value": 2466.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Accounts payable"
+      }
+    },
+    {
+      "field": "balance_sheet.accrued_liabilities",
+      "period": "FY2024",
+      "value": 4260.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Accrued liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.short_term_debt",
+      "period": "FY2024",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Current portion of long-term debt, net"
+      }
+    },
+    {
+      "field": "balance_sheet.total_current_liabilities",
+      "period": "FY2024",
+      "value": 7281.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Total current liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.long_term_debt",
+      "period": "FY2024",
+      "value": 1721.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Long-term debt, net of current portion"
+      }
+    },
+    {
+      "field": "balance_sheet.total_liabilities",
+      "period": "FY2025",
+      "value": 13927.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Total liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.total_liabilities",
+      "period": "FY2024",
+      "value": 11658.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Total liabilities"
+      }
+    },
+    {
+      "field": "balance_sheet.common_stock",
+      "period": "FY2024",
+      "value": 17.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Common stock"
+      }
+    },
+    {
+      "field": "balance_sheet.additional_paid_in_capital",
+      "period": "FY2024",
+      "value": 61362.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Additional paid-in capital"
+      }
+    },
+    {
+      "field": "balance_sheet.treasury_stock",
+      "period": "FY2024",
+      "value": -6106.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Treasury stock, at cost"
+      }
+    },
+    {
+      "field": "balance_sheet.retained_earnings",
+      "period": "FY2024",
+      "value": 2364.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Retained earnings"
+      }
+    },
+    {
+      "field": "balance_sheet.accumulated_other_comprehensive_income",
+      "period": "FY2024",
+      "value": -69.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Accumulated other comprehensive loss"
+      }
+    },
+    {
+      "field": "balance_sheet.total_stockholders_equity",
+      "period": "FY2024",
+      "value": 57568.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/BS",
+        "anchor": "Consolidated Balance Sheets",
+        "locator": "Total stockholders’ equity"
+      }
+    },
+    {
+      "field": "cash_flow.net_income",
+      "period": "FY2025",
+      "value": 4335.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "cash_flow.net_income",
+      "period": "FY2024",
+      "value": 1641.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "cash_flow.net_income",
+      "period": "FY2023",
+      "value": 854.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net income"
+      }
+    },
+    {
+      "field": "cash_flow.depreciation_amortization",
+      "period": "FY2025",
+      "value": 750.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Depreciation and amortization"
+      }
+    },
+    {
+      "field": "cash_flow.depreciation_amortization",
+      "period": "FY2024",
+      "value": 671.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Depreciation and amortization"
+      }
+    },
+    {
+      "field": "cash_flow.depreciation_amortization",
+      "period": "FY2023",
+      "value": 642.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Depreciation and amortization"
+      }
+    },
+    {
+      "field": "cash_flow.stock_based_compensation",
+      "period": "FY2025",
+      "value": 1638.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Stock-based compensation"
+      }
+    },
+    {
+      "field": "cash_flow.stock_based_compensation",
+      "period": "FY2024",
+      "value": 1407.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Stock-based compensation"
+      }
+    },
+    {
+      "field": "cash_flow.stock_based_compensation",
+      "period": "FY2023",
+      "value": 1384.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Stock-based compensation"
+      }
+    },
+    {
+      "field": "cash_flow.deferred_taxes",
+      "period": "FY2025",
+      "value": 248.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Deferred income taxes"
+      }
+    },
+    {
+      "field": "cash_flow.deferred_taxes",
+      "period": "FY2024",
+      "value": -1163.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Deferred income taxes"
+      }
+    },
+    {
+      "field": "cash_flow.deferred_taxes",
+      "period": "FY2023",
+      "value": -1019.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Deferred income taxes"
+      }
+    },
+    {
+      "field": "cash_flow.working_capital_changes",
+      "period": "FY2025",
+      "value": -2378.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Changes in operating assets and liabilities"
+      }
+    },
+    {
+      "field": "cash_flow.working_capital_changes",
+      "period": "FY2024",
+      "value": -2099.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Changes in operating assets and liabilities"
+      }
+    },
+    {
+      "field": "cash_flow.working_capital_changes",
+      "period": "FY2023",
+      "value": -3049.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Changes in operating assets and liabilities"
+      }
+    },
+    {
+      "field": "cash_flow.operating_activities_other",
+      "period": "FY2025",
+      "value": 186.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other operating adjustments"
+      }
+    },
+    {
+      "field": "cash_flow.operating_activities_other",
+      "period": "FY2024",
+      "value": 190.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other operating adjustments"
+      }
+    },
+    {
+      "field": "cash_flow.operating_activities_other",
+      "period": "FY2023",
+      "value": 44.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other operating adjustments"
+      }
+    },
+    {
+      "field": "cash_flow.operating_cash_flow",
+      "period": "FY2025",
+      "value": 7709.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by operating activities"
+      }
+    },
+    {
+      "field": "cash_flow.operating_cash_flow",
+      "period": "FY2024",
+      "value": 3041.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by operating activities"
+      }
+    },
+    {
+      "field": "cash_flow.operating_cash_flow",
+      "period": "FY2023",
+      "value": 1667.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash provided by operating activities"
+      }
+    },
+    {
+      "field": "cash_flow.capital_expenditure",
+      "period": "FY2025",
+      "value": 1012.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Purchases of property and equipment"
+      }
+    },
+    {
+      "field": "cash_flow.capital_expenditure",
+      "period": "FY2024",
+      "value": 636.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Purchases of property and equipment"
+      }
+    },
+    {
+      "field": "cash_flow.capital_expenditure",
+      "period": "FY2023",
+      "value": 546.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Purchases of property and equipment"
+      }
+    },
+    {
+      "field": "cash_flow.investing_activities_other",
+      "period": "FY2025",
+      "value": 1468.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_activities_other",
+      "period": "FY2024",
+      "value": -465.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_activities_other",
+      "period": "FY2023",
+      "value": 1936.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_cash_flow",
+      "period": "FY2025",
+      "value": -5533.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_cash_flow",
+      "period": "FY2024",
+      "value": -1101.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.investing_cash_flow",
+      "period": "FY2023",
+      "value": -1423.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in investing activities"
+      }
+    },
+    {
+      "field": "cash_flow.dividend_paid",
+      "period": "FY2025",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Dividend paid"
+      }
+    },
+    {
+      "field": "cash_flow.dividend_paid",
+      "period": "FY2024",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Dividend paid"
+      }
+    },
+    {
+      "field": "cash_flow.dividend_paid",
+      "period": "FY2023",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Dividend paid"
+      }
+    },
+    {
+      "field": "cash_flow.share_issuance_repurchase",
+      "period": "FY2025",
+      "value": -1638.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Share issuance and repurchases, net"
+      }
+    },
+    {
+      "field": "cash_flow.share_issuance_repurchase",
+      "period": "FY2024",
+      "value": -1311.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Share issuance and repurchase, net"
+      }
+    },
+    {
+      "field": "cash_flow.share_issuance_repurchase",
+      "period": "FY2023",
+      "value": -1144.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Share issuance and repurchase, net"
+      }
+    },
+    {
+      "field": "cash_flow.debt_issuance_repayment",
+      "period": "FY2025",
+      "value": 1491.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Debt issuance and repayment, net"
+      }
+    },
+    {
+      "field": "cash_flow.debt_issuance_repayment",
+      "period": "FY2024",
+      "value": -750.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Debt issuance and repayment, net"
+      }
+    },
+    {
+      "field": "cash_flow.debt_issuance_repayment",
+      "period": "FY2023",
+      "value": 0.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Debt issuance and repayment, net"
+      }
+    },
+    {
+      "field": "cash_flow.financing_activities_other",
+      "period": "FY2025",
+      "value": -284.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other financing activities"
+      }
+    },
+    {
+      "field": "cash_flow.financing_activities_other",
+      "period": "FY2024",
+      "value": -1.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other financing activities"
+      }
+    },
+    {
+      "field": "cash_flow.financing_activities_other",
+      "period": "FY2023",
+      "value": -2.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Other financing activities"
+      }
+    },
+    {
+      "field": "cash_flow.financing_cash_flow",
+      "period": "FY2025",
+      "value": -431.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in financing activities"
+      }
+    },
+    {
+      "field": "cash_flow.financing_cash_flow",
+      "period": "FY2024",
+      "value": -2062.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in financing activities"
+      }
+    },
+    {
+      "field": "cash_flow.financing_cash_flow",
+      "period": "FY2023",
+      "value": -1146.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Net cash used in financing activities"
+      }
+    },
+    {
+      "field": "cash_flow.cash_at_end_of_period",
+      "period": "FY2025",
+      "value": 5556.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Cash, cash equivalents and restricted cash at end of year"
+      }
+    },
+    {
+      "field": "cash_flow.cash_at_end_of_period",
+      "period": "FY2024",
+      "value": 3811.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Cash, cash equivalents and restricted cash at end of year"
+      }
+    },
+    {
+      "field": "cash_flow.cash_at_end_of_period",
+      "period": "FY2023",
+      "value": 3933.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/CF",
+        "anchor": "Consolidated Statements of Cash Flows",
+        "locator": "Cash, cash equivalents and restricted cash at end of year"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "FY2025",
+      "value": 16635.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Net revenue: Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "FY2024",
+      "value": 12579.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Net revenue: Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.revenue",
+      "period": "FY2023",
+      "value": 6496.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Net revenue: Data Center"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "FY2025",
+      "value": 14550.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "FY2024",
+      "value": 9649.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.revenue",
+      "period": "FY2023",
+      "value": 10863.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Total Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "FY2025",
+      "value": 3454.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Net revenue: Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "FY2024",
+      "value": 3557.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Net revenue: Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.revenue",
+      "period": "FY2023",
+      "value": 5321.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Net revenue: Embedded"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "FY2025",
+      "value": 3603.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "FY2024",
+      "value": 3482.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Data Center"
+      }
+    },
+    {
+      "field": "segments.Data Center.operating_income",
+      "period": "FY2023",
+      "value": 1267.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Data Center"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "FY2025",
+      "value": 2855.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "FY2024",
+      "value": 1187.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Client and Gaming.operating_income",
+      "period": "FY2023",
+      "value": 925.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Client and Gaming"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "FY2025",
+      "value": 1243.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "FY2024",
+      "value": 1421.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Embedded"
+      }
+    },
+    {
+      "field": "segments.Embedded.operating_income",
+      "period": "FY2023",
+      "value": 2628.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): Embedded"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "FY2025",
+      "value": -4007.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): All Other"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "FY2024",
+      "value": -4190.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): All Other"
+      }
+    },
+    {
+      "field": "segments.all_other_operating_income",
+      "period": "FY2023",
+      "value": -4419.0,
+      "unit": "USDmm",
+      "confidence": 1.0,
+      "citation": {
+        "doc_id": "amd-10k-fy2025",
+        "slice_id": "amd-10k-fy2025/SEG",
+        "anchor": "NOTE 4 – Segment Reporting",
+        "locator": "Operating income (loss): All Other"
+      }
+    }
+  ],
+  "missing": [
+    {
+      "field": "income_statement.other_operating_income_expenses",
+      "reason": "No separate canonical line item printed; statement prints amortization of acquisition-related intangibles as an operating-expense component.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "income_statement.ebitda",
+      "reason": "Not printed in the income statement slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "income_statement.depreciation_and_amortization",
+      "reason": "Reported in the cash flow statement, not this income statement slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "income_statement.interest_and_other_net",
+      "reason": "No line captioned “Interest and other, net” in the slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "income_statement.net_income_attributable",
+      "reason": "No net income attributable to issuer line printed in the slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "income_statement.net_income_noncontrolling",
+      "reason": "No non-controlling interest share of net income line printed in the slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "balance_sheet.total_liabilities",
+      "reason": "No total liabilities line is printed in the balance sheet slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "balance_sheet.noncontrolling_interests",
+      "reason": "No non-controlling interests line is printed in the balance sheet slice.",
+      "period": "2026-Q3"
+    },
+    {
+      "field": "balance_sheet.noncontrolling_interests",
+      "reason": "No non-controlling interests line is printed in the balance sheet slice.",
+      "period": "FY2025"
+    },
+    {
+      "field": "cash_flow.depreciation",
+      "reason": "The slice prints a combined depreciation and amortization line, not separate depreciation.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.depreciation",
+      "reason": "The slice prints a combined depreciation and amortization line, not separate depreciation.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.amortization_of_intangibles",
+      "reason": "The slice prints acquisition-related intangible amortization separately, but not as the standalone amortization-of-intangibles line defined for this field.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.amortization_of_intangibles",
+      "reason": "The slice prints acquisition-related intangible amortization separately, but not as the standalone amortization-of-intangibles line defined for this field.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.working_capital_changes",
+      "reason": "Operating asset and liability changes are printed as separate lines without a reported total.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.working_capital_changes",
+      "reason": "Operating asset and liability changes are printed as separate lines without a reported total.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.capital_expenditure",
+      "reason": "Property and equipment purchases are shown as cash outflows; the field's positive-spend convention cannot be represented without changing the reported sign.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.capital_expenditure",
+      "reason": "Property and equipment purchases are shown as cash outflows; the field's positive-spend convention cannot be represented without changing the reported sign.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.investing_activities_other",
+      "reason": "The slice prints an 'Other' investing line for 2026 and a dash for 2025; the dash has no numeric value.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.investing_activities_other",
+      "reason": "No single reported total for other investing activities; continuing and discontinued operations are shown separately.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.dividend_paid",
+      "reason": "No dividend paid line is printed in this slice.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.dividend_paid",
+      "reason": "No dividend paid line is printed in this slice.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.share_issuance_repurchase",
+      "reason": "Issuance and repurchase activity is printed as separate lines without a reported net total.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.share_issuance_repurchase",
+      "reason": "Issuance and repurchase activity is printed as separate lines without a reported net total.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.debt_issuance_repayment",
+      "reason": "Debt issuance and repayment are printed as separate lines without a reported net total.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.debt_issuance_repayment",
+      "reason": "Debt issuance and repayment are printed as separate lines without a reported net total.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.financing_activities_other",
+      "reason": "The slice prints an 'Other' financing line for 2026 and a dash for 2025; the dash has no numeric value.",
+      "period": "2025-Q3-YTD"
+    },
+    {
+      "field": "cash_flow.financing_activities_other",
+      "reason": "No reported total for other financing activities beyond continuing operations.",
+      "period": "2026-Q3-YTD"
+    },
+    {
+      "field": "segments.all_other_revenue",
+      "reason": "No All other revenue line is disclosed in the segment slice."
+    },
+    {
+      "field": "income_statement.other_operating_income_expenses",
+      "reason": "No single line for other operating income or expenses; component lines and total operating expenses are printed."
+    },
+    {
+      "field": "income_statement.ebitda",
+      "reason": "Not reported in the income statement slice; derived field."
+    },
+    {
+      "field": "income_statement.depreciation_and_amortization",
+      "reason": "Alias is reported in the cash flow statement, not this income statement slice."
+    },
+    {
+      "field": "income_statement.interest_and_other_net",
+      "reason": "No line captioned Interest and other, net in this slice."
+    },
+    {
+      "field": "income_statement.net_income_attributable",
+      "reason": "No net income attributable to AMD line is printed."
+    },
+    {
+      "field": "income_statement.net_income_noncontrolling",
+      "reason": "No non-controlling interests' share of net income line is printed."
+    },
+    {
+      "field": "balance_sheet.noncontrolling_interests",
+      "reason": "No non-controlling interests line is printed in the balance sheet slice",
+      "period": "FY2024"
+    },
+    {
+      "field": "cash_flow.depreciation",
+      "reason": "not reported separately; combined depreciation and amortization line is reported in the CF slice for all printed fiscal years.",
+      "period": "FY2025"
+    },
+    {
+      "field": "cash_flow.amortization_of_intangibles",
+      "reason": "not reported as a standalone cash-flow amortization line; acquisition-related intangibles amortization appears separately as a non-CF reconciliation line, not the requested separate CF amortization field.",
+      "period": "FY2025"
+    },
+    {
+      "field": "segments.all_other_revenue",
+      "reason": "All Other revenue is not separately disclosed in the segment slice for these fiscal years.",
+      "period": "FY2025"
+    },
+    {
+      "field": "segments.all_other_revenue",
+      "reason": "All Other revenue is not separately disclosed in the segment slice for these fiscal years.",
+      "period": "FY2024"
+    },
+    {
+      "field": "segments.all_other_revenue",
+      "reason": "All Other revenue is not separately disclosed in the segment slice for these fiscal years.",
+      "period": "FY2023"
+    }
+  ],
+  "notes": [
+    "The statement presents four columns: 2026-Q3, 2025-Q3, 2026-Q3-YTD, and 2025-Q3-YTD.",
+    "Net income is printed without an attribution line; reported Net income was extracted as income_statement.net_income.",
+    "Cash-flow columns cover nine months ended September 26, 2026 and September 27, 2025; periods labeled YTD.",
+    "Operating, investing, and financing activity subtotals include discontinued operations where shown; investing and financing subtotals are reported for the consolidated statement."
+  ],
+  "conformance": "schema 1.0",
+  "prompt_version": "1.8",
+  "extraction_units": [
+    {
+      "unit": "amd-10q-2026q3/income_statement",
+      "doc_id": "amd-10q-2026q3",
+      "slice_id": "amd-10q-2026q3/IS",
+      "request_id": "req-0002",
+      "facts": 60
+    },
+    {
+      "unit": "amd-10q-2026q3/balance_sheet",
+      "doc_id": "amd-10q-2026q3",
+      "slice_id": "amd-10q-2026q3/BS",
+      "request_id": "req-0003",
+      "facts": 42
+    },
+    {
+      "unit": "amd-10q-2026q3/cash_flow",
+      "doc_id": "amd-10q-2026q3",
+      "slice_id": "amd-10q-2026q3/CF",
+      "request_id": "req-0004",
+      "facts": 18
+    },
+    {
+      "unit": "amd-10q-2026q3/segments",
+      "doc_id": "amd-10q-2026q3",
+      "slice_id": "amd-10q-2026q3/SEG",
+      "request_id": "req-0005",
+      "facts": 28
+    },
+    {
+      "unit": "amd-10k-fy2025/income_statement",
+      "doc_id": "amd-10k-fy2025",
+      "slice_id": "amd-10k-fy2025/IS",
+      "request_id": "req-0006",
+      "facts": 42
+    },
+    {
+      "unit": "amd-10k-fy2025/balance_sheet",
+      "doc_id": "amd-10k-fy2025",
+      "slice_id": "amd-10k-fy2025/BS",
+      "request_id": "req-0007",
+      "facts": 44
+    },
+    {
+      "unit": "amd-10k-fy2025/cash_flow",
+      "doc_id": "amd-10k-fy2025",
+      "slice_id": "amd-10k-fy2025/CF",
+      "request_id": "req-0008",
+      "facts": 48
+    },
+    {
+      "unit": "amd-10k-fy2025/segments",
+      "doc_id": "amd-10k-fy2025",
+      "slice_id": "amd-10k-fy2025/SEG",
+      "request_id": "req-0009",
+      "facts": 21
+    }
+  ],
+  "provenance": {
+    "cutoff_date": "2026-11-04",
+    "bundle_id": "amd-2026-11",
+    "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98",
+    "input_manifest_sha256": "961b47e8fa6092bb9317dcfbe94396feb46410ad9b47a36dadb6352a99db271d"
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "case_id": "amd-fy2026q3r3-20261104",
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "critic_ref": "f-c1-2",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 1,
+      "last_seen_round": 1,
+      "status": "closed",
+      "closed_by": {
+        "round": 3,
+        "critic": "critic_c1",
+        "verified_evidence": {
+          "artifact": "rounds/round-003/generator/report.md",
+          "sha256": "388b98e1e88e4966e15ab630f63a12e24e3661859663649ce0c7fcc84e3201a8"
+        }
+      },
+      "severity": "major",
+      "summary": "Two segment revenue growth rates cite the consolidated revenue growth key, whose value does not match either stated segment rate.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Cite evidence keys whose values resolve to the Client and Gaming and Embedded Q3 year-over-year revenue growth rates, or remove the growth-rate claims.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0002",
+      "critic_ref": "f1",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c4",
+      "first_seen_round": 1,
+      "last_seen_round": 5,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The note includes process metadata in its header.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control metadata.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0003",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|value-mismatch:34:42:20.0|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "closed",
+      "closed_by": {
+        "round": 3,
+        "critic": "gate:report_evidence_links",
+        "verified_evidence": {
+          "artifact": "rounds/round-003/numerical/gates.json",
+          "sha256": "4f25c4b08f23944cce12b167c481b1c14ce3d2a3639bf79ffbaa6b2003aadaa7"
+        }
+      },
+      "severity": "major",
+      "summary": "numeric token \"20.0\" on line 34 is cited to [EV:assumptions], [EV:comps.comps_upside], [EV:cross_check_delta], [EV:within_tolerance], none of which holds that value; [EV:forecast.segments.0.growth.3] does",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "a marker for the key that holds \"20.0\", such as forecast.segments.0.growth.3",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|value-mismatch:34:97:25.0|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "closed",
+      "closed_by": {
+        "round": 3,
+        "critic": "gate:report_evidence_links",
+        "verified_evidence": {
+          "artifact": "rounds/round-003/numerical/gates.json",
+          "sha256": "4f25c4b08f23944cce12b167c481b1c14ce3d2a3639bf79ffbaa6b2003aadaa7"
+        }
+      },
+      "severity": "major",
+      "summary": "numeric token \"25.0\" on line 34 is cited to [EV:assumptions], [EV:comps.comps_upside], [EV:cross_check_delta], [EV:within_tolerance], none of which holds that value; [EV:forecast.segments.0.growth.2] does",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "a marker for the key that holds \"25.0\", such as forecast.segments.0.growth.2",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0005",
+      "critic_ref": "c1-1",
+      "dedup_key": "critic_c1|c1.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The cutoff date in the report header lacks an evidence key.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Add an evidence key for the cutoff date or remove the unanchored date.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0006",
+      "critic_ref": "c1-2",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "closed",
+      "closed_by": {
+        "round": 5,
+        "critic": "critic_c1",
+        "verified_evidence": {
+          "artifact": "rounds/round-005/generator/report.md",
+          "sha256": "f96990735c2f763e640daf9ce2b2a3473cf2eea509ebdb7378cc3bf68fa50f04"
+        }
+      },
+      "severity": "major",
+      "summary": "The report describes the forecast as accepted without support in the provided artifacts.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Remove “accepted” or provide an artifact that establishes the forecast’s acceptance status.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0007",
+      "critic_ref": "c1-5",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 5,
+      "last_seen_round": 5,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.",
+      "affected_artifacts": [
+        "rounds/round-005/generator/report.md"
+      ],
+      "required_evidence": "Cite dcf.base.fcf for the historical FCF amount and comps.comps_price for the relative-valuation indicated price, or otherwise cite ledger entries whose values match those claims.",
+      "owner": "writer"
+    }
+  ]
+}

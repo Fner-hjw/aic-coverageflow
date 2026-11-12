@@ -1,0 +1,27 @@
+NOTE 4 – Segment Reporting
+
+Three Months Ended | Nine Months Ended
+September 26, 2026 | September 27, 2025 | September 26, 2026 | September 27, 2025
+(In millions)
+Net revenue:
+Data Center | $ | 8,546 | $ | 4,341 | $ | 21,039 | $ | 11,255
+Client and Gaming
+Client | 2,949 | 2,750 | 8,896 | 7,543
+Gaming | 773 | 1,298 | 2,272 | 3,067
+Total Client and Gaming | 3,722 | 4,048 | 11,168 | 10,610
+Embedded | 1,109 | 857 | 2,959 | 2,504
+Total net revenue | $ | 13,377 | $ | 9,246 | $ | 35,166 | $ | 24,369
+Cost of sales and operating expenses:
+Data Center | $ | 5,664 | $ | 3,267 | $ | 14,455 | $ | 9,404
+Client and Gaming | 3,149 | 3,181 | 9,438 | 8,480
+Embedded | 656 | 574 | 1,782 | 1,618
+All other | 1,076 | 954 | 3,193 | 2,925
+Total cost of sales and operating expenses | $ | 10,545 | $ | 7,976 | $ | 28,868 | $ | 22,427
+Operating income (loss):
+Data Center | $ | 2,882 | $ | 1,074 | $ | 6,584 | $ | 1,851
+Client and Gaming | 573 | 867 | 1,730 | 2,130
+Embedded | 453 | 283 | 1,177 | 886
+All other (1) | ( 1,076 ) | ( 954 ) | ( 3,193 ) | ( 2,925 )
+Total operating income (loss) | $ | 2,832 | $ | 1,270 | $ | 6,298 | $ | 1,942
+
+(1) | For the three and nine months ended September 26, 2026, all other operating losses primarily included $ 534 million and $ 1.6 billion of amortization of acquisition-related intangibles, and $ 523 million and $ 1.5 billion of stock-based compensation expense, respectively. For the three and nine months ended September 27, 2025, all other operating losses primarily included $ 562 million and $ 1.7 billion of amortization of acquisition-related intangibles, and $ 419 million and $ 1.2 billion of stock-based compensation expense, respectively.

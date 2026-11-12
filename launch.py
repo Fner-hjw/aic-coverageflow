@@ -37,6 +37,10 @@ API_CFG = ROOT / ".coverageflow.json"              # {"api": {...}} (may hold a 
 DEFAULT_PORT = 8765
 DEMO_MANIFEST = ROOT / "examples" / "run1-clean" / "inputs-manifest.json"
 DEMO_CASE_ID = "intc-fy2026q3-20261030"
+# Finished live cases shipped with the repository so a reader can inspect a
+# real run (trace, ledger, approval record, exports) without spending model
+# calls. Stored without the filings, which are restored from data/ below.
+SHOWCASE_DIR = ROOT / "examples" / "showcase" / "cases"
 IS_WINDOWS = os.name == "nt"
 
 
@@ -243,6 +247,7 @@ def prepare_workspace(py: Path, cfg: dict) -> tuple[Path, str | None]:
     """Create the workspace; seed a ready-to-run demo case when empty."""
     ws = (ROOT / cfg["workspace"]).resolve() if cfg["workspace"] != "." else ROOT
     (ws / "cases").mkdir(parents=True, exist_ok=True)
+    install_showcase(ws)
 
     def cases() -> list[Path]:
         return [d for d in (ws / "cases").iterdir()
@@ -280,6 +285,45 @@ def prepare_workspace(py: Path, cfg: dict) -> tuple[Path, str | None]:
             f"{r.stdout}\n{r.stderr}")
         return ws, None
     return ws, DEMO_CASE_ID
+
+
+def install_showcase(ws: Path) -> None:
+    """Copy the shipped showcase cases into the workspace once.
+
+    Each case is stored without its filings; they are copied back from the
+    frozen bundle under data/ and checked against the case's own input
+    manifest (sha256), so the restored case is byte-identical to the one that
+    ran. A case already in the workspace (or deleted from it) is left alone.
+    """
+    import hashlib
+    import shutil
+    if not SHOWCASE_DIR.is_dir():
+        return
+    for src in sorted(p for p in SHOWCASE_DIR.iterdir() if (p / "state.json").is_file()):
+        dst = ws / "cases" / src.name
+        if dst.exists() or any((ws / "deleted").glob(f"{src.name}-*")):
+            continue
+        man = json.loads((src / "inputs" / "manifest.json").read_text())
+        bundles = [d for d in (ROOT / "data").glob("*/manifest.json")
+                   if json.loads(d.read_text()).get("bundle_id") == man.get("bundle_id")]
+        if not bundles:
+            say(f"! showcase {src.name}: bundle {man.get('bundle_id')} not found; skipped")
+            continue
+        bundle_inputs = bundles[0].parent / "inputs"
+        ok = True
+        for doc in man.get("documents", []):
+            f = bundle_inputs / Path(doc["path"]).name
+            if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != doc["sha256"]:
+                ok = False
+                break
+        if not ok:
+            say(f"! showcase {src.name}: a filing does not match its sha256; skipped")
+            continue
+        shutil.copytree(src, dst)
+        for doc in man.get("documents", []):
+            shutil.copy2(bundle_inputs / Path(doc["path"]).name, dst / doc["path"])
+        say(f"· added the finished showcase case {src.name} (read-only evidence; "
+            "open it in the UI)")
 
 
 # ------------------------------------------------------------------ server
