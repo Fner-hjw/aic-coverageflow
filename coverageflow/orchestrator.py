@@ -3682,6 +3682,16 @@ class Orchestrator:
             raise RuntimeError(
                 "blocking findings remain and were not acknowledged: "
                 + ", ".join(outstanding))
+        hard = [f for f in blocking if not ledger_mod.waivable(f)]
+        if hard:
+            raise RuntimeError(
+                "cannot publish with exceptions: "
+                + ", ".join(f"{f['finding_id']} ({ledger_mod.check_id_of(f) or 'gate'})"
+                            for f in hard)
+                + " say the note states something false or untraceable "
+                  "(rubric checks " + ", ".join(sorted(ledger_mod.NON_WAIVABLE_CHECKS))
+                + " and gate findings are not waivable); request a revision "
+                  "or reject")
         if not cand["gates_passed"]:
             raise RuntimeError("publishing requires all numerical gates to pass")
         report_rel = self._report_rel_of(state)

@@ -1862,6 +1862,18 @@ async function renderCaseApproval(body, c) {
       "This dossier contains the frozen inputs, engine versions, critic decisions, and current note. Publication still requires the sign-off below."));
 
   const ready = blocking.length === 0;
+  // Mirrors ledger.NON_WAIVABLE_CHECKS: a finding that says the note states
+  // something false or untraceable cannot be published over; the controller
+  // refuses it, so the button is disabled with the reason instead.
+  const NON_WAIVABLE = ["C1.1", "C1.2", "C1.3", "C2.1", "C2.2", "C3.1", "C3.2"];
+  const checkOf = f => {
+    const raw = f.check_id || ((f.dedup_key || "").split("|")[1] || "");
+    const m = /^c(\d)\.(\d+)$/i.exec(raw.trim());
+    return m ? `C${m[1]}.${m[2]}` : null;
+  };
+  const hardFinding = f => String(f.source_critic || "").startsWith("gate:")
+    || NON_WAIVABLE.includes(checkOf(f));
+  const hard = blocking.filter(hardFinding);
 
   const who = h("input", { type: "text", placeholder: "Approver name as recorded",
                             value: "Gaetano Marco Chiantia" });
@@ -1906,12 +1918,17 @@ async function renderCaseApproval(body, c) {
     blocking.length ? h("div", { class: "hint" },
       `Approving publishes over ${blocking.length} unresolved blocking finding(s). Name them in the review notes; a blanket approval is refused.`,
       h("ul", null, ...blocking.map(f => h("li", null,
-        h("code", null, f.finding_id), ` (${f.severity}) ${f.summary}`)))) : null,
+        h("code", null, f.finding_id), ` (${f.severity}${checkOf(f) ? `, ${checkOf(f)}` : ""}) ${f.summary}`,
+        hardFinding(f) ? h("strong", { class: "review-alert" }, " Cannot be waived.") : null)))) : null,
+    escalated && hard.length ? h("p", { class: "hint" },
+      `Publishing with exceptions is not available: ${hard.map(f => f.finding_id).join(", ")} say the note states something false or untraceable (a missing or wrong source, a figure that differs from the engines, a bound or cutoff breach). Request a revision or reject.`) : null,
     h("label", { class: "signoff-field" }, h("span", null, "Review notes"), why),
     h("label", { class: "signoff-field" }, h("span", null, "Approver name"), who),
     h("div", { class: "signoff-actions" },
       escalated
-        ? h("button", { class: "btn primary", onclick: () => decide("PUBLISHED_WITH_EXCEPTIONS") }, "Publish with exceptions")
+        ? h("button", { class: "btn primary", disabled: hard.length ? "" : null,
+            title: hard.length ? "Open findings that cannot be waived" : null,
+            onclick: () => decide("PUBLISHED_WITH_EXCEPTIONS") }, "Publish with exceptions")
         : h("button", { class: "btn primary", onclick: () => decide("APPROVED") }, "Approve for publication"),
       h("button", { class: "btn danger", onclick: () => decide("REJECTED") }, "Reject")),
     revisionPanel);

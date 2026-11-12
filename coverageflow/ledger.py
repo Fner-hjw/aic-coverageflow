@@ -74,6 +74,40 @@ def compute_dedup_key(finding: dict) -> str:
 # the deliverable as an advisory note instead of blocking the case forever.
 BLOCKING_SEVERITIES = frozenset({"major", "critical"})
 
+# Rubric checks whose failure means the note states something false or
+# untraceable: a number without a source, a cited value that is not the
+# ledger value, a document outside the manifest, a figure that differs from
+# the engine artifacts, a forecast outside the mandate bounds, or a fact from
+# after the cutoff. A human may publish over a judgment call (C1.4, C2.3-C2.6,
+# C4.x), but not over these: the approver's options are a revision or a
+# rejection. Gate findings are never waivable either.
+NON_WAIVABLE_CHECKS = frozenset({"C1.1", "C1.2", "C1.3", "C2.1", "C2.2",
+                                 "C3.1", "C3.2"})
+_CHECK_IN_KEY = re.compile(r"^c(\d)\.(\d+)$", re.IGNORECASE)
+
+
+def check_id_of(finding: dict) -> str | None:
+    """The rubric check a finding cites (``C1.2``), from its fields or its
+    computed dedup key (``critic_c1|c1.2|...``); None when it cites none."""
+    for k in _CHECK_ID_FIELDS:
+        v = finding.get(k)
+        if isinstance(v, str) and _CHECK_IN_KEY.match(v.strip()):
+            m = _CHECK_IN_KEY.match(v.strip())
+            return f"C{m.group(1)}.{m.group(2)}"
+    parts = str(finding.get("dedup_key") or "").split("|")
+    if len(parts) >= 2:
+        m = _CHECK_IN_KEY.match(parts[1].strip())
+        if m:
+            return f"C{m.group(1)}.{m.group(2)}"
+    return None
+
+
+def waivable(finding: dict) -> bool:
+    """May a human publish with this finding open (PUBLISHED_WITH_EXCEPTIONS)?"""
+    if str(finding.get("source_critic") or "").startswith("gate:"):
+        return False
+    return check_id_of(finding) not in NON_WAIVABLE_CHECKS
+
 
 # ---------------------------------------------------------------------------
 # Finding owners (diagnosis 3.2). An owner says which party can repair the

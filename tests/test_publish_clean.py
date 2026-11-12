@@ -44,7 +44,9 @@ class TestCleanNoteOnPublication:
         mandate = json.loads(json.dumps(casekit.MANDATE))
         mandate["limits"]["stall_rounds"] = 1
         scripts = {"critic_c1": [None, _finding(["report.md"], summary="persistent")] * 3}
-        scripts["critic_c1"] = [None] + [_finding(["report.md"], summary="persistent")] * 6
+        judged = _finding(["report.md"], summary="persistent")
+        judged["findings"][0]["check_id"] = "C1.4"   # a judgment call: waivable
+        scripts["critic_c1"] = [None] + [judged] * 6
         orch, dispatch, clk, case_dir = build_env(tmp_path, scripts=scripts,
                                                   mandate=mandate)
         orch.run()

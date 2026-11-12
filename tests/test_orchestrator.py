@@ -274,7 +274,15 @@ def _writer_output(md: str):
             "prompt_version": "1.0"}
 
 
-def _critic_findings(critic: str = "critic_c1", summary: str = "revenue citation incomplete"):
+def _critic_findings(critic: str = "critic_c1", summary: str = "revenue citation incomplete",
+                     check_id: str | None = None):
+    out = _critic_findings_base(critic, summary)
+    if check_id:
+        out["findings"][0]["check_id"] = check_id
+    return out
+
+
+def _critic_findings_base(critic: str, summary: str):
     return {
         "role": critic, "round": None, "verdict": "findings",
         "findings": [{
@@ -1174,11 +1182,15 @@ class TestBudgetExhaustion:
         # stopping on the counter it had already exhausted
         assert len(dispatch.calls_of("extractor")) > calls_before
 
-    def _escalated(self, tmp_path):
+    def _escalated(self, tmp_path, check_id="C1.4", critic="critic_c1"):
+        # C1.4 (missing disclosure declared) is a judgment call a human may
+        # publish over; C1.1/C1.2-type findings are not waivable
         mandate = json.loads(json.dumps(casekit.MANDATE))
         mandate["limits"]["rounds_max"] = 2
         orch, dispatch, clk, case_dir = build_env(
-            tmp_path, scripts={"critic_c1": _critic_findings()}, mandate=mandate)
+            tmp_path, scripts={critic: _critic_findings(critic=critic,
+                                                        check_id=check_id)},
+            mandate=mandate)
         orch.run()
         return orch, case_dir
 
@@ -1222,6 +1234,26 @@ class TestBudgetExhaustion:
         rec = statestore.read_json(approvals[0])
         assert rec["decision"] == "PUBLISHED_WITH_EXCEPTIONS"
         assert rec["exceptions"]
+
+    @pytest.mark.parametrize("critic,check", [
+        ("critic_c1", "C1.1"), ("critic_c1", "C1.2"),
+        ("critic_c2", "C2.1"), ("critic_c3", "C3.1")])
+    def test_a_correctness_finding_cannot_be_published_over(self, tmp_path,
+                                                            critic, check):
+        orch, case_dir = self._escalated(tmp_path, check_id=check, critic=critic)
+        st = load_state(case_dir)
+        assert st["status"] == "ESCALATED"
+        ids = st["reason"]["detail"]["blocking_finding_ids"]
+        with pytest.raises(RuntimeError, match="not waivable"):
+            orch.record_approval(decision="PUBLISHED_WITH_EXCEPTIONS", by="Sup",
+                                 reasoning="objection judged wrong",
+                                 acknowledge_findings=ids)
+        assert load_state(case_dir)["status"] == "ESCALATED"
+        assert not list((case_dir / "report").glob("v*.md"))
+        # the routes that remain: a revision, or a rejection
+        out = orch.record_approval(decision="REJECTED", by="Sup",
+                                   reasoning="the note cites a wrong value")
+        assert out["terminal"] == "REJECTED"
 
     def test_an_escalated_case_can_be_rejected(self, tmp_path):
         orch, case_dir = self._escalated(tmp_path)
