@@ -9,6 +9,21 @@
 /* ============================================================ tiny dom == */
 
 /** Create an element: h("td", {class:"num"}, "13,500") */
+
+// A closed case that never met the acceptance rule (two clean reviews) was
+// settled by a human: published with exceptions or rejected. Showing a bare
+// "0 of 2" there reads like a run still in progress, so name the outcome.
+function reviewsCleared(status, clean, terminal, compact) {
+  const n = Number(clean) || 0;
+  const count = compact ? `${n}/2` : `${n} of 2`;
+  if (status !== "CLOSED" || n >= 2) return h("strong", null, count);
+  const how = terminal === "PUBLISHED_WITH_EXCEPTIONS" ? "Published with exceptions"
+    : terminal === "REJECTED" ? "Rejected"
+    : "Closed by a human decision";
+  const tip = `${how}: the case closed without two consecutive clean reviews (${n} of 2). The decision record holds the reasoning.`;
+  return h("strong", { title: tip }, compact ? `Not met, ${count}` : `Not met (${count}). ${how}`);
+}
+
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
   if (attrs) {
@@ -849,7 +864,7 @@ function coverageQueue(rows) {
             : h("strong", null, "00")),
         h("div", null,
           h("span", { title: "Consecutive complete reviews of the same candidate with no blocking findings." }, "Reviews cleared"),
-          h("strong", null, `${c.clean_review_rounds}/2`))),
+          reviewsCleared(c.status, c.clean_review_rounds, null, true))),
       h("div", { class: "case-output" },
         h("strong", null, c.latest_report || "No draft"),
         h("span", null, `Updated ${fmt.date(c.updated_at)}`),
@@ -1009,7 +1024,7 @@ function renderCaseOverview(body, c) {
       overviewPanel("Case progress", "overview-progress",
           stateStrip(st.status, st.pending.role, c.result && c.result.terminal, c.interrupted),
           h("div", { class: "case-progress-meta" },
-            h("div", null, h("span", { title: "Consecutive complete reviews of the same candidate with no blocking findings." }, "Reviews cleared"), h("strong", null, `${st.candidate.clean_review_rounds} of 2`)),
+            h("div", null, h("span", { title: "Consecutive complete reviews of the same candidate with no blocking findings." }, "Reviews cleared"), reviewsCleared(st.status, st.candidate.clean_review_rounds, c.result && c.result.terminal, false)),
             st.status === "PENDING_APPROVAL" && st.pending.deadline ? h("div", null,
               h("span", null, "Decision deadline"), h("strong", null, fmt.datetime(st.pending.deadline))) : null,
             clockBox),
