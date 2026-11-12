@@ -224,6 +224,12 @@ class FindingsLedger:
         for r in self._rows:
             if r["status"] == "open" and r.get("dedup_key") == key:
                 r["last_seen_round"] = round
+                if str(r.get("source_critic") or "").startswith("engine:"):
+                    # the engine names period and figures; the repair must see
+                    # the CURRENT violation, not the first round's numbers
+                    r["summary"] = finding.get("summary", r.get("summary", ""))
+                    r["required_evidence"] = finding.get(
+                        "required_evidence", r.get("required_evidence", ""))
                 self.save()
                 return r["finding_id"]
         finding_id = self._next_id()

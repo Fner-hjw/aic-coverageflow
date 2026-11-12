@@ -66,6 +66,9 @@ year-to-date column as a fiscal year.
 
 ## BOUNDS
 - Your slice only: no other units, prior rounds or outside knowledge.
+- `carried_findings` name an engine check your last extraction failed (a
+  gross-profit or EPS tie, a missing period): re-read those lines and fix the
+  row; never alter a value to force a tie.
 - A locatable row per line item, else a `missing` entry with a reason. Never
   invent, estimate or interpolate.
 - No arithmetic: no sums, differences or conversions; the value is the number
