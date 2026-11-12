@@ -105,6 +105,7 @@ class Assumptions:
     tax_rate: float = 0.0
     nwc_pct_incremental: float = 0.0
     terminal_tolerance: float = DEFAULT_TERMINAL_TOLERANCE
+    market_as_of: str | None = None
     rating_bands: dict | None = None
     candidate_id: str | None = None
     cutoff: str | None = None
@@ -127,6 +128,7 @@ class Assumptions:
             peer_block=dict(p.get("peer_block", {"peers": []})),
             own_band=p.get("own_band"),
             market_price=(p.get("market") or {}).get("price"),
+            market_as_of=(p.get("market") or {}).get("as_of"),
             forecast_bounds=p.get("forecast_bounds"),
             tax_rate=float(p["tax_rate"]),
             nwc_pct_incremental=float(p.get("nwc_pct_incremental") or 0.0),
@@ -726,6 +728,7 @@ def value_company(
         # citable as [EV:dcf.market_price]: the note states the price the
         # upside and rating are measured against, and had no key for it
         "market_price": assumptions.market_price,
+        "market_price_as_of": assumptions.market_as_of,
         "rating": rating,
         "rating_bands": bands,
         "net_debt": bridge["net_debt"],
