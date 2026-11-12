@@ -371,7 +371,8 @@ async function downloadExport(caseId, format) {
   const a = h("a", { href: URL.createObjectURL(blob), download: body.download_url.split("/").pop() });
   document.body.append(a); a.click(); a.remove();
   toast(`Export ready: ${format.toUpperCase()}, ${fmt.int(body.bytes)} bytes`,
-    `Version ${body.version}. Rendered from the verified evidence record`);
+    body.draft ? "Unapproved draft: open findings were not resolved"
+               : `Version ${body.version}. Rendered from the verified evidence record`);
 }
 
 /* ============================================= live feed: ws + polling == */

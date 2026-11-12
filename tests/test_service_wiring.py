@@ -447,6 +447,32 @@ class TestControllerModeRunOverStub:
         assert dispatched and "stub" in dispatched[0]["backend"]
 
 
+class TestExportOfAnUnfinishedCase:
+    def test_escalated_case_exports_an_unapproved_draft(self, real_ws, controller):
+        cid = "intc-fy2026q3-20261030"
+        # nothing built yet: nothing to export
+        r = controller.post(f"/api/cases/{cid}/export", json={"format": "xlsx"})
+        assert r.status_code == 409
+        controller.post("/api/backends/select", json={"backend": "stub"})
+        assert controller.post(f"/api/cases/{cid}/run",
+                               json={"backend": "auto"}).status_code == 200
+        case_dir = real_ws / "cases" / cid
+        st = statestore.load_state(case_dir)
+        st["status"] = "ESCALATED"
+        statestore.atomic_write_json(case_dir / "state.json", st)
+        for fmt, name in (("xlsx", "model-DRAFT.xlsx"), ("html", None)):
+            r = controller.post(f"/api/cases/{cid}/export", json={"format": fmt})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["draft"] is True
+            got = controller.get(body["download_url"])
+            assert got.status_code == 200 and got.content
+            if name:
+                assert body["download_url"].endswith(name)
+            else:
+                assert b"UNAPPROVED DRAFT" in got.content
+
+
 class TestReportAndApprovalAtTheHumanGate:
     """The reviewer must be able to read and sign off what the UI shows.
 

@@ -2973,12 +2973,19 @@ def export_case(case_id: str, fmt: str) -> dict:
     if _using_real():
         cd = _rcase_dir(case_id)
         state = _rstate(cd)
-        if state["status"] not in ("CLOSED", "APPROVED", "PENDING_APPROVAL"):
+        # A case the machine could not finish (ESCALATED, EXHAUSTED, BLOCKED,
+        # STOPPED) still has a built candidate a human may want to check by
+        # hand. It exports as an unapproved draft, marked as such.
+        draft = state["status"] not in ("CLOSED", "APPROVED", "PENDING_APPROVAL")
+        if draft and _rlatest_engine_artifact(cd, "valuation.json") is None:
             raise ConflictError(
-                f"case {case_id} ({state['status']}) has no verified "
-                "candidate to export; export requires gates-pass + clean "
-                "reviews (approval recommended)")
-        rep = get_report(case_id)
+                f"case {case_id} ({state['status']}) has not built a "
+                "candidate yet, so there is nothing to export")
+        try:
+            rep = get_report(case_id)
+        except NotFound:
+            raise ConflictError(
+                f"case {case_id} ({state['status']}) has no report to export yet")
         latest = rep["version"]
         title = f"CoverageFlow dossier - {(_real_statestore.read_json_or_none(cd / 'mandate.json') or {}).get('ticker', case_id)} - {latest}"
         md_lines = [ln for ln in rep["markdown"].splitlines() if ln.strip()]
@@ -2991,12 +2998,18 @@ def export_case(case_id: str, fmt: str) -> dict:
                 raise ConflictError(
                     f"case {case_id} has no verified engine artifacts "
                     "(model.json/valuation.json) to export yet")
-            out_path = export_dir / "model.xlsx"
+            out_path = export_dir / ("model-DRAFT.xlsx" if draft else "model.xlsx")
             _real_export_xlsx.export_model_xlsx(model, valuation, out_path)
         elif fmt == "html":
-            paras = "".join(
+            banner = (f"<p style='font-family:monospace;color:#b00'><strong>"
+                      f"UNAPPROVED DRAFT</strong> - case status "
+                      f"{state['status']}; open findings were not resolved."
+                      f"</p>" if draft else "")
+            paras = banner + "".join(
                 f"<p style='white-space:pre-wrap'>{ln}</p>" for ln in md_lines)
-            out_path = export_dir / f"{case_id}-{latest}.html"
+            out_path = export_dir / (
+                f"{case_id}-{latest}.html" if not draft or latest == "draft"
+                else f"{case_id}-{latest}-DRAFT.html")
             out_path.write_bytes(
                 (f"<!doctype html><html><head><meta charset='utf-8'>"
                  f"<title>{title}</title></head><body style='font-family:"
@@ -3019,7 +3032,7 @@ def export_case(case_id: str, fmt: str) -> dict:
         _emit(case_id, "EXPORT_DONE", {"format": fmt, "bytes": len(data),
                                        "real": True})
         return {"case_id": case_id, "ok": True, "format": fmt,
-                "version": latest,
+                "version": latest, "draft": draft,
                 "path": str(out_path),
                 "bytes": len(data),
                 "sha256": _sha(data.hex())[:40],
@@ -3082,7 +3095,8 @@ def export_download(case_id: str, filename: str) -> dict:
     filename = _v(_san.filename, "filename", filename)
     if _using_real():
         if not filename.startswith(case_id + "-") \
-                and filename not in ("model.xlsx", "dossier.pdf", "dossier.tex"):
+                and filename not in ("model.xlsx", "model-DRAFT.xlsx",
+                                     "dossier.pdf", "dossier.tex"):
             raise ValidationError(
                 f"export file name must start with '{case_id}-': {filename}")
         found = _rcase_dir(case_id) / "export" / filename
