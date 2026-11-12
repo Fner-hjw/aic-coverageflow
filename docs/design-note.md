@@ -123,7 +123,7 @@ repair-packet path with a scripted raising critic is unit-tested in
 - **Persistence & state.** JSON + JSONL only, atomic writes (temp + `os.replace`), every artifact header carrying request/candidate ids, prompt versions, cutoff and the input manifest reference. Case layout is frozen in the contracts: `mandate.json`, `inputs/+manifest`, `rounds/round-NNN/…`, `findings.json` (append-only ledger), `state.json`, `trace.jsonl`, `approvals/`, `report/`, `history/`.
 - **Triggers.** (1) new dated document arrival → new case, cutoff = filing date — exercised by all five evidence runs; (2) scheduled staleness check (note older than N days vs. newest document — designed trigger, the scheduled scanner itself is not implemented in v1); (3) human action (approve / reject / rollback / evolve) — exercised in run5.
 - **Checkpoints & resume.** One checkpoint per verified transition. On startup the orchestrator inspects identity + hashes, **discards unverified partial output** (moved to `discarded/`), **re-dispatches the pending role only**, and returns saved artifacts for completed verified stages; a completed case returns its saved result untouched (`resume.py`, `resume_check` in `orchestrator.py`). A corrupted *verified* artifact rolls back to its producing stage only. Evidence: `examples/run3-kill-resume` (kill during the writer stage → resume → only the writer re-ran; earlier artifacts byte-identical).
-- **Stop rules / budgets** (`budget.py`, checked at every dispatch, breach → `EXHAUSTED` with a precise record, never acceptance): max **4 revision rounds**; **3 retries** per specialist dispatch; **45-minute** case clock (paused while awaiting the human); **60,000 tokens per role**; per-role dispatch timeout. The human gate has its own deadline: **48 hours**; expiry → `BLOCKED` (`APPROVAL_EXPIRED`), and re-approval restarts acceptance from zero — strict, so a stale approval can never publish.
+- **Stop rules / budgets** (`budget.py`, checked at every dispatch, breach → `EXHAUSTED` with a precise record, never acceptance): max **6 review rounds** plus **4 mechanical rounds** (a rebuild that only re-runs the writer for numerical-gate findings is not a review round); **3 retries** per specialist dispatch, counted per round; **120-minute** case clock (booked when the case ends, paused while awaiting the human); **1,200,000 tokens per role** (a runaway guard, sized from live measurements); per-role dispatch timeout. These are the live-run defaults; the original offline-demo values were 4 rounds / 45 min / 60k tokens (see `docs/live-run-hardening.md` for why they were changed). The human gate has its own deadline: **48 hours**; expiry → `BLOCKED` (`APPROVAL_EXPIRED`), and re-approval restarts acceptance from zero — strict, so a stale approval can never publish.
 - **Tool limits.** No in-model tools, no network: inputs are restricted to the frozen bundle; post-cutoff documents are *structurally absent* from the case directory rather than filtered by request — cutoff enforcement is a gate (`gate_manifest_cutoff`), not a prompt. Perturbation evidence: `examples/run4-perturbation`.
 - **Time/cost metering.** The trace logs backend + tokens in/out per dispatch (`tokens_by_role` in the budget state), so a run's cost profile is itself an auditable artifact. Live backends are switched by config/CLI (`backends/`: `claude`, `codex`, `kimi`, OpenAI-compatible `api` with `COVERAGEFLOW_BASE_URL/MODEL/API_KEY`, and `replay` recordings captured from live runs — the entire test suite and every evidence run are offline).
 
@@ -205,6 +205,40 @@ approve + rollback ops: `examples/run5-evolution`). Version ids:
 All five were produced offline by running the real controller + deterministic
 engines against the frozen Intel bundle (the agent role calls use the offline
 replay/stub dispatch, exactly what the demo control panel in the UI labels
-"scripted rehearsal"). Unit + regression suite — 298 tests as of stream A5
-(293 at integration + 5 dossier smoke tests) — runs fully offline:
+"scripted rehearsal"). Unit + regression suite — 976 tests — runs fully offline:
 `python -m pytest tests/`.
+
+## 7. Second phase: what live runs changed in the design
+
+The five evidence runs are offline rehearsals. Running the same controller
+against real AMD filings with a live backend (Codex) showed failures the
+rehearsals could not, and the design moved in five places. Full record,
+measurements and commit references: **`docs/live-run-hardening.md`**;
+the live cases are in `examples/run6-amd-live/`.
+
+1. **Ownership before repair.** A finding now has an owner (`writer`,
+   `model`, `extractor`, `system`, `mandate`) and only the owner may be asked
+   to fix it. A defect in a human-owned input ends the case at once as
+   `needs_mandate_change`; it is checked *before round 1* when it can be proven
+   from the mandate alone (terminal-value feasibility), and a finding that
+   returns unchanged after its owner's repair round is reassigned to the
+   mandate. This is the "stop and escalate" rule from §3 made specific.
+2. **Mechanical vs. review rounds.** Retrying the writer for an unmarked
+   number is not review. Those rebuilds draw on their own allowance, and the
+   in-round retry is *patch-only*: it gets the previous draft and the flagged
+   lines, and only the changes that touch flagged lines are kept.
+3. **More verification in code, before any critic.** Besides "every number has
+   an evidence marker", the harness now checks that the cited key holds the
+   stated value, binds unambiguous numbers to their key itself, and builds the
+   ingest report in code when it is a copy of the slicer's output. Strict
+   decode-time schemas for the extractor and writer envelopes remove a class of
+   invalid-JSON retries.
+4. **Independent verification must be able to see the artifact.** The
+   consistency critic could not read the forecast proposal, so every claim about
+   it was "unsupported"; it can now, and the forecast values are citable.
+5. **Honest bookkeeping.** The case clock is booked when a case ends, a
+   stopped case no longer shows a running timer, the token meter shows each
+   role against the cap it actually runs under, and an escalated case can be
+   exported as a clearly marked unapproved draft so the human gate has
+   something to inspect.
+

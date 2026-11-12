@@ -21,7 +21,8 @@ they can become active.
 |---|---|
 | Requirement 1 — task spec | `docs/task-spec.md`, `docs/design-decisions.md` (locked design record) |
 | Requirement 2 — design of the long-running system | **`docs/design-note.md`** (graded design document, embeds `docs/workflow-diagram.png`, maps every element to the lecture concepts) |
-| Requirement 2 — evidence runs | **`examples/`** — five reproduced offline runs (clean update / seeded repair / kill+resume / no-leakage perturbation / evolution) |
+| Requirement 2 — evidence runs | **`examples/`** — five reproduced offline runs (clean update / seeded repair / kill+resume / no-leakage perturbation / evolution) and **`examples/run6-amd-live/`**, the live Codex runs on AMD that drove the second hardening phase |
+| Live-run hardening (what broke on real filings, what was changed, measured before/after) | **`docs/live-run-hardening.md`**, with the earlier loop diagnosis in `docs/diagnosis-2026-11-11.md` |
 | Frozen contracts | `docs/contracts/state-and-artifacts.md`, `docs/contracts/interfaces.md` |
 
 ## Repository guide
@@ -42,7 +43,7 @@ they can become active.
 | `docs/` | coordinator + **A5** | task spec, locked design record, graded design note, workflow diagram, frozen contracts |
 | `scripts/fetch_demo_bundles.py` | A1 | bundle builder for any new company |
 | `scripts/gen_diagram.py` | **A5** | regenerates `docs/workflow-diagram.png` (pure matplotlib) |
-| `tests/` | all streams | 298 tests (as of this branch), fully offline (replay/stub + unit fixtures) |
+| `tests/` | all streams | 976 tests, fully offline (replay/stub + unit fixtures) |
 | `cases/`, `versions/` | — | runtime workspaces (created at run time; the evidence copies live under `examples/`) |
 
 ## Quick start (one command)
@@ -144,10 +145,12 @@ panel (labeled "scripted rehearsal": seed finding / kill run / perturbation
 check), run replay viewer, and the backend manager with per-role token
 metering. Every UI action routes through the controller; the UI never bypasses
 orchestrator gates. (`python -m coverageflow ui` is the contract verb for the
-same launch; in this branch it still prints a placeholder — use the uvicorn
+same launch; it still prints a placeholder, so use `launch.py` or the uvicorn
 command above. The UI service ships with deterministic in-memory demo data and
 switches to a real workspace in controller mode via `COVERAGEFLOW_WORKSPACE`,
-wired by the integration stream.)
+which `launch.py` sets.) The backend picked on the Backends page is saved in
+the workspace and survives a restart; deleted cases move to `deleted/` and can
+be restored or erased from the Deleted cases page.
 
 ## Mandate prefill and review
 
@@ -202,19 +205,21 @@ Role dispatches (per fresh call) use one backend, selected per case:
 .venv/bin/python -m pytest tests/            # full suite, fully offline
 ```
 
-298 tests on this branch (controller state machine, gates, budget, resume,
-registry, engines, slicer, dispatch/prompt assembly, backends incl. record/
-replay roundtrip, xlsx and dossier exporters, FastAPI API). Live LLM access is
-never required: every test and every evidence run is offline.
+976 tests (controller state machine, gates, budget, resume, registry,
+engines, slicer, dispatch/prompt assembly, backends incl. record/replay
+roundtrip, xlsx and dossier exporters, FastAPI API, repair-loop economics).
+Live LLM access is never required to run the tests or the five offline
+evidence runs; `examples/run6-amd-live/` holds the recorded outcome of the
+live Codex runs.
 
 ## Limitations / known gaps (honest list)
 
 - **Single-writer, single-workspace**: one orchestrator per case directory; no concurrent multi-case scheduling server, no auth on the UI (local tool).
-- **Live-agent runs not included in the repo**: the committed evidence uses the offline replay/stub dispatch; role responses recorded from live CLI/API runs under `--record` are the intended production path but depend on the user's own CLI logins/keys.
+- **Live runs depend on your own CLI login**: runs 1-5 use the offline replay/stub dispatch. `examples/run6-amd-live/` is the curated record of live Codex runs on AMD (artifacts, ledger, trace); re-running it needs a logged-in `codex` CLI. The final AMD case reaches human review but is not an approved publication: see `docs/live-run-hardening.md` for what still stops it.
 - **Extraction boundaries**: facts come from structured statement/segment slices via the deterministic slicer; MD&A-only disclosures are noted in `facts.json` `notes`, not modeled.
 - **Live mandate requirements**: `case new` on a live backend (not the stub or replay) refuses a mandate without `assumptions.market.price` (as_of <= cutoff) or with no usable `assumptions.peer_block.peers`, and prints an example. Optional `assumptions.rating_bands` = `{"buy": 0.15, "sell": -0.10}`: upside above `buy` is Buy, below `sell` is Sell, otherwise Hold (these are the defaults).
 - **Comps**: the demo mandate ships without a filled peer block, so comps-implied price is `null` and the DCF/comps tolerance cross-check is reported but not differential-priced; the gate and table renderers handle the empty case explicitly.
-- **CLI `ui`/`export` verbs** are placeholders in this branch (ui: use `uvicorn ui.api:app`; export: use `python -m coverageflow.export_dossier` / the A1 xlsx exporter directly); the integration stream wires them.
+- **CLI `ui`/`export` verbs** are placeholders (ui: use `python3 launch.py` or `uvicorn ui.api:app`; export: use the UI's Export buttons, or `python -m coverageflow.export_dossier`). The UI exports an escalated/unfinished case as a marked **unapproved draft**.
 - **Schema-light dispatch format checks**: submission validation pins the frozen wire-format keys per contract; full JSON-schema depth checks remain in the orchestrator's validation.
 - **Demo figures are fixture-real**, not guidance: the scripted extractor reports a hand-computed mini 10-Q set so the real model/valuation engines can run offline; live runs extract from the actual document slices.
 - Budget unit is tokens/duration/rounds; no monetary cost ledger yet.
@@ -224,6 +229,8 @@ never required: every test and every evidence run is offline.
 - `docs/task-spec.md` — Requirement 1 (task domain, triggers, products)
 - `docs/design-decisions.md` — the locked design record (Rounds A–F)
 - `docs/design-note.md` — **the graded design document** (Requirement 2): roles and handoffs, the loop, long-running operation, verification and improvement, each mapped to the lecture concepts with code references
+- `docs/live-run-hardening.md` — second phase: what the live AMD runs exposed, the changes, the measurements
+- `docs/diagnosis-2026-11-11.md` — the first diagnosis of the live Intel case (finding-ID collisions, owner routing, cost)
 - `docs/workflow-diagram.png` — annotated architecture figure (`scripts/gen_diagram.py` regenerates it)
 - `examples/README.md` — the evidence-run index
 - `docs/contracts/` — frozen state/artifact schemas and interface contracts

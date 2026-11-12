@@ -8,5 +8,7 @@ rm -f "$out"
 parent="$(dirname "$out")"
 name="$(basename "$out")"
 (cd "$parent" && zip -qr "$name" coverageflow \
-    -x "coverageflow/.venv/*" "coverageflow/*/__pycache__/*" "coverageflow/.pytest_cache/*")
+    -x "coverageflow/.venv/*" "coverageflow/*/__pycache__/*" "coverageflow/__pycache__/*" \
+       "coverageflow/.pytest_cache/*" "coverageflow/workspace/*" "coverageflow/.export-stub/*" \
+       "coverageflow/.coverageflow*.json" "*/.DS_Store" "coverageflow/.DS_Store")
 echo "wrote $out"
