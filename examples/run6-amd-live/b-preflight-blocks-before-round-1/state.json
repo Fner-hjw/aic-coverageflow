@@ -1,0 +1,98 @@
+{
+  "case_id": "amd-fy2026q3-20261104",
+  "status": "BLOCKED",
+  "pending": {
+    "role": "generator",
+    "request_id": null,
+    "round": 0,
+    "retry_count": 0,
+    "case_clock_started": null,
+    "deadline": null,
+    "stage": null
+  },
+  "candidate": {
+    "candidate_id": null,
+    "clean_review_rounds": 0,
+    "built_round": 0,
+    "gates_passed": false,
+    "last_review_candidate": null
+  },
+  "budget": {
+    "rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 120.0,
+    "role_tokens_max": 1200000,
+    "approval_hours": 48.0,
+    "stall_rounds": 2,
+    "role_timeouts": {
+      "default": 240.0,
+      "ingest": 420.0,
+      "extractor": 1200.0,
+      "model": 300.0,
+      "writer": 600.0,
+      "critic": 480.0
+    },
+    "role_efforts": {
+      "extractor": "medium"
+    },
+    "call_cost_usd_max": null,
+    "case_cost_usd_max": null,
+    "used": {
+      "rounds": 0,
+      "elapsed_minutes": 0.0,
+      "tokens_by_role": {}
+    }
+  },
+  "inputs_manifest_ref": "inputs/manifest.json",
+  "inputs_manifest_sha256": "0860b3d289d89d6a1341ec5bea11bb83f701660308e90139c2fe58b605f6c26e",
+  "config_versions": {
+    "prompt_cards": {
+      "ingest": "1.0",
+      "extractor": "1.0",
+      "model": "1.0",
+      "writer": "1.0",
+      "critics": [
+        "1.0"
+      ]
+    },
+    "mapping_tables": "1.0",
+    "engines": "1.0",
+    "schema": "1.0"
+  },
+  "checkpoints": [
+    {
+      "ts": "2026-11-12T02:53:05Z",
+      "from": "RUNNING",
+      "to": "BLOCKED",
+      "verified": "needs_mandate_change",
+      "state": "sha256:56a854c111b3cf3806d4b0752dee151f4a24153f3fb0094361068dc3ceba70ec"
+    }
+  ],
+  "reason": {
+    "code": "needs_mandate_change",
+    "message": "1 open blocking finding(s) cannot be repaired by a role and need a mandate change: fnd-0001 (mandate): the mandate cannot pass the terminal gate: exit multiple 21.5x with WACC 13.54% and terminal growth 2.50% gives a terminal-value ratio of at least 3.09 even at EBIT/EBITDA 95%, above the gate limit 3.0x. Under this WACC and growth the exit multiple can be at most 20.9x. Written to evolution-input.json.",
+    "detail": {
+      "findings": [
+        {
+          "finding_id": "fnd-0001",
+          "owner": "mandate",
+          "severity": "major",
+          "summary": "the mandate cannot pass the terminal gate: exit multiple 21.5x with WACC 13.54% and terminal growth 2.50% gives a terminal-value ratio of at least 3.09 even at EBIT/EBITDA 95%, above the gate limit 3.0x. Under this WACC and growth the exit multiple can be at most 20.9x",
+          "source_critic": "gate:terminal_reconciliation",
+          "affected_artifacts": [
+            "mandate.json"
+          ],
+          "required_evidence": "a mandate whose exit multiple, WACC and terminal growth can reconcile within the gate limit",
+          "dedup_key": "gate:terminal_reconciliation|terminal:mandate-infeasible|mandate.json",
+          "first_seen_round": 0,
+          "last_seen_round": 0
+        }
+      ],
+      "candidate_id": null,
+      "evolution_input": "evolution-input.json",
+      "other_open_blocking_finding_ids": []
+    }
+  },
+  "updated_at": "2026-11-12T02:53:05Z",
+  "backend": "stub (offline)"
+}

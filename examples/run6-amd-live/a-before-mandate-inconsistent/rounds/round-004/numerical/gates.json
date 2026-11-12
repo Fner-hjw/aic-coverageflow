@@ -1,0 +1,109 @@
+{
+  "round": 4,
+  "candidate_id": "cand-f7e3dc908300",
+  "passed": false,
+  "results": [
+    {
+      "gate": "input_cutoff",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "facts_schema",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "citation_presence",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "period_coverage",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "forecast_bounds",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "candidate_manifest_integrity",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "recompute",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "terminal_reconciliation",
+      "ok": false,
+      "findings": [
+        {
+          "gate": "terminal_reconciliation",
+          "dedup_key": "terminal:outside-tolerance",
+          "severity": "major",
+          "summary": "exit-multiple terminal value 342,146 (multiple 21.5x) and Gordon terminal value 105,456 (growth 2.50%) differ: ratio 3.24 outside the gate limit 3.0x; the Gordon value implies an exit multiple of 6.6x and the exit multiple implies terminal growth of 9.89%",
+          "affected_artifacts": [
+            "valuation.json"
+          ],
+          "required_evidence": "terminal assumptions (exit multiple, terminal growth, WACC) that reconcile within the mandate tolerance"
+        }
+      ]
+    },
+    {
+      "gate": "report_evidence_links",
+      "ok": false,
+      "findings": [
+        {
+          "gate": "report_evidence_links",
+          "dedup_key": "unlinked-number:20:32:8,546",
+          "severity": "major",
+          "summary": "numeric token \"8,546\" on line 20 lacks an evidence marker in its sentence",
+          "affected_artifacts": [
+            "report.md"
+          ],
+          "required_evidence": "an evidence marker for \"8,546\""
+        },
+        {
+          "gate": "report_evidence_links",
+          "dedup_key": "unlinked-number:20:59:4,341",
+          "severity": "major",
+          "summary": "numeric token \"4,341\" on line 20 lacks an evidence marker in its sentence",
+          "affected_artifacts": [
+            "report.md"
+          ],
+          "required_evidence": "an evidence marker for \"4,341\""
+        },
+        {
+          "gate": "report_evidence_links",
+          "dedup_key": "unlinked-number:22:42:3,722",
+          "severity": "major",
+          "summary": "numeric token \"3,722\" on line 22 lacks an evidence marker in its sentence",
+          "affected_artifacts": [
+            "report.md"
+          ],
+          "required_evidence": "an evidence marker for \"3,722\""
+        },
+        {
+          "gate": "report_evidence_links",
+          "dedup_key": "unlinked-number:22:59:4,048",
+          "severity": "major",
+          "summary": "numeric token \"4,048\" on line 22 lacks an evidence marker in its sentence",
+          "affected_artifacts": [
+            "report.md"
+          ],
+          "required_evidence": "an evidence marker for \"4,048\""
+        }
+      ]
+    },
+    {
+      "gate": "controls_conformance",
+      "ok": true,
+      "findings": []
+    }
+  ]
+}

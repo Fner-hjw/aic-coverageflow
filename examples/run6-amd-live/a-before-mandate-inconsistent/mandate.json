@@ -1,0 +1,1515 @@
+{
+  "mandate_id": "man-amd-fy2026q3-r3-20261104",
+  "case_id": "amd-fy2026q3-r3-20261104",
+  "ticker": "AMD",
+  "cutoff_date": "2026-11-04",
+  "report_policy": {
+    "note_type": "quarterly_update",
+    "length_words": [
+      800,
+      1600
+    ],
+    "sections": [
+      "Summary",
+      "Results",
+      "Segment detail",
+      "Outlook",
+      "Valuation",
+      "Risks"
+    ]
+  },
+  "assumptions": {
+    "as_of": "2026-11-04",
+    "wacc": 0.1354,
+    "terminal_growth": 0.025,
+    "exit_multiple_ebitda": 21.5,
+    "discount_convention": "year_end",
+    "tax_rate": 0.21,
+    "forecast_bounds": {
+      "segments": {
+        "Data Center": [
+          -0.05,
+          0.35
+        ],
+        "Client and Gaming": [
+          -0.1,
+          0.2
+        ],
+        "Embedded": [
+          -0.2,
+          0.05
+        ]
+      },
+      "margin_floor_gross": 0.18,
+      "margin_ceiling_gross": 0.55
+    },
+    "peer_block": {
+      "as_of": "2026-11-04",
+      "peers": [
+        {
+          "ticker": "INTC",
+          "ev_ebitda": 153.83,
+          "p_e_ttm": null,
+          "p_s": 5.16,
+          "rev_growth_yoy": -0.0047,
+          "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+        },
+        {
+          "ticker": "NVDA",
+          "ev_ebitda": 24.2,
+          "p_e_ttm": 25.2,
+          "p_s": 16.04,
+          "rev_growth_yoy": 0.6547,
+          "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+        },
+        {
+          "ticker": "QCOM",
+          "ev_ebitda": 18.74,
+          "p_e_ttm": 13.64,
+          "p_s": 4.31,
+          "rev_growth_yoy": -0.0263,
+          "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+        },
+        {
+          "ticker": "AVGO",
+          "ev_ebitda": null,
+          "p_e_ttm": 41.57,
+          "p_s": 17.85,
+          "rev_growth_yoy": 0.2387,
+          "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+        }
+      ],
+      "note": "peer multiples computed from market data; human-reviewed"
+    },
+    "dcf_comps_tolerance": 0.25,
+    "terminal_tolerance": 0.35,
+    "nwc_pct_incremental": 0.0,
+    "rating_bands": {
+      "buy": 0.15,
+      "sell": -0.1,
+      "note": "optional: upside above buy = Buy, below sell = Sell, otherwise Hold (defaults buy +15%, sell -10%); null without a market price"
+    },
+    "market": {
+      "as_of": "2026-11-04",
+      "price": 488.78,
+      "note": "closing price from yahoo; as-of on or before cutoff"
+    },
+    "own_band": {
+      "as_of": "2026-11-04",
+      "note": "peer min/max at the cutoff (own history not fetched); review",
+      "ev_ebitda": [
+        18.74,
+        153.83
+      ],
+      "p_e": [
+        13.64,
+        41.57
+      ],
+      "p_s": [
+        4.31,
+        17.85
+      ]
+    },
+    "sensitivity": {
+      "wacc_points": [
+        0.0954,
+        0.1154,
+        0.1354,
+        0.1554,
+        0.1754
+      ],
+      "terminal_growth_points": [
+        0.005,
+        0.015,
+        0.025,
+        0.035,
+        0.045
+      ],
+      "note": "WACC x terminal growth sensitivity grid points"
+    }
+  },
+  "limits": {
+    "role_tokens_max": 1200000,
+    "case_minutes": 120,
+    "rounds_max": 4,
+    "retries_max": 3,
+    "approval_hours": 48
+  },
+  "schema_version": "1.0",
+  "cik": "0000002488",
+  "status": "accepted",
+  "proposed_at": "2026-11-12T00:21:06Z",
+  "missing": [],
+  "provenance": {
+    "cik": {
+      "value": "0000002488",
+      "source": "sec:company_tickers",
+      "url": "https://www.sec.gov/files/company_tickers.json",
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Exact ticker match in the SEC ticker index."
+    },
+    "assumptions.as_of": {
+      "value": "2026-11-04",
+      "source": "mandate",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "The mandate cutoff date."
+    },
+    "assumptions.market.price": {
+      "value": 488.78,
+      "source": "yahoo",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/AMD?period1=1792540800&period2=1793836800&interval=1d",
+      "as_of": "2026-11-04",
+      "sha256": "4338d0aa449d4d1bd188d032f99e0e60886aababb6336b6b8f871a1b5cc2cc59",
+      "basis": "Last close on or before the cutoff."
+    },
+    "assumptions.market.as_of": {
+      "value": "2026-11-04",
+      "source": "yahoo",
+      "url": "https://query1.finance.yahoo.com/v8/finance/chart/AMD?period1=1792540800&period2=1793836800&interval=1d",
+      "as_of": "2026-11-04",
+      "sha256": "4338d0aa449d4d1bd188d032f99e0e60886aababb6336b6b8f871a1b5cc2cc59",
+      "basis": "Date of that close, never after the cutoff."
+    },
+    "assumptions.peer_block.peers.0.ticker": {
+      "value": "INTC",
+      "source": "references/peer-sets.json",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Curated peer list for AMD."
+    },
+    "assumptions.peer_block.peers.0.ev_ebitda": {
+      "value": 153.83,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000050863.json",
+      "as_of": "2026-11-04",
+      "sha256": "9c568557a91cfbc234c999183d6434f8bbf7b8ebf2f29577f28d761a9becb59d",
+      "basis": "Enterprise value (price × diluted shares + debt − cash) divided by trailing twelve months operating income plus depreciation and amortisation.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/INTC?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "41963412a2883c2300af59faed442316d915cea8811138dab8c9f24862012ff1",
+          "fetched_at": "2026-11-12T00:20:55Z",
+          "value": 58.27000045776367,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000050863.json",
+          "sha256": "9c568557a91cfbc234c999183d6434f8bbf7b8ebf2f29577f28d761a9becb59d",
+          "fetched_at": "2026-11-12T00:20:57Z",
+          "as_of": "2026-09-26"
+        },
+        "revenue": {
+          "value": 59892000000,
+          "tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 5.2853e+10 + YTD 2025-12-28..2026-09-26 4.6218e+10 - prior YTD 3.9179e+10"
+        },
+        "operating_income": {
+          "value": 1762000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 -2.214e+09 + YTD 2025-12-28..2026-09-26 1.182e+09 - prior YTD -2.794e+09"
+        },
+        "da": {
+          "value": 200000000,
+          "tag": "us-gaap:DepreciationAndAmortization",
+          "as_of": "2019-12-28",
+          "filed": "2020-01-24",
+          "basis": "fiscal year ended 2019-12-28 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": -12032000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 -2.67e+08 + YTD 2025-12-28..2026-09-26 -1.1441e+10 - prior YTD 3.24e+08"
+        },
+        "diluted_shares": {
+          "value": 5307000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "weighted-average diluted shares, period ended 2026-09-26"
+        },
+        "total_debt": {
+          "value": 46585000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2025-12-27",
+          "filed": "2026-01-23",
+          "basis": "debt at 2025-12-27"
+        },
+        "cash": {
+          "value": 54005000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "cash and short-term investments at 2026-09-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.0.p_e_ttm": {
+      "value": null,
+      "source": "none",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Not available. Enter manually (inputs missing or earnings not positive)."
+    },
+    "assumptions.peer_block.peers.0.p_s": {
+      "value": 5.16,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000050863.json",
+      "as_of": "2026-11-04",
+      "sha256": "9c568557a91cfbc234c999183d6434f8bbf7b8ebf2f29577f28d761a9becb59d",
+      "basis": "Market value of equity (price × diluted shares) divided by trailing twelve months revenue.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/INTC?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "41963412a2883c2300af59faed442316d915cea8811138dab8c9f24862012ff1",
+          "fetched_at": "2026-11-12T00:20:55Z",
+          "value": 58.27000045776367,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000050863.json",
+          "sha256": "9c568557a91cfbc234c999183d6434f8bbf7b8ebf2f29577f28d761a9becb59d",
+          "fetched_at": "2026-11-12T00:20:57Z",
+          "as_of": "2026-09-26"
+        },
+        "revenue": {
+          "value": 59892000000,
+          "tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 5.2853e+10 + YTD 2025-12-28..2026-09-26 4.6218e+10 - prior YTD 3.9179e+10"
+        },
+        "operating_income": {
+          "value": 1762000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 -2.214e+09 + YTD 2025-12-28..2026-09-26 1.182e+09 - prior YTD -2.794e+09"
+        },
+        "da": {
+          "value": 200000000,
+          "tag": "us-gaap:DepreciationAndAmortization",
+          "as_of": "2019-12-28",
+          "filed": "2020-01-24",
+          "basis": "fiscal year ended 2019-12-28 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": -12032000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 -2.67e+08 + YTD 2025-12-28..2026-09-26 -1.1441e+10 - prior YTD 3.24e+08"
+        },
+        "diluted_shares": {
+          "value": 5307000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "weighted-average diluted shares, period ended 2026-09-26"
+        },
+        "total_debt": {
+          "value": 46585000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2025-12-27",
+          "filed": "2026-01-23",
+          "basis": "debt at 2025-12-27"
+        },
+        "cash": {
+          "value": 54005000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "cash and short-term investments at 2026-09-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.0.rev_growth_yoy": {
+      "value": -0.0047,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000050863.json",
+      "as_of": "2026-11-04",
+      "sha256": "9c568557a91cfbc234c999183d6434f8bbf7b8ebf2f29577f28d761a9becb59d",
+      "basis": "Latest fiscal-year revenue over the prior fiscal year, minus 1.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/INTC?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "41963412a2883c2300af59faed442316d915cea8811138dab8c9f24862012ff1",
+          "fetched_at": "2026-11-12T00:20:55Z",
+          "value": 58.27000045776367,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000050863.json",
+          "sha256": "9c568557a91cfbc234c999183d6434f8bbf7b8ebf2f29577f28d761a9becb59d",
+          "fetched_at": "2026-11-12T00:20:57Z",
+          "as_of": "2026-09-26"
+        },
+        "revenue": {
+          "value": 59892000000,
+          "tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 5.2853e+10 + YTD 2025-12-28..2026-09-26 4.6218e+10 - prior YTD 3.9179e+10"
+        },
+        "operating_income": {
+          "value": 1762000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 -2.214e+09 + YTD 2025-12-28..2026-09-26 1.182e+09 - prior YTD -2.794e+09"
+        },
+        "da": {
+          "value": 200000000,
+          "tag": "us-gaap:DepreciationAndAmortization",
+          "as_of": "2019-12-28",
+          "filed": "2020-01-24",
+          "basis": "fiscal year ended 2019-12-28 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": -12032000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "TTM to 2026-09-26 = FY2025-12-27 -2.67e+08 + YTD 2025-12-28..2026-09-26 -1.1441e+10 - prior YTD 3.24e+08"
+        },
+        "diluted_shares": {
+          "value": 5307000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "weighted-average diluted shares, period ended 2026-09-26"
+        },
+        "total_debt": {
+          "value": 46585000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2025-12-27",
+          "filed": "2026-01-23",
+          "basis": "debt at 2025-12-27"
+        },
+        "cash": {
+          "value": 54005000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+          "as_of": "2026-09-26",
+          "filed": "2026-10-30",
+          "basis": "cash and short-term investments at 2026-09-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.1.ticker": {
+      "value": "NVDA",
+      "source": "references/peer-sets.json",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Curated peer list for AMD."
+    },
+    "assumptions.peer_block.peers.1.ev_ebitda": {
+      "value": 24.2,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "as_of": "2026-11-04",
+      "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+      "basis": "Enterprise value (price × diluted shares + debt − cash) divided by trailing twelve months operating income plus depreciation and amortisation.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "6b0fcdee9245779b7bc580d48a179ac085f883c6a14b7370e9ac6464091f6c34",
+          "fetched_at": "2026-11-12T00:20:58Z",
+          "value": 200.1300048828125,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+          "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+          "fetched_at": "2026-11-12T00:20:59Z",
+          "as_of": "2026-07-26"
+        },
+        "revenue": {
+          "value": 302970000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.15938e+11 + YTD 2026-01-26..2026-07-26 1.77837e+11 - prior YTD 9.0805e+10"
+        },
+        "operating_income": {
+          "value": 197579000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.30387e+11 + YTD 2026-01-26..2026-07-26 1.1727e+11 - prior YTD 5.0078e+10"
+        },
+        "da": {
+          "value": 3687000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.843e+09 + YTD 2026-01-26..2026-07-26 2.124e+09 - prior YTD 1.28e+09"
+        },
+        "net_income": {
+          "value": 192880000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.20067e+11 + YTD 2026-01-26..2026-07-26 1.1801e+11 - prior YTD 4.5197e+10"
+        },
+        "diluted_shares": {
+          "value": 24285000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "weighted-average diluted shares, period ended 2026-07-26"
+        },
+        "total_debt": {
+          "value": 33366000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "debt at 2026-07-26"
+        },
+        "cash": {
+          "value": 22443000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "cash and short-term investments at 2026-07-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.1.p_e_ttm": {
+      "value": 25.2,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "as_of": "2026-11-04",
+      "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+      "basis": "Price divided by trailing twelve months earnings per diluted share.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "6b0fcdee9245779b7bc580d48a179ac085f883c6a14b7370e9ac6464091f6c34",
+          "fetched_at": "2026-11-12T00:20:58Z",
+          "value": 200.1300048828125,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+          "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+          "fetched_at": "2026-11-12T00:20:59Z",
+          "as_of": "2026-07-26"
+        },
+        "revenue": {
+          "value": 302970000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.15938e+11 + YTD 2026-01-26..2026-07-26 1.77837e+11 - prior YTD 9.0805e+10"
+        },
+        "operating_income": {
+          "value": 197579000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.30387e+11 + YTD 2026-01-26..2026-07-26 1.1727e+11 - prior YTD 5.0078e+10"
+        },
+        "da": {
+          "value": 3687000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.843e+09 + YTD 2026-01-26..2026-07-26 2.124e+09 - prior YTD 1.28e+09"
+        },
+        "net_income": {
+          "value": 192880000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.20067e+11 + YTD 2026-01-26..2026-07-26 1.1801e+11 - prior YTD 4.5197e+10"
+        },
+        "diluted_shares": {
+          "value": 24285000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "weighted-average diluted shares, period ended 2026-07-26"
+        },
+        "total_debt": {
+          "value": 33366000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "debt at 2026-07-26"
+        },
+        "cash": {
+          "value": 22443000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "cash and short-term investments at 2026-07-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.1.p_s": {
+      "value": 16.04,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "as_of": "2026-11-04",
+      "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+      "basis": "Market value of equity (price × diluted shares) divided by trailing twelve months revenue.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "6b0fcdee9245779b7bc580d48a179ac085f883c6a14b7370e9ac6464091f6c34",
+          "fetched_at": "2026-11-12T00:20:58Z",
+          "value": 200.1300048828125,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+          "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+          "fetched_at": "2026-11-12T00:20:59Z",
+          "as_of": "2026-07-26"
+        },
+        "revenue": {
+          "value": 302970000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.15938e+11 + YTD 2026-01-26..2026-07-26 1.77837e+11 - prior YTD 9.0805e+10"
+        },
+        "operating_income": {
+          "value": 197579000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.30387e+11 + YTD 2026-01-26..2026-07-26 1.1727e+11 - prior YTD 5.0078e+10"
+        },
+        "da": {
+          "value": 3687000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.843e+09 + YTD 2026-01-26..2026-07-26 2.124e+09 - prior YTD 1.28e+09"
+        },
+        "net_income": {
+          "value": 192880000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.20067e+11 + YTD 2026-01-26..2026-07-26 1.1801e+11 - prior YTD 4.5197e+10"
+        },
+        "diluted_shares": {
+          "value": 24285000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "weighted-average diluted shares, period ended 2026-07-26"
+        },
+        "total_debt": {
+          "value": 33366000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "debt at 2026-07-26"
+        },
+        "cash": {
+          "value": 22443000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "cash and short-term investments at 2026-07-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.1.rev_growth_yoy": {
+      "value": 0.6547,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+      "as_of": "2026-11-04",
+      "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+      "basis": "Latest fiscal-year revenue over the prior fiscal year, minus 1.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/NVDA?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "6b0fcdee9245779b7bc580d48a179ac085f883c6a14b7370e9ac6464091f6c34",
+          "fetched_at": "2026-11-12T00:20:58Z",
+          "value": 200.1300048828125,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json",
+          "sha256": "19ef503a5770f5660964b3c3aea6937579d9b359da344afe6a9adf59c63d26ff",
+          "fetched_at": "2026-11-12T00:20:59Z",
+          "as_of": "2026-07-26"
+        },
+        "revenue": {
+          "value": 302970000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.15938e+11 + YTD 2026-01-26..2026-07-26 1.77837e+11 - prior YTD 9.0805e+10"
+        },
+        "operating_income": {
+          "value": 197579000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.30387e+11 + YTD 2026-01-26..2026-07-26 1.1727e+11 - prior YTD 5.0078e+10"
+        },
+        "da": {
+          "value": 3687000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 2.843e+09 + YTD 2026-01-26..2026-07-26 2.124e+09 - prior YTD 1.28e+09"
+        },
+        "net_income": {
+          "value": 192880000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "TTM to 2026-07-26 = FY2026-01-25 1.20067e+11 + YTD 2026-01-26..2026-07-26 1.1801e+11 - prior YTD 4.5197e+10"
+        },
+        "diluted_shares": {
+          "value": 24285000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "weighted-average diluted shares, period ended 2026-07-26"
+        },
+        "total_debt": {
+          "value": 33366000000,
+          "tag": "us-gaap:LongTermDebt",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "debt at 2026-07-26"
+        },
+        "cash": {
+          "value": 22443000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-07-26",
+          "filed": "2026-08-26",
+          "basis": "cash and short-term investments at 2026-07-26"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.2.ticker": {
+      "value": "QCOM",
+      "source": "references/peer-sets.json",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Curated peer list for AMD."
+    },
+    "assumptions.peer_block.peers.2.ev_ebitda": {
+      "value": 18.74,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+      "as_of": "2026-11-04",
+      "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+      "basis": "Enterprise value (price × diluted shares + debt − cash) divided by trailing twelve months operating income plus depreciation and amortisation.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/QCOM?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "64bca687c3ac4ebbdcd4c065d242f660015902e5b25effcf7289ec932ccd72bd",
+          "fetched_at": "2026-11-12T00:21:00Z",
+          "value": 173.19000244140625,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+          "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+          "fetched_at": "2026-11-12T00:21:01Z",
+          "as_of": "2026-09-27"
+        },
+        "revenue": {
+          "value": 43120000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "operating_income": {
+          "value": 8658000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "da": {
+          "value": 1630000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": 13628000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "diluted_shares": {
+          "value": 1073000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "weighted-average diluted shares, period ended 2026-09-27"
+        },
+        "total_debt": {
+          "value": 14613000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "debt at 2026-09-27"
+        },
+        "cash": {
+          "value": 7681000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:MarketableSecuritiesCurrent",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "cash and short-term investments at 2026-09-27"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.2.p_e_ttm": {
+      "value": 13.64,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+      "as_of": "2026-11-04",
+      "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+      "basis": "Price divided by trailing twelve months earnings per diluted share.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/QCOM?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "64bca687c3ac4ebbdcd4c065d242f660015902e5b25effcf7289ec932ccd72bd",
+          "fetched_at": "2026-11-12T00:21:00Z",
+          "value": 173.19000244140625,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+          "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+          "fetched_at": "2026-11-12T00:21:01Z",
+          "as_of": "2026-09-27"
+        },
+        "revenue": {
+          "value": 43120000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "operating_income": {
+          "value": 8658000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "da": {
+          "value": 1630000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": 13628000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "diluted_shares": {
+          "value": 1073000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "weighted-average diluted shares, period ended 2026-09-27"
+        },
+        "total_debt": {
+          "value": 14613000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "debt at 2026-09-27"
+        },
+        "cash": {
+          "value": 7681000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:MarketableSecuritiesCurrent",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "cash and short-term investments at 2026-09-27"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.2.p_s": {
+      "value": 4.31,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+      "as_of": "2026-11-04",
+      "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+      "basis": "Market value of equity (price × diluted shares) divided by trailing twelve months revenue.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/QCOM?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "64bca687c3ac4ebbdcd4c065d242f660015902e5b25effcf7289ec932ccd72bd",
+          "fetched_at": "2026-11-12T00:21:00Z",
+          "value": 173.19000244140625,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+          "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+          "fetched_at": "2026-11-12T00:21:01Z",
+          "as_of": "2026-09-27"
+        },
+        "revenue": {
+          "value": 43120000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "operating_income": {
+          "value": 8658000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "da": {
+          "value": 1630000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": 13628000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "diluted_shares": {
+          "value": 1073000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "weighted-average diluted shares, period ended 2026-09-27"
+        },
+        "total_debt": {
+          "value": 14613000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "debt at 2026-09-27"
+        },
+        "cash": {
+          "value": 7681000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:MarketableSecuritiesCurrent",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "cash and short-term investments at 2026-09-27"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.2.rev_growth_yoy": {
+      "value": -0.0263,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+      "as_of": "2026-11-04",
+      "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+      "basis": "Latest fiscal-year revenue over the prior fiscal year, minus 1.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/QCOM?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "64bca687c3ac4ebbdcd4c065d242f660015902e5b25effcf7289ec932ccd72bd",
+          "fetched_at": "2026-11-12T00:21:00Z",
+          "value": 173.19000244140625,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000804328.json",
+          "sha256": "8815957bbed4b0e3fedfd885ab4f8eba03cecf735a67aca37f6e7c0467541fbe",
+          "fetched_at": "2026-11-12T00:21:01Z",
+          "as_of": "2026-09-27"
+        },
+        "revenue": {
+          "value": 43120000000,
+          "tag": "us-gaap:Revenues",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "operating_income": {
+          "value": 8658000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "da": {
+          "value": 1630000000,
+          "tag": "us-gaap:DepreciationDepletionAndAmortization",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "net_income": {
+          "value": 13628000000,
+          "tag": "us-gaap:NetIncomeLoss",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "fiscal year ended 2026-09-27 (no later 10-Q filed on or before cutoff)"
+        },
+        "diluted_shares": {
+          "value": 1073000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "weighted-average diluted shares, period ended 2026-09-27"
+        },
+        "total_debt": {
+          "value": 14613000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "debt at 2026-09-27"
+        },
+        "cash": {
+          "value": 7681000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue + us-gaap:MarketableSecuritiesCurrent",
+          "as_of": "2026-09-27",
+          "filed": "2026-11-04",
+          "basis": "cash and short-term investments at 2026-09-27"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.3.ticker": {
+      "value": "AVGO",
+      "source": "references/peer-sets.json",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Curated peer list for AMD."
+    },
+    "assumptions.peer_block.peers.3.ev_ebitda": {
+      "value": null,
+      "source": "none",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Not available. Enter manually (inputs missing or earnings not positive)."
+    },
+    "assumptions.peer_block.peers.3.p_e_ttm": {
+      "value": 41.57,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001730168.json",
+      "as_of": "2026-11-04",
+      "sha256": "3bdb6644c12addf1e63c4dc861008d7804fbf3d3f5aa6eb9b97f72c0e89a7adf",
+      "basis": "Price divided by trailing twelve months earnings per diluted share.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/AVGO?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "3d1eb86352a8985cbd6ff91be197e20ddedef5d455b4a21666789afbea695867",
+          "fetched_at": "2026-11-12T00:21:02Z",
+          "value": 325.4800109863281,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001730168.json",
+          "sha256": "3bdb6644c12addf1e63c4dc861008d7804fbf3d3f5aa6eb9b97f72c0e89a7adf",
+          "fetched_at": "2026-11-12T00:21:03Z",
+          "as_of": "2026-08-02"
+        },
+        "revenue": {
+          "value": 89104000000,
+          "tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 6.3887e+10 + YTD 2025-11-03..2026-08-02 7.1089e+10 - prior YTD 4.5872e+10"
+        },
+        "operating_income": {
+          "value": 42814000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 2.5484e+10 + YTD 2025-11-03..2026-08-02 3.5306e+10 - prior YTD 1.7976e+10"
+        },
+        "net_income": {
+          "value": 38265000000,
+          "tag": "us-gaap:ProfitLoss",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 2.3126e+10 + YTD 2025-11-03..2026-08-02 2.9747e+10 - prior YTD 1.4608e+10"
+        },
+        "diluted_shares": {
+          "value": 4887000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "weighted-average diluted shares, period ended 2026-08-02"
+        },
+        "total_debt": {
+          "value": 61079000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "debt at 2026-08-02"
+        },
+        "cash": {
+          "value": 23975000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "cash and short-term investments at 2026-08-02"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.3.p_s": {
+      "value": 17.85,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001730168.json",
+      "as_of": "2026-11-04",
+      "sha256": "3bdb6644c12addf1e63c4dc861008d7804fbf3d3f5aa6eb9b97f72c0e89a7adf",
+      "basis": "Market value of equity (price × diluted shares) divided by trailing twelve months revenue.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/AVGO?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "3d1eb86352a8985cbd6ff91be197e20ddedef5d455b4a21666789afbea695867",
+          "fetched_at": "2026-11-12T00:21:02Z",
+          "value": 325.4800109863281,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001730168.json",
+          "sha256": "3bdb6644c12addf1e63c4dc861008d7804fbf3d3f5aa6eb9b97f72c0e89a7adf",
+          "fetched_at": "2026-11-12T00:21:03Z",
+          "as_of": "2026-08-02"
+        },
+        "revenue": {
+          "value": 89104000000,
+          "tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 6.3887e+10 + YTD 2025-11-03..2026-08-02 7.1089e+10 - prior YTD 4.5872e+10"
+        },
+        "operating_income": {
+          "value": 42814000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 2.5484e+10 + YTD 2025-11-03..2026-08-02 3.5306e+10 - prior YTD 1.7976e+10"
+        },
+        "net_income": {
+          "value": 38265000000,
+          "tag": "us-gaap:ProfitLoss",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 2.3126e+10 + YTD 2025-11-03..2026-08-02 2.9747e+10 - prior YTD 1.4608e+10"
+        },
+        "diluted_shares": {
+          "value": 4887000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "weighted-average diluted shares, period ended 2026-08-02"
+        },
+        "total_debt": {
+          "value": 61079000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "debt at 2026-08-02"
+        },
+        "cash": {
+          "value": 23975000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "cash and short-term investments at 2026-08-02"
+        }
+      }
+    },
+    "assumptions.peer_block.peers.3.rev_growth_yoy": {
+      "value": 0.2387,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001730168.json",
+      "as_of": "2026-11-04",
+      "sha256": "3bdb6644c12addf1e63c4dc861008d7804fbf3d3f5aa6eb9b97f72c0e89a7adf",
+      "basis": "Latest fiscal-year revenue over the prior fiscal year, minus 1.",
+      "inputs": {
+        "price": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/AVGO?period1=1792540800&period2=1793836800&interval=1d",
+          "sha256": "3d1eb86352a8985cbd6ff91be197e20ddedef5d455b4a21666789afbea695867",
+          "fetched_at": "2026-11-12T00:21:02Z",
+          "value": 325.4800109863281,
+          "as_of": "2026-11-04"
+        },
+        "companyfacts": {
+          "source": "sec:companyfacts",
+          "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001730168.json",
+          "sha256": "3bdb6644c12addf1e63c4dc861008d7804fbf3d3f5aa6eb9b97f72c0e89a7adf",
+          "fetched_at": "2026-11-12T00:21:03Z",
+          "as_of": "2026-08-02"
+        },
+        "revenue": {
+          "value": 89104000000,
+          "tag": "us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 6.3887e+10 + YTD 2025-11-03..2026-08-02 7.1089e+10 - prior YTD 4.5872e+10"
+        },
+        "operating_income": {
+          "value": 42814000000,
+          "tag": "us-gaap:OperatingIncomeLoss",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 2.5484e+10 + YTD 2025-11-03..2026-08-02 3.5306e+10 - prior YTD 1.7976e+10"
+        },
+        "net_income": {
+          "value": 38265000000,
+          "tag": "us-gaap:ProfitLoss",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "TTM to 2026-08-02 = FY2025-11-02 2.3126e+10 + YTD 2025-11-03..2026-08-02 2.9747e+10 - prior YTD 1.4608e+10"
+        },
+        "diluted_shares": {
+          "value": 4887000000,
+          "tag": "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "weighted-average diluted shares, period ended 2026-08-02"
+        },
+        "total_debt": {
+          "value": 61079000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "debt at 2026-08-02"
+        },
+        "cash": {
+          "value": 23975000000,
+          "tag": "us-gaap:CashAndCashEquivalentsAtCarryingValue",
+          "as_of": "2026-08-02",
+          "filed": "2026-09-10",
+          "basis": "cash and short-term investments at 2026-08-02"
+        }
+      }
+    },
+    "assumptions.peer_block.peers": {
+      "value": [
+        "INTC",
+        "NVDA",
+        "QCOM",
+        "AVGO"
+      ],
+      "source": "references/peer-sets.json",
+      "url": null,
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Curated peer list for AMD."
+    },
+    "assumptions.exit_multiple_ebitda": {
+      "value": 24.2,
+      "source": "derived",
+      "url": null,
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Median peer EV/EBITDA of 3 peers (153.8x, 24.2x, 18.7x).",
+      "edited": true,
+      "final": 21.5
+    },
+    "assumptions.own_band.ev_ebitda": {
+      "value": [
+        18.74,
+        153.83
+      ],
+      "source": "derived",
+      "url": null,
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Lowest and highest of 3 peer EV/EBITDA values."
+    },
+    "assumptions.own_band.p_e": {
+      "value": [
+        13.64,
+        41.57
+      ],
+      "source": "derived",
+      "url": null,
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Lowest and highest of 3 peer P/E values."
+    },
+    "assumptions.own_band.p_s": {
+      "value": [
+        4.31,
+        17.85
+      ],
+      "source": "derived",
+      "url": null,
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Lowest and highest of 4 peer P/S values."
+    },
+    "assumptions.tax_rate": {
+      "value": 0.21,
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Statutory 21%. The effective rate for the year to 27 Dec 2025 (-2.2%) is outside the 5–35% range, so it is not used."
+    },
+    "assumptions.terminal_growth": {
+      "value": 0.025,
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Long-run policy default."
+    },
+    "assumptions.forecast_bounds.margin_floor_gross": {
+      "value": 0.18,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+      "as_of": "2025-12-27",
+      "sha256": "4c29484ff062a77b0dde3a0d0b3439f807ccd2d44f9b568a52b5eabbc2b2464c",
+      "basis": "Fiscal-year range 23.2%–49.5% (2016–2025), widened by 5 points."
+    },
+    "assumptions.forecast_bounds.margin_ceiling_gross": {
+      "value": 0.55,
+      "source": "derived",
+      "url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000002488.json",
+      "as_of": "2025-12-27",
+      "sha256": "4c29484ff062a77b0dde3a0d0b3439f807ccd2d44f9b568a52b5eabbc2b2464c",
+      "basis": "Fiscal-year range 23.2%–49.5% (2016–2025), widened by 5 points."
+    },
+    "assumptions.forecast_bounds.segments.Data Center": {
+      "value": [
+        -0.05,
+        0.35
+      ],
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default bounds for AMD. Segment history is not in SEC filings data. Consolidated fiscal-year revenue growth ranged from -3.9% to 68.3% (context only)."
+    },
+    "assumptions.forecast_bounds.segments.Client and Gaming": {
+      "value": [
+        -0.1,
+        0.2
+      ],
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default bounds for AMD. Segment history is not in SEC filings data. Consolidated fiscal-year revenue growth ranged from -3.9% to 68.3% (context only)."
+    },
+    "assumptions.forecast_bounds.segments.Embedded": {
+      "value": [
+        -0.2,
+        0.05
+      ],
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default bounds for AMD. Segment history is not in SEC filings data. Consolidated fiscal-year revenue growth ranged from -3.9% to 68.3% (context only)."
+    },
+    "assumptions.dcf_comps_tolerance": {
+      "value": 0.25,
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default, unchanged."
+    },
+    "assumptions.terminal_tolerance": {
+      "value": 0.35,
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default, unchanged."
+    },
+    "assumptions.nwc_pct_incremental": {
+      "value": 0.0,
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default, unchanged."
+    },
+    "assumptions.rating_bands": {
+      "value": {
+        "buy": 0.15,
+        "sell": -0.1,
+        "note": "optional: upside above buy = Buy, below sell = Sell, otherwise Hold (defaults buy +15%, sell -10%); null without a market price"
+      },
+      "source": "default",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "Existing default bands: buy at +15%, sell at -10%."
+    },
+    "assumptions.wacc": {
+      "value": 0.1354,
+      "source": "derived",
+      "url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2026/all?type=daily_treasury_yield_curve&field_tdr_date_value=2026&page&_format=csv",
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "CAPM. Risk-free rate 4.90% + 1.74 beta × 5.0% risk premium = 13.6% cost of equity; cost of debt 6.40% before 21% tax; weighted by market value of equity and total debt.",
+      "inputs": {
+        "risk_free": {
+          "source": "treasury:par_yield_10y",
+          "url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2026/all?type=daily_treasury_yield_curve&field_tdr_date_value=2026&page&_format=csv",
+          "sha256": "782e0953ac34dd4c9751bc061feae3b1a2e18f0be8c7c181a3d2a472d1bdcbe5",
+          "fetched_at": "2026-11-12T00:21:04Z",
+          "value": 0.049,
+          "as_of": "2026-11-04"
+        },
+        "beta": {
+          "source": "yahoo",
+          "url": "https://query1.finance.yahoo.com/v8/finance/chart/AMD?period1=1730073600&period2=1793836800&interval=1wk",
+          "sha256": "75f2baa1e6fc5228cfb29601bfdd0333d8871bbe6e280fc005f1cb5300c522d2",
+          "fetched_at": "2026-11-12T00:21:06Z",
+          "raw": 1.7426,
+          "used": 1.7426,
+          "clamped": false,
+          "clamp_range": [
+            0.3,
+            2.5
+          ],
+          "n_weekly_returns": 103,
+          "r_squared": 0.2028,
+          "benchmark": "SPY",
+          "benchmark_source": {
+            "source": "yahoo",
+            "url": "https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=1730073600&period2=1793836800&interval=1wk",
+            "sha256": "417c0c5c2bc35066e7465c070ed4885c7127f30aca0ecc0ca88a7264adecd42c",
+            "fetched_at": "2026-11-12T00:21:05Z"
+          }
+        },
+        "equity_risk_premium": {
+          "value": 0.05,
+          "source": "configurable default"
+        },
+        "debt_spread": {
+          "value": 0.015,
+          "source": "configurable default"
+        },
+        "tax_rate": {
+          "value": 0.21
+        },
+        "cost_of_equity": 0.13613,
+        "pre_tax_cost_of_debt": 0.064,
+        "market_cap": {
+          "value": 811863577972.41,
+          "price": 488.7799987792969,
+          "diluted_shares": 1661000000
+        },
+        "total_debt": {
+          "value": 7079000000,
+          "tag": "us-gaap:DebtLongtermAndShorttermCombinedAmount",
+          "as_of": "2026-09-26"
+        },
+        "weights": {
+          "equity": 0.9914,
+          "debt": 0.0086
+        }
+      }
+    },
+    "assumptions.sensitivity": {
+      "value": {
+        "wacc_points": [
+          0.0954,
+          0.1154,
+          0.1354,
+          0.1554,
+          0.1754
+        ],
+        "terminal_growth_points": [
+          0.005,
+          0.015,
+          0.025,
+          0.035,
+          0.045
+        ],
+        "note": "WACC x terminal growth sensitivity grid points"
+      },
+      "source": "derived",
+      "url": null,
+      "as_of": "2026-11-04",
+      "sha256": null,
+      "basis": "Grid centred on the proposed WACC and terminal growth (±2 and 4 points of WACC, ±1 and 2 points of growth)."
+    },
+    "limits.role_tokens_max": {
+      "value": 250000,
+      "source": "none",
+      "url": null,
+      "as_of": null,
+      "sha256": null,
+      "basis": "added by the reviewer",
+      "edited": true,
+      "final": 1200000
+    }
+  },
+  "approval": {
+    "by": "Claude on behalf of Gaetano Marco Chiantia",
+    "at": "2026-11-12T00:36:29Z",
+    "edits": [
+      {
+        "path": "assumptions.exit_multiple_ebitda",
+        "proposed": 24.2,
+        "final": 21.5
+      },
+      {
+        "path": "limits.role_tokens_max",
+        "proposed": 250000,
+        "final": 1200000
+      }
+    ]
+  },
+  "trigger_document": "amd-10q-2026q3"
+}

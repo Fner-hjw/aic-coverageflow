@@ -1,0 +1,29 @@
+{
+  "role": "critic_c4",
+  "request_id": "req-0028",
+  "candidate_id": "cand-5c1f9a7c4fdb",
+  "round": 2,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C4.1",
+      "result": "pass",
+      "evidence": "The note contains no findings, budget, or harness text. Its opening block contains cutoff and artifact identification metadata."
+    },
+    {
+      "check_id": "C4.2",
+      "result": "pass",
+      "evidence": "The Risks section discusses AMD-specific revenue concentration in Data Center, weakness in Client and Gaming, inventory and capital expenditure, and DCF terminal-method dispersion."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "risk_controls"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

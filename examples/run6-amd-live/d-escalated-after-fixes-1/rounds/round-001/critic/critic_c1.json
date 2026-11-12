@@ -1,0 +1,56 @@
+{
+  "role": "critic_c1",
+  "request_id": "req-0015",
+  "candidate_id": "cand-d1886d971b7b",
+  "round": 1,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C1.1",
+      "result": "pass",
+      "evidence": "The note’s numerical claims have [EV:key] citations, and the cited keys are present in the evidence index."
+    },
+    {
+      "check_id": "C1.2",
+      "result": "pass",
+      "evidence": "Checked cited values against facts, model, and valuation artifacts. The reported figures and percentages agree within rounding."
+    },
+    {
+      "check_id": "C1.3",
+      "result": "pass",
+      "evidence": "The note’s fact-derived claims trace to amd-10q-2026q3 or amd-10k-fy2025, both listed in the input manifest; valuation claims cite valuation artifact keys."
+    },
+    {
+      "check_id": "C1.4",
+      "result": "pass",
+      "evidence": "The note does not fill a missing disclosure with a plausible value."
+    },
+    {
+      "check_id": "C1.5",
+      "result": "fail",
+      "evidence": "The note says the “accepted forecast proposal retains a tapering growth path” across segments. The forecast artifact contents are not provided; the valuation artifact records proposal paths as absent."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c1-5-forecast-claim",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the provided artifacts do not show that proposal or its paths.",
+      "evidence": "report.md, Outlook: “The accepted forecast proposal retains a tapering growth path across Data Center, Client and Gaming, and Embedded.” valuation.json, dcf.cash_flow_build.proposal_paths: operating_margin_path and capex_pct_revenue_path are absent; no forecast proposal contents are included in the payload.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths, or remove the unsupported claim."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "evidence_citation"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

@@ -1,0 +1,1226 @@
+{
+  "artifact": "model",
+  "engine": "model_engine@1.0",
+  "input_facts_sha256": "fdca06e99a81cf5aefdacb31fc4f60407e7e5828ce469d84610e1ba1f459afd2",
+  "candidate_id": "cand-f7e3dc908300",
+  "cutoff": "2026-11-04",
+  "series": {
+    "balance_sheet.accounts_payable": {
+      "2025-Q4": 2929.0,
+      "2026-Q3": 7756.0,
+      "FY2024": 2466.0,
+      "FY2025": 2929.0,
+      "yoy": {
+        "FY2025": 0.18775344687753437
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.accounts_receivable": {
+      "2025-Q4": 6315.0,
+      "2026-Q3": 9209.0,
+      "FY2024": 6192.0,
+      "FY2025": 6315.0,
+      "yoy": {
+        "FY2025": 0.019864341085271242
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.accrued_liabilities": {
+      "2025-Q4": 5250.0,
+      "2026-Q3": 6231.0,
+      "FY2024": 4260.0,
+      "FY2025": 5250.0,
+      "yoy": {
+        "FY2025": 0.232394366197183
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.accumulated_other_comprehensive_income": {
+      "2025-Q4": -3.0,
+      "2026-Q3": -116.0,
+      "FY2024": -69.0,
+      "FY2025": -3.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "balance_sheet.additional_paid_in_capital": {
+      "2025-Q4": 63365.0,
+      "2026-Q3": 61769.0,
+      "FY2024": 61362.0,
+      "FY2025": 63365.0,
+      "yoy": {
+        "FY2025": 0.032642351944200065
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.cash_and_equivalents": {
+      "2025-Q4": 5539.0,
+      "2026-Q3": 7404.0,
+      "FY2024": 3787.0,
+      "FY2025": 5539.0,
+      "yoy": {
+        "FY2025": 0.46263533139688406
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.common_stock": {
+      "2025-Q4": 17.0,
+      "2026-Q3": 16.0,
+      "FY2024": 17.0,
+      "FY2025": 17.0,
+      "yoy": {
+        "FY2025": 0.0
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.deferred_tax_assets": {
+      "2025-Q4": 384.0,
+      "2026-Q3": 821.0,
+      "FY2024": 688.0,
+      "FY2025": 384.0,
+      "yoy": {
+        "FY2025": -0.4418604651162791
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.goodwill": {
+      "2025-Q4": 25126.0,
+      "2026-Q3": 25470.0,
+      "FY2024": 24839.0,
+      "FY2025": 25126.0,
+      "yoy": {
+        "FY2025": 0.011554410402995208
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.intangible_assets_net": {
+      "2025-Q4": 16705.0,
+      "2026-Q3": 15101.0,
+      "FY2024": 18930.0,
+      "FY2025": 16705.0,
+      "yoy": {
+        "FY2025": -0.11753829899630219
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.inventories": {
+      "2025-Q4": 7920.0,
+      "2026-Q3": 11463.0,
+      "FY2024": 5734.0,
+      "FY2025": 7920.0,
+      "yoy": {
+        "FY2025": 0.3812347401464946
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.long_term_debt": {
+      "2025-Q4": 2348.0,
+      "2026-Q3": 7079.0,
+      "FY2024": 1721.0,
+      "FY2025": 2348.0,
+      "yoy": {
+        "FY2025": 0.3643230679837304
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.property_plant_equipment_net": {
+      "2025-Q4": 2312.0,
+      "2026-Q3": 3929.0,
+      "FY2024": 1802.0,
+      "FY2025": 2312.0,
+      "yoy": {
+        "FY2025": 0.28301886792452824
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.retained_earnings": {
+      "2025-Q4": 6699.0,
+      "2026-Q3": 6720.0,
+      "FY2024": 2364.0,
+      "FY2025": 6699.0,
+      "yoy": {
+        "FY2025": 1.8337563451776648
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.short_term_debt": {
+      "2025-Q4": 874.0,
+      "2026-Q3": 0.0,
+      "FY2024": 0.0,
+      "FY2025": 874.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "balance_sheet.short_term_investments": {
+      "2025-Q4": 5013.0,
+      "2026-Q3": 8372.0,
+      "FY2024": 1345.0,
+      "FY2025": 5013.0,
+      "yoy": {
+        "FY2025": 2.7271375464684016
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.total_assets": {
+      "2025-Q4": 76926.0,
+      "2026-Q3": 94812.0,
+      "FY2024": 69226.0,
+      "FY2025": 76926.0,
+      "yoy": {
+        "FY2025": 0.1112298847253923
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.total_current_assets": {
+      "2025-Q4": 26947.0,
+      "2026-Q3": 39471.0,
+      "FY2024": 19049.0,
+      "FY2025": 26947.0,
+      "yoy": {
+        "FY2025": 0.4146149404168198
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.total_current_liabilities": {
+      "2025-Q4": 9455.0,
+      "2026-Q3": 14486.0,
+      "FY2024": 7281.0,
+      "FY2025": 9455.0,
+      "yoy": {
+        "FY2025": 0.29858535915396245
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.total_liabilities": {
+      "FY2024": 11658.0,
+      "FY2025": 13927.0,
+      "yoy": {
+        "FY2025": 0.19463029679190247
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.total_stockholders_equity": {
+      "2025-Q4": 62999.0,
+      "2026-Q3": 68389.0,
+      "FY2024": 57568.0,
+      "FY2025": 62999.0,
+      "yoy": {
+        "FY2025": 0.09434060589216231
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "balance_sheet.treasury_stock": {
+      "2025-Q4": -7079.0,
+      "2026-Q3": 0.0,
+      "FY2024": -6106.0,
+      "FY2025": -7079.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.capital_expenditure": {
+      "2025-Q3-YTD": 752.0,
+      "2026-Q3-YTD": 1845.0,
+      "FY2023": 546.0,
+      "FY2024": 636.0,
+      "FY2025": 974.0,
+      "yoy": {
+        "FY2024": 0.16483516483516492,
+        "FY2025": 0.5314465408805031
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.cash_at_end_of_period": {
+      "2025-Q3-YTD": 4825.0,
+      "2026-Q3-YTD": 7404.0,
+      "FY2023": 3933.0,
+      "FY2024": 3811.0,
+      "FY2025": 5556.0,
+      "yoy": {
+        "FY2024": -0.031019577930333053,
+        "FY2025": 0.45788506953555497
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.debt_issuance_repayment": {
+      "2025-Q3-YTD": 1491.0,
+      "2026-Q3-YTD": 3851.0,
+      "FY2023": 0.0,
+      "FY2024": -750.0,
+      "FY2025": 1491.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.deferred_taxes": {
+      "2025-Q3-YTD": 18.0,
+      "2026-Q3-YTD": -427.0,
+      "FY2023": -1019.0,
+      "FY2024": -1163.0,
+      "FY2025": 248.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.depreciation_amortization": {
+      "2025-Q3-YTD": 556.0,
+      "2026-Q3-YTD": 666.0,
+      "FY2023": 642.0,
+      "FY2024": 671.0,
+      "FY2025": 750.0,
+      "yoy": {
+        "FY2024": 0.04517133956386288,
+        "FY2025": 0.11773472429210141
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.financing_activities_other": {
+      "2025-Q3-YTD": 0.0,
+      "2026-Q3-YTD": -21.0,
+      "FY2023": -2.0,
+      "FY2024": -1.0,
+      "FY2025": -284.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.financing_cash_flow": {
+      "2025-Q3-YTD": -103.0,
+      "2026-Q3-YTD": 1983.0,
+      "FY2023": -1146.0,
+      "FY2024": -2062.0,
+      "FY2025": -431.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.investing_activities_other": {
+      "2025-Q3-YTD": -2032.0,
+      "2026-Q3-YTD": -10.0,
+      "FY2023": -3481.0,
+      "FY2024": -1477.0,
+      "FY2025": -7593.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.investing_cash_flow": {
+      "2025-Q3-YTD": -3992.0,
+      "2026-Q3-YTD": -6658.0,
+      "FY2023": -1423.0,
+      "FY2024": -1101.0,
+      "FY2025": -5533.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.net_income": {
+      "2025-Q3-YTD": 2824.0,
+      "2026-Q3-YTD": 6108.0,
+      "FY2023": 854.0,
+      "FY2024": 1641.0,
+      "FY2025": 4335.0,
+      "yoy": {
+        "FY2024": 0.9215456674473068,
+        "FY2025": 1.6416819012797075
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.operating_activities_other": {
+      "2025-Q3-YTD": 90.0,
+      "2026-Q3-YTD": 105.0,
+      "FY2023": 1598.0,
+      "FY2024": 1899.0,
+      "FY2025": 3719.0,
+      "yoy": {
+        "FY2024": 0.18836045056320394,
+        "FY2025": 0.9583991574512902
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.operating_cash_flow": {
+      "2025-Q3-YTD": 5109.0,
+      "2026-Q3-YTD": 6523.0,
+      "FY2023": 1667.0,
+      "FY2024": 3041.0,
+      "FY2025": 7709.0,
+      "yoy": {
+        "FY2024": 0.8242351529694061,
+        "FY2025": 1.535021374547846
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.share_issuance_repurchase": {
+      "2025-Q3-YTD": -1994.0,
+      "2026-Q3-YTD": -1847.0,
+      "FY2023": -1144.0,
+      "FY2024": -1311.0,
+      "FY2025": -1638.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "cash_flow.stock_based_compensation": {
+      "2025-Q3-YTD": 1152.0,
+      "2026-Q3-YTD": 1513.0,
+      "FY2023": 1384.0,
+      "FY2024": 1407.0,
+      "FY2025": 1638.0,
+      "yoy": {
+        "FY2024": 0.016618497109826658,
+        "FY2025": 0.16417910447761197
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "cash_flow.working_capital_changes": {
+      "2025-Q3-YTD": -1845.0,
+      "2026-Q3-YTD": -3631.0,
+      "FY2023": -3049.0,
+      "FY2024": -3558.0,
+      "FY2025": -2368.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "income_statement.basic_eps": {
+      "2025-Q3": 0.76,
+      "2025-Q3-YTD": 1.74,
+      "2026-Q3": 1.48,
+      "2026-Q3-YTD": 3.74,
+      "FY2023": 0.53,
+      "FY2024": 1.01,
+      "FY2025": 2.67,
+      "yoy": {
+        "2026-Q3": 0.9473684210526316,
+        "FY2024": 0.9056603773584906,
+        "FY2025": 1.6435643564356437
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.cost_of_revenue": {
+      "2025-Q3": 4466.0,
+      "2025-Q3-YTD": 12794.0,
+      "2026-Q3": 6167.0,
+      "2026-Q3-YTD": 16337.0,
+      "FY2023": 12220.0,
+      "FY2024": 13060.0,
+      "FY2025": 17487.0,
+      "yoy": {
+        "2026-Q3": 0.3808777429467085,
+        "FY2024": 0.06873977086743044,
+        "FY2025": 0.3389739663093414
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.diluted_eps": {
+      "2025-Q3": 0.75,
+      "2025-Q3-YTD": 1.73,
+      "2026-Q3": 1.46,
+      "2026-Q3-YTD": 3.69,
+      "FY2023": 0.53,
+      "FY2024": 1.0,
+      "FY2025": 2.65,
+      "yoy": {
+        "2026-Q3": 0.9466666666666665,
+        "FY2024": 0.8867924528301885,
+        "FY2025": 1.65
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.diluted_shares_outstanding": {
+      "2025-Q3": 1641.0,
+      "2025-Q3-YTD": 1632.0,
+      "2026-Q3": 1661.0,
+      "2026-Q3-YTD": 1657.0,
+      "FY2023": 1625.0,
+      "FY2024": 1637.0,
+      "FY2025": 1636.0,
+      "yoy": {
+        "2026-Q3": 0.01218769043266299,
+        "FY2024": 0.007384615384615323,
+        "FY2025": -0.0006108735491753281
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.gross_profit": {
+      "2025-Q3": 4780.0,
+      "2025-Q3-YTD": 11575.0,
+      "2026-Q3": 7210.0,
+      "2026-Q3-YTD": 18829.0,
+      "FY2023": 10460.0,
+      "FY2024": 12725.0,
+      "FY2025": 17152.0,
+      "yoy": {
+        "2026-Q3": 0.50836820083682,
+        "FY2024": 0.21653919694072665,
+        "FY2025": 0.3478978388998035
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.income_before_tax": {
+      "2025-Q3": 1315.0,
+      "2025-Q3-YTD": 2066.0,
+      "2026-Q3": 1868.0,
+      "2026-Q3-YTD": 6023.0,
+      "FY2023": 492.0,
+      "FY2024": 1989.0,
+      "FY2025": 4140.0,
+      "yoy": {
+        "2026-Q3": 0.42053231939163505,
+        "FY2024": 3.0426829268292686,
+        "FY2025": 1.0814479638009051
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.income_tax_expense": {
+      "2025-Q3": 153.0,
+      "2025-Q3-YTD": -558.0,
+      "2026-Q3": -555.0,
+      "2026-Q3-YTD": -65.0,
+      "FY2023": -346.0,
+      "FY2024": 381.0,
+      "FY2025": -103.0,
+      "yoy": {
+        "2026-Q3": -4.627450980392156,
+        "FY2025": -1.2703412073490814
+      },
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2024": "n/m"
+        }
+      },
+      "yoy_computed": true
+    },
+    "income_statement.interest_expense": {
+      "2025-Q3": -37.0,
+      "2025-Q3-YTD": -95.0,
+      "2026-Q3": -62.0,
+      "2026-Q3-YTD": -136.0,
+      "FY2023": -106.0,
+      "FY2024": -92.0,
+      "FY2025": -131.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "2026-Q3": "n/m",
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "income_statement.net_income": {
+      "2025-Q3": 1243.0,
+      "2025-Q3-YTD": 2824.0,
+      "2026-Q3": 2428.0,
+      "2026-Q3-YTD": 6108.0,
+      "FY2023": 854.0,
+      "FY2024": 1641.0,
+      "FY2025": 4335.0,
+      "yoy": {
+        "2026-Q3": 0.9533386967015285,
+        "FY2024": 0.9215456674473068,
+        "FY2025": 1.6416819012797075
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.operating_expenses": {
+      "2025-Q3": 3510.0,
+      "2025-Q3-YTD": 9633.0,
+      "2026-Q3": 4378.0,
+      "2026-Q3-YTD": 12531.0,
+      "FY2023": 10059.0,
+      "FY2024": 10825.0,
+      "FY2025": 13458.0,
+      "yoy": {
+        "2026-Q3": 0.24729344729344738,
+        "FY2024": 0.07615071080624314,
+        "FY2025": 0.24323325635103932
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.operating_income": {
+      "2025-Q3": 1270.0,
+      "2025-Q3-YTD": 1942.0,
+      "2026-Q3": 2832.0,
+      "2026-Q3-YTD": 6298.0,
+      "FY2023": 401.0,
+      "FY2024": 1900.0,
+      "FY2025": 3694.0,
+      "yoy": {
+        "2026-Q3": 1.2299212598425195,
+        "FY2024": 3.7381546134663344,
+        "FY2025": 0.9442105263157894
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.other_non_operating_income": {
+      "2025-Q3": 82.0,
+      "2025-Q3-YTD": 219.0,
+      "2026-Q3": -902.0,
+      "2026-Q3-YTD": -139.0,
+      "FY2023": 197.0,
+      "FY2024": 181.0,
+      "FY2025": 577.0,
+      "yoy": {
+        "2026-Q3": -12.0,
+        "FY2024": -0.08121827411167515,
+        "FY2025": 2.1878453038674035
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.other_operating_income_expenses": {
+      "2025-Q3": 302.0,
+      "2025-Q3-YTD": 926.0,
+      "2026-Q3": 277.0,
+      "2026-Q3-YTD": 851.0,
+      "yoy": {
+        "2026-Q3": -0.08278145695364236
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.research_and_development": {
+      "2025-Q3": 2139.0,
+      "2025-Q3-YTD": 5761.0,
+      "2026-Q3": 2803.0,
+      "2026-Q3-YTD": 7728.0,
+      "FY2023": 5872.0,
+      "FY2024": 6456.0,
+      "FY2025": 8091.0,
+      "yoy": {
+        "2026-Q3": 0.3104254324450677,
+        "FY2024": 0.09945504087193457,
+        "FY2025": 0.25325278810408913
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.revenue": {
+      "2025-Q3": 9246.0,
+      "2025-Q3-YTD": 24369.0,
+      "2026-Q3": 13377.0,
+      "2026-Q3-YTD": 35166.0,
+      "FY2023": 22680.0,
+      "FY2024": 25785.0,
+      "FY2025": 34639.0,
+      "yoy": {
+        "2026-Q3": 0.4467878001297858,
+        "FY2024": 0.13690476190476186,
+        "FY2025": 0.3433779329067288
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "income_statement.selling_general_and_administrative": {
+      "2025-Q3": 1069.0,
+      "2025-Q3-YTD": 2946.0,
+      "2026-Q3": 1298.0,
+      "2026-Q3-YTD": 3952.0,
+      "FY2023": 2318.0,
+      "FY2024": 2735.0,
+      "FY2025": 4144.0,
+      "yoy": {
+        "2026-Q3": 0.21421889616463985,
+        "FY2024": 0.17989646246764446,
+        "FY2025": 0.5151736745886655
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.client_and_gaming.operating_income": {
+      "2025-Q3": 867.0,
+      "2025-Q3-YTD": 2130.0,
+      "2026-Q3": 573.0,
+      "2026-Q3-YTD": 1730.0,
+      "FY2023": 925.0,
+      "FY2024": 1187.0,
+      "FY2025": 2855.0,
+      "yoy": {
+        "2026-Q3": -0.3391003460207612,
+        "FY2024": 0.28324324324324324,
+        "FY2025": 1.405223251895535
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.client_and_gaming.revenue": {
+      "2025-Q3": 4048.0,
+      "2025-Q3-YTD": 10610.0,
+      "2026-Q3": 3722.0,
+      "2026-Q3-YTD": 11168.0,
+      "FY2023": 10863.0,
+      "FY2024": 9649.0,
+      "FY2025": 14550.0,
+      "yoy": {
+        "2026-Q3": -0.0805335968379447,
+        "FY2024": -0.11175550032219461,
+        "FY2025": 0.5079282827235982
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.data_center.operating_income": {
+      "2025-Q3": 1074.0,
+      "2025-Q3-YTD": 1851.0,
+      "2026-Q3": 2882.0,
+      "2026-Q3-YTD": 6584.0,
+      "FY2023": 1267.0,
+      "FY2024": 3482.0,
+      "FY2025": 3603.0,
+      "yoy": {
+        "2026-Q3": 1.6834264432029795,
+        "FY2024": 1.7482241515390688,
+        "FY2025": 0.034750143595634775
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.data_center.revenue": {
+      "2025-Q3": 4341.0,
+      "2025-Q3-YTD": 11255.0,
+      "2026-Q3": 8546.0,
+      "2026-Q3-YTD": 21039.0,
+      "FY2023": 6496.0,
+      "FY2024": 12579.0,
+      "FY2025": 16635.0,
+      "yoy": {
+        "2026-Q3": 0.9686708131766875,
+        "FY2024": 0.9364224137931034,
+        "FY2025": 0.3224421655139518
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.embedded.operating_income": {
+      "2025-Q3": 283.0,
+      "2025-Q3-YTD": 886.0,
+      "2026-Q3": 453.0,
+      "2026-Q3-YTD": 1177.0,
+      "FY2023": 2628.0,
+      "FY2024": 1421.0,
+      "FY2025": 1243.0,
+      "yoy": {
+        "2026-Q3": 0.6007067137809188,
+        "FY2024": -0.45928462709284623,
+        "FY2025": -0.12526389866291343
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.embedded.revenue": {
+      "2025-Q3": 857.0,
+      "2025-Q3-YTD": 2504.0,
+      "2026-Q3": 1109.0,
+      "2026-Q3-YTD": 2959.0,
+      "FY2023": 5321.0,
+      "FY2024": 3557.0,
+      "FY2025": 3454.0,
+      "yoy": {
+        "2026-Q3": 0.29404900816802804,
+        "FY2024": -0.33151663221199024,
+        "FY2025": -0.028956986224346393
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.all_other_operating_income": {
+      "2025-Q3": -954.0,
+      "2025-Q3-YTD": -2925.0,
+      "2026-Q3": -1076.0,
+      "2026-Q3-YTD": -3193.0,
+      "FY2023": -4419.0,
+      "FY2024": -4190.0,
+      "FY2025": -4007.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "2026-Q3": "n/m",
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "segments.all_other_revenue": {
+      "2025-Q3": 0.0,
+      "2025-Q3-YTD": 0.0,
+      "2026-Q3": 0.0,
+      "2026-Q3-YTD": 0.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "2026-Q3": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "income_statement.ebitda": {
+      "2025-Q3-YTD": 2498.0,
+      "2026-Q3-YTD": 6964.0,
+      "FY2023": 1043.0,
+      "FY2024": 2571.0,
+      "FY2025": 4444.0,
+      "yoy": {
+        "FY2024": 1.4650047938638542,
+        "FY2025": 0.7285103072734345
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "derived.fcf": {
+      "2025-Q3-YTD": 4357.0,
+      "2026-Q3-YTD": 4678.0,
+      "FY2023": 1121.0,
+      "FY2024": 2405.0,
+      "FY2025": 6735.0,
+      "yoy": {
+        "FY2024": 1.145405887600357,
+        "FY2025": 1.8004158004158004
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "derived.net_debt": {
+      "2025-Q4": -7330.0,
+      "2026-Q3": -8697.0,
+      "FY2024": -3411.0,
+      "FY2025": -7330.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "derived.gross_margin": {
+      "2025-Q3": 0.5169803158122431,
+      "2025-Q3-YTD": 0.47498871517091384,
+      "2026-Q3": 0.5389848246991105,
+      "2026-Q3-YTD": 0.5354319513166126,
+      "FY2023": 0.46119929453262787,
+      "FY2024": 0.49350397517936784,
+      "FY2025": 0.4951644100580271,
+      "yoy": {
+        "2026-Q3": 0.04256353329873952,
+        "FY2024": 0.07004494809446093,
+        "FY2025": 0.003364582581236064
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "derived.operating_margin": {
+      "2025-Q3": 0.13735669478693488,
+      "2025-Q3-YTD": 0.07969141121917189,
+      "2026-Q3": 0.21170666068625252,
+      "2026-Q3-YTD": 0.1790934425297162,
+      "FY2023": 0.017680776014109348,
+      "FY2024": 0.0736862516967229,
+      "FY2025": 0.10664280146655504,
+      "yoy": {
+        "2026-Q3": 0.5412911690591267,
+        "FY2024": 3.1675914924730053,
+        "FY2025": 0.447255071481643
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "derived.net_margin": {
+      "2025-Q3": 0.1344365130867402,
+      "2025-Q3-YTD": 0.11588493577906356,
+      "2026-Q3": 0.1815055692606713,
+      "2026-Q3-YTD": 0.17369049650230337,
+      "FY2023": 0.037654320987654324,
+      "FY2024": 0.06364165212332752,
+      "FY2025": 0.12514795461762754,
+      "yoy": {
+        "2026-Q3": 0.35012107271453496,
+        "FY2024": 0.6901553514719767,
+        "FY2025": 0.9664472942203082
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.data_center.operating_margin": {
+      "2025-Q3": 0.24740843123704215,
+      "2025-Q3-YTD": 0.1644602398933807,
+      "2026-Q3": 0.3372337935876433,
+      "2026-Q3-YTD": 0.3129426303531537,
+      "FY2023": 0.19504310344827586,
+      "FY2024": 0.276810557278003,
+      "FY2025": 0.21659152389540126,
+      "yoy": {
+        "2026-Q3": 0.36306508190312825,
+        "FY2024": 0.4192276085855624,
+        "FY2025": -0.2175460140493244
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.data_center.revenue_share_of_total": {
+      "2025-Q3": 0.46950032446463336,
+      "2025-Q3-YTD": 0.46185727768886703,
+      "2026-Q3": 0.6388577408985572,
+      "2026-Q3-YTD": 0.5982767445828356,
+      "FY2023": 0.28641975308641976,
+      "FY2024": 0.48784176847004074,
+      "FY2025": 0.48023903692369874,
+      "yoy": {
+        "2026-Q3": 0.3607184225634783,
+        "FY2024": 0.7032406571583318,
+        "FY2025": -0.015584421092489698
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.client_and_gaming.operating_margin": {
+      "2025-Q3": 0.21417984189723321,
+      "2025-Q3-YTD": 0.20075400565504242,
+      "2026-Q3": 0.1539494895217625,
+      "2026-Q3-YTD": 0.15490687679083096,
+      "FY2023": 0.08515143146460462,
+      "FY2024": 0.12301792931910042,
+      "FY2025": 0.19621993127147766,
+      "yoy": {
+        "2026-Q3": -0.2812139174347238,
+        "FY2024": 0.4446959634523113,
+        "FY2025": 0.5950514884907228
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.client_and_gaming.revenue_share_of_total": {
+      "2025-Q3": 0.43781094527363185,
+      "2025-Q3-YTD": 0.4353892240141163,
+      "2026-Q3": 0.2782387680346864,
+      "2026-Q3-YTD": 0.31757948017971904,
+      "FY2023": 0.478968253968254,
+      "FY2024": 0.374209811906147,
+      "FY2025": 0.4200467680937671,
+      "yoy": {
+        "2026-Q3": -0.36447735937531855,
+        "FY2024": -0.21871687986454813,
+        "FY2025": 0.12248999018528184
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.embedded.operating_margin": {
+      "2025-Q3": 0.33022170361726955,
+      "2025-Q3-YTD": 0.3538338658146965,
+      "2026-Q3": 0.4084761045987376,
+      "2026-Q3-YTD": 0.39776951672862454,
+      "FY2023": 0.493892125540312,
+      "FY2024": 0.3994939555805454,
+      "FY2025": 0.35987261146496813,
+      "yoy": {
+        "2026-Q3": 0.23697534148805,
+        "FY2024": -0.19113115005932946,
+        "FY2025": -0.09917883252576243
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.embedded.revenue_share_of_total": {
+      "2025-Q3": 0.0926887302617348,
+      "2025-Q3-YTD": 0.1027534982970167,
+      "2026-Q3": 0.08290349106675637,
+      "2026-Q3-YTD": 0.08414377523744526,
+      "FY2023": 0.23461199294532628,
+      "FY2024": 0.1379484196238123,
+      "FY2025": 0.09971419498253414,
+      "yoy": {
+        "2026-Q3": -0.1055709703579586,
+        "FY2024": -0.41201462938017985,
+        "FY2025": -0.2771631943703562
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.sum_revenue": {
+      "2025-Q3": 9246.0,
+      "2025-Q3-YTD": 24369.0,
+      "2026-Q3": 13377.0,
+      "2026-Q3-YTD": 35166.0,
+      "FY2023": 22680.0,
+      "FY2024": 25785.0,
+      "FY2025": 34639.0,
+      "yoy": {
+        "2026-Q3": 0.4467878001297858,
+        "FY2024": 0.13690476190476186,
+        "FY2025": 0.3433779329067288
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    },
+    "segments.reconciling_difference": {
+      "2025-Q3": 0.0,
+      "2025-Q3-YTD": 0.0,
+      "2026-Q3": 0.0,
+      "2026-Q3-YTD": 0.0,
+      "FY2023": 0.0,
+      "FY2024": 0.0,
+      "FY2025": 0.0,
+      "yoy": {},
+      "qoq": {},
+      "growth_status": {
+        "yoy": {
+          "2026-Q3": "n/m",
+          "FY2024": "n/m",
+          "FY2025": "n/m"
+        }
+      },
+      "yoy_computed": false
+    },
+    "derived.ebitda_margin": {
+      "2025-Q3-YTD": 0.10250728384422832,
+      "2026-Q3-YTD": 0.19803219018370016,
+      "FY2023": 0.045987654320987656,
+      "FY2024": 0.09970913321698661,
+      "FY2025": 0.12829469672912036,
+      "yoy": {
+        "FY2024": 1.1681717558593063,
+        "FY2025": 0.2866895197045385
+      },
+      "qoq": {},
+      "growth_status": {},
+      "yoy_computed": true
+    }
+  },
+  "mapping_tables": "1.0",
+  "mapping_file": "segment-mapping-amd-v1.json",
+  "segment_slugs": [
+    "data_center",
+    "client_and_gaming",
+    "embedded"
+  ],
+  "period_ends": {
+    "FY2024": "2024-12-28",
+    "FY2025": "2025-12-27",
+    "2025-Q1": "2025-03-29",
+    "2025-Q1-YTD": "2025-03-29",
+    "2025-Q2": "2025-06-28",
+    "2025-Q2-YTD": "2025-06-28",
+    "2025-Q3": "2025-09-27",
+    "2025-Q3-YTD": "2025-09-27",
+    "2026-Q1": "2026-03-28",
+    "2026-Q1-YTD": "2026-03-28",
+    "2026-Q2": "2026-06-27",
+    "2026-Q2-YTD": "2026-06-27",
+    "2026-Q3": "2026-09-26",
+    "2026-Q3-YTD": "2026-09-26"
+  },
+  "checks": {
+    "eps_linkage": {
+      "2025-Q3": "ok",
+      "2025-Q3-YTD": "ok",
+      "2026-Q3": "ok",
+      "2026-Q3-YTD": "ok",
+      "FY2023": "ok",
+      "FY2024": "ok",
+      "FY2025": "ok"
+    },
+    "gross_profit_reconciliation": {
+      "2025-Q3": "ok",
+      "2025-Q3-YTD": "ok",
+      "2026-Q3": "ok",
+      "2026-Q3-YTD": "ok",
+      "FY2023": "ok",
+      "FY2024": "ok",
+      "FY2025": "ok"
+    },
+    "segment_revenue_reconciliation": {
+      "2025-Q3": "ok",
+      "2025-Q3-YTD": "ok",
+      "2026-Q3": "ok",
+      "2026-Q3-YTD": "ok",
+      "FY2023": "ok",
+      "FY2024": "ok",
+      "FY2025": "ok"
+    }
+  },
+  "derivations": {
+    "derived.net_debt": "balance_sheet.short_term_debt + balance_sheet.long_term_debt - balance_sheet.cash_and_equivalents - balance_sheet.short_term_investments",
+    "derived.fcf": "cash_flow.operating_cash_flow - cash_flow.capital_expenditure",
+    "income_statement.ebitda": "income_statement.operating_income + cash_flow.depreciation_amortization",
+    "derived.gross_margin": "income_statement.gross_profit / income_statement.revenue",
+    "derived.operating_margin": "income_statement.operating_income / income_statement.revenue",
+    "derived.ebitda_margin": "income_statement.ebitda / income_statement.revenue",
+    "derived.net_margin": "income_statement.net_income / income_statement.revenue",
+    "segments.sum_revenue": "sum of canonical segment revenues",
+    "segments.reconciling_difference": "income_statement.revenue - segments.sum_revenue",
+    "segments.<slug>.revenue_share_of_total": "segments.<slug>.revenue / segments.sum_revenue"
+  },
+  "input_forecast_sha256": "e0cd2b41bc2df1111effe84c912a677517bb076ef452846f4f073a0da2248d6e",
+  "provenance": {
+    "cutoff_date": "2026-11-04",
+    "bundle_id": "amd-2026-11",
+    "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98",
+    "input_manifest_sha256": "961b47e8fa6092bb9317dcfbe94396feb46410ad9b47a36dadb6352a99db271d"
+  }
+}

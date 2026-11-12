@@ -1,0 +1,90 @@
+{
+  "case_id": "amd-fy2026q3-r3-20261104",
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "critic_ref": null,
+      "dedup_key": "gate:terminal_reconciliation|terminal:outside-tolerance|valuation.json",
+      "source_critic": "gate:terminal_reconciliation",
+      "first_seen_round": 1,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "exit-multiple terminal value 376,765 (multiple 21.5x) and Gordon terminal value 116,127 (growth 2.50%) differ: ratio 3.24 outside the gate limit 3.0x; the Gordon value implies an exit multiple of 6.6x and the exit multiple implies terminal growth of 9.89%",
+      "affected_artifacts": [
+        "valuation.json"
+      ],
+      "required_evidence": "terminal assumptions (exit multiple, terminal growth, WACC) that reconcile within the mandate tolerance",
+      "owner": "model"
+    },
+    {
+      "finding_id": "fnd-0002",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:20:32:8,546|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"8,546\" on line 20 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"8,546\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0003",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:20:59:4,341|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"4,341\" on line 20 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"4,341\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:22:42:3,722|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"3,722\" on line 22 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"3,722\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0005",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:22:59:4,048|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"4,048\" on line 22 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"4,048\"",
+      "owner": "writer"
+    }
+  ]
+}

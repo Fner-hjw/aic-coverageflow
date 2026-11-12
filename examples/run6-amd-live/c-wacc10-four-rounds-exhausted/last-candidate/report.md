@@ -1,0 +1,42 @@
+> **Cutoff:** 2026-11-04 · **Bundle:** amd-2026-11 / a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98
+> **Candidate:** cand-18bae76f0e90 · **Request:** req-0036
+
+## Summary
+
+AMD’s third-quarter revenue rose to USD 13,377mm from USD 9,246mm a year earlier, while operating income increased to USD 2,832mm from USD 1,270mm [EV:income_statement.revenue] [EV:income_statement.operating_income]. Gross margin reached 53.9%, up from 51.7%, and diluted EPS was USD 1.46 versus USD 0.75 [EV:derived.gross_margin] [EV:income_statement.diluted_eps]. Data Center was the principal growth engine; Client and Gaming revenue declined, and operating income in that segment also fell [EV:segments.data_center.revenue] [EV:segments.client_and_gaming.revenue] [EV:segments.client_and_gaming.operating_income]. The quarter supports a stronger operating outlook, but the valuation outputs diverge materially between terminal methods, making the Gordon-growth DCF the cautious reference point [EV:dcf.per_diluted_share.gordon] [EV:dcf.per_diluted_share.exit_multiple].
+
+## Results
+
+Revenue increased 44.7% year over year in the quarter, and nine-month revenue rose to USD 35,166mm from USD 24,369mm [EV:income_statement.revenue]. The quarterly increase was accompanied by a stronger mix toward Data Center: that segment generated USD 8,546mm, compared with USD 4,341mm in the prior-year quarter [EV:segments.data_center.revenue].
+
+Gross profit grew to USD 7,210mm from USD 4,780mm, and gross margin expanded to 53.9% from 51.7% [EV:income_statement.gross_profit] [EV:derived.gross_margin]. Operating income more than doubled to USD 2,832mm from USD 1,270mm; operating margin rose to 21.2% from 13.7% [EV:income_statement.operating_income] [EV:derived.operating_margin]. The improvement in operating leverage occurred alongside higher operating expenses, which rose to USD 4,378mm from USD 3,510mm [EV:income_statement.operating_expenses].
+
+Net income was USD 2,428mm versus USD 1,243mm, and diluted EPS was USD 1.46 versus USD 0.75 [EV:income_statement.net_income] [EV:income_statement.diluted_eps]. The line captioned “other income (expense), net” was an expense of USD 902mm, compared with income of USD 82mm in the prior-year quarter; this offset part of the operating improvement below the operating line [EV:income_statement.other_non_operating_income].
+
+The nine-month comparison also shows substantial improvement: operating income reached USD 6,298mm from USD 1,942mm, and diluted EPS was USD 3.69 versus USD 1.73 [EV:income_statement.operating_income] [EV:income_statement.diluted_eps]. The verified results provide a year-over-year and year-to-date view; they do not support a sequential comparison with the immediately preceding quarter.
+
+## Segment detail
+
+Data Center revenue nearly doubled to USD 8,546mm from USD 4,341mm. Segment operating income increased to USD 2,882mm from USD 1,074mm, and operating margin widened to 33.7% from 24.7% [EV:segments.data_center.revenue] [EV:segments.data_center.operating_income] [EV:segments.data_center.operating_margin]. The segment contributed USD 21,039mm of nine-month revenue, compared with USD 11,255mm in the prior-year period [EV:segments.data_center.revenue]. Its scale and earnings contribution are now central to the consolidated growth profile.
+
+Client and Gaming revenue declined to USD 3,722mm from USD 4,048mm. Operating income fell to USD 573mm from USD 867mm, and margin contracted to 15.4% from 21.4% [EV:segments.client_and_gaming.revenue] [EV:segments.client_and_gaming.operating_income] [EV:segments.client_and_gaming.operating_margin]. Nine-month revenue increased to USD 11,168mm from USD 10,610mm, but nine-month operating income declined to USD 1,730mm from USD 2,130mm [EV:segments.client_and_gaming.revenue] [EV:segments.client_and_gaming.operating_income]. The contrast between quarterly revenue pressure and positive year-to-date revenue growth leaves this segment less dependable as a near-term earnings driver.
+
+Embedded revenue rose to USD 1,109mm from USD 857mm, while operating income increased to USD 453mm from USD 283mm [EV:segments.embedded.revenue] [EV:segments.embedded.operating_income]. Nine-month revenue and operating income also improved, reaching USD 2,959mm and USD 1,177mm, respectively, compared with USD 2,504mm and USD 886mm [EV:segments.embedded.revenue] [EV:segments.embedded.operating_income]. The recent recovery is constructive, though the segment remains smaller than Data Center and Client and Gaming by revenue.
+
+## Outlook
+
+The forecast proposal continues to place Data Center at the center of growth, while moderating its assumed expansion over time. That stance follows the segment’s strong reported revenue and operating-income growth [EV:segments.data_center.revenue] [EV:segments.data_center.operating_income]. For Client and Gaming, the proposal assumes a more measured path, consistent with lower quarterly revenue and earnings despite higher year-to-date revenue [EV:segments.client_and_gaming.revenue] [EV:segments.client_and_gaming.operating_income]. For Embedded, it allows for a gradual recovery, supported by improving quarterly and year-to-date revenue and operating income [EV:segments.embedded.revenue] [EV:segments.embedded.operating_income].
+
+The model’s base-period revenue is USD 45,436mm, with a gross margin of 53.7% and EBITDA margin of 19.6% [EV:dcf.base.revenue] [EV:dcf.base.gross_margin] [EV:dcf.base.ebitda_margin]. These are the starting economics for the valuation, rather than a claim that the latest quarter’s margin will immediately persist. The forecast therefore pairs continued segment expansion with a gradual gross-margin increase, while recognizing that the latest reported growth is concentrated in Data Center.
+
+## Valuation
+
+The DCF uses a 10.0% WACC and 2.5% terminal growth assumption [EV:dcf.wacc] [EV:dcf.terminal.gordon.terminal_value]. On a Gordon-growth basis, the indicated equity value is USD 129,426mm, or USD 77.92 per diluted share [EV:dcf.equity_value.gordon] [EV:dcf.per_diluted_share.gordon]. The exit-multiple method, using the approved 21.5x EBITDA assumption, gives USD 145.85 per diluted share [EV:dcf.per_diluted_share.exit_multiple]. Its terminal value is USD 329,253mm, versus USD 149,382mm under the Gordon method [EV:dcf.terminal.exit_multiple.terminal_value] [EV:dcf.terminal.gordon.terminal_value].
+
+The terminal values are not within the model’s reconciliation tolerance, so the valuation target rests on the Gordon method rather than an average of the two outputs [EV:dcf.terminal.gordon.terminal_value] [EV:dcf.terminal.exit_multiple.terminal_value]. Relative valuation applies a 24.2x peer median EV/EBITDA multiple and indicates USD 134.23 per share [EV:comps.own_band]. The DCF and comps estimates differ by 11.5% on the model’s cross-check measure, within the mandate’s DCF-to-comps tolerance [EV:cross_check_delta]. The range between methods remains wide, so the cross-check supports using both frameworks while keeping the DCF terminal-method divergence visible.
+
+## Risks
+
+The largest operating exposure is continued dependence on Data Center: its quarterly revenue was USD 8,546mm against consolidated revenue of USD 13,377mm [EV:segments.data_center.revenue] [EV:income_statement.revenue]. A slower expansion in that segment would weaken the main source of current growth. Client and Gaming presents a separate downside case: quarterly revenue declined to USD 3,722mm and operating income to USD 573mm [EV:segments.client_and_gaming.revenue] [EV:segments.client_and_gaming.operating_income]. Embedded’s recovery could also prove uneven given its smaller contribution and longer-term revenue record [EV:segments.embedded.revenue].
+
+Investment needs bear monitoring. Nine-month capital expenditure increased to USD 1,845mm from USD 752mm, while operating cash flow rose to USD 6,523mm from USD 5,109mm [EV:cash_flow.capital_expenditure] [EV:cash_flow.operating_cash_flow]. The higher spending reduces the conversion of operating performance into free cash flow if investment continues to rise faster than operating cash generation. Inventory stood at USD 11,463mm at quarter-end versus USD 7,920mm at fiscal year-end [EV:balance_sheet.inventories]. If demand growth slows, elevated inventory could weigh on cash conversion and increase the risk of product or supply adjustments.

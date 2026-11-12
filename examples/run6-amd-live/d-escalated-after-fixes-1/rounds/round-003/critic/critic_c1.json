@@ -1,0 +1,78 @@
+{
+  "role": "critic_c1",
+  "request_id": "req-0035",
+  "candidate_id": "cand-ac968c00874f",
+  "round": 3,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C1.1",
+      "result": "pass",
+      "evidence": "The note’s reported financial figures and valuation figures have [EV:key] markers that resolve in the supplied evidence index."
+    },
+    {
+      "check_id": "C1.2",
+      "result": "fail",
+      "evidence": "The 21.5x exit multiple and 2.5% terminal growth are cited to terminal-value keys, whose ledger values are USD 358,846mm and USD 162,809mm, respectively; those keys do not support the cited assumption values."
+    },
+    {
+      "check_id": "C1.3",
+      "result": "pass",
+      "evidence": "The note’s source-backed factual claims resolve to facts or valuation artifacts whose cited source documents are included in the input manifest."
+    },
+    {
+      "check_id": "C1.4",
+      "result": "pass",
+      "evidence": "The note does not fill the listed missing disclosures with plausible values."
+    },
+    {
+      "check_id": "C1.5",
+      "result": "fail",
+      "evidence": "The note asserts that the accepted forecast has segment-specific growth paths, a tapering growth horizon, and a gradual gross-margin progression; the supplied artifacts do not include the forecast proposal contents needed to substantiate those claims."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the provided artifacts do not show that proposal or its paths.",
+      "evidence": "rounds/round-003/generator/report.md describes segment-specific growth paths, tapering growth, and a gradual gross-margin progression. The provided model contains no proposal paths, and the proposal artifact content is not supplied.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths and gross-margin progression, or remove the unsupported claims.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The terminal-growth and exit-multiple assumptions are cited to terminal-value evidence keys rather than keys matching those assumption values.",
+      "evidence": "rounds/round-003/generator/report.md cites [EV:dcf.terminal.gordon.terminal_value] for 2.5% terminal growth and [EV:dcf.terminal.exit_multiple.terminal_value] for 21.5x. The valuation artifact records terminal_growth as 0.025 and exit_multiple_ebitda as 21.5, while the cited keys resolve to terminal values of 162808.84671460345 and 358846.39712298696.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Use evidence keys whose ledger values match the stated terminal-growth and exit-multiple assumptions, and verify the cited values against valuation.json.",
+      "owner": "writer"
+    }
+  ],
+  "verified_resolutions": [
+    {
+      "finding_id": "fnd-0003",
+      "verified_evidence": {
+        "artifact": "rounds/round-003/generator/report.md",
+        "sha256": "fdd7cfb0bea78cb58a4baa36b3ea6d43f3e5ab6bc77aa1ecdba181a721a12247"
+      },
+      "check_performed": "Rechecked the current note: the previously flagged 54.0% and 55.0% forecast gross-margin values are no longer stated. The note retains a general forecast gross-margin progression claim, reported separately under C1.5."
+    }
+  ],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "evidence_citation"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

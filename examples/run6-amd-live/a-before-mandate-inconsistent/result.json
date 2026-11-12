@@ -1,0 +1,58 @@
+{
+  "case_id": "amd-fy2026q3-r3-20261104",
+  "terminal": "EXHAUSTED",
+  "candidate_id": "cand-f7e3dc908300",
+  "report_version": null,
+  "reason": {
+    "code": "rounds",
+    "message": "rounds budget exhausted: 4 of 4 rounds used",
+    "detail": {
+      "rounds": 4,
+      "max": 4
+    }
+  },
+  "budget_final": {
+    "rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 120.0,
+    "role_tokens_max": 1200000,
+    "approval_hours": 48.0,
+    "stall_rounds": 2,
+    "role_timeouts": {
+      "default": 240.0,
+      "ingest": 420.0,
+      "extractor": 1200.0,
+      "model": 300.0,
+      "writer": 600.0,
+      "critic": 480.0
+    },
+    "role_efforts": {
+      "extractor": "medium"
+    },
+    "call_cost_usd_max": null,
+    "case_cost_usd_max": null,
+    "used": {
+      "rounds": 4,
+      "elapsed_minutes": 12.98,
+      "tokens_by_role": {
+        "ingest": 44063,
+        "extractor": 218007,
+        "model": 193316,
+        "engines": 0,
+        "writer": 439410
+      },
+      "retries_by_role": {
+        "extractor:amd-10q-2026q3/balance_sheet": 1,
+        "extractor:amd-10k-fy2025/balance_sheet": 1,
+        "writer:report_evidence_links": 3
+      },
+      "grants": [],
+      "reused_roles": {
+        "ingest": 3,
+        "extractor": 3
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "closed_ts": "2026-11-12T01:01:18Z"
+}

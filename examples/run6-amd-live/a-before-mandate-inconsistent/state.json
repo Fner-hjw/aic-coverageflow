@@ -1,0 +1,261 @@
+{
+  "case_id": "amd-fy2026q3-r3-20261104",
+  "status": "EXHAUSTED",
+  "pending": {
+    "role": "generator",
+    "request_id": "req-0028",
+    "round": 5,
+    "retry_count": 0,
+    "case_clock_started": null,
+    "deadline": null,
+    "stage": null,
+    "rebuild_from": "model",
+    "clock_paused": true
+  },
+  "candidate": {
+    "candidate_id": "cand-f7e3dc908300",
+    "clean_review_rounds": 0,
+    "built_round": 4,
+    "gates_passed": false,
+    "last_review_candidate": null
+  },
+  "budget": {
+    "rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 120.0,
+    "role_tokens_max": 1200000,
+    "approval_hours": 48.0,
+    "stall_rounds": 2,
+    "role_timeouts": {
+      "default": 240.0,
+      "ingest": 420.0,
+      "extractor": 1200.0,
+      "model": 300.0,
+      "writer": 600.0,
+      "critic": 480.0
+    },
+    "role_efforts": {
+      "extractor": "medium"
+    },
+    "call_cost_usd_max": null,
+    "case_cost_usd_max": null,
+    "used": {
+      "rounds": 4,
+      "elapsed_minutes": 12.98,
+      "tokens_by_role": {
+        "ingest": 44063,
+        "extractor": 218007,
+        "model": 193316,
+        "engines": 0,
+        "writer": 439410
+      },
+      "retries_by_role": {
+        "extractor:amd-10q-2026q3/balance_sheet": 1,
+        "extractor:amd-10k-fy2025/balance_sheet": 1,
+        "writer:report_evidence_links": 3
+      },
+      "grants": [],
+      "reused_roles": {
+        "ingest": 3,
+        "extractor": 3
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "inputs_manifest_ref": "inputs/manifest.json",
+  "inputs_manifest_sha256": "0860b3d289d89d6a1341ec5bea11bb83f701660308e90139c2fe58b605f6c26e",
+  "config_versions": {
+    "prompt_cards": {
+      "ingest": "1.0",
+      "extractor": "1.0",
+      "model": "1.0",
+      "writer": "1.0",
+      "critics": [
+        "1.0"
+      ]
+    },
+    "mapping_tables": "1.0",
+    "engines": "1.0",
+    "schema": "1.0"
+  },
+  "checkpoints": [
+    {
+      "ts": "2026-11-12T00:48:23Z",
+      "from": "CREATED",
+      "to": "RUNNING",
+      "verified": "case start; case clock started",
+      "state": "sha256:3e226beefdde549a2f8be4de69c2141941b2a9188e097cfa8dae4d572061e261"
+    },
+    {
+      "ts": "2026-11-12T00:48:23Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001 build start",
+      "state": "sha256:7e573d7c2beed36dc1100db02f9ac89d5db9c3623694b9630fa0f95ea501155a"
+    },
+    {
+      "ts": "2026-11-12T00:49:01Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/ingest-report.json",
+      "state": "sha256:02c8268bf514d9d9ad05931377371abbc03ef949ee5841c9f4aa92887133f9f1"
+    },
+    {
+      "ts": "2026-11-12T00:50:08Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/facts.json",
+      "state": "sha256:d35c41e6ee7bc54c19000b3d21c7103f3db70dfcfd184ab9f63f00b1a9d50ad8"
+    },
+    {
+      "ts": "2026-11-12T00:50:35Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/forecast_assumptions.json",
+      "state": "sha256:83e6877b0d37e029be5547ebb34f476c08b45d5ce84f6f07d9a9abc7a952f93c"
+    },
+    {
+      "ts": "2026-11-12T00:50:36Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/model.json",
+      "state": "sha256:971c032b626b45f056a33a85b9151295693206dc59d577fa28fcd12fcd200801"
+    },
+    {
+      "ts": "2026-11-12T00:51:49Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/report.md",
+      "state": "sha256:ad81858517523ede9a5b21a6e1a8298fd4c2c977d72a0d5e2707e9dc73157bdc"
+    },
+    {
+      "ts": "2026-11-12T00:51:49Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/candidate-manifest.json",
+      "state": "sha256:93a7e43e2f3f176210d4e612ae4253dcf438ce3ab7169d30b399b9a1809af0de"
+    },
+    {
+      "ts": "2026-11-12T00:51:49Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002 build start",
+      "state": "sha256:fbfb4ccaedb7260beed0fbe3066b286a085ba01243b76def0641622950d94997"
+    },
+    {
+      "ts": "2026-11-12T00:52:23Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/forecast_assumptions.json",
+      "state": "sha256:ff084bb2402e47661d1816e14c13425f14617823a68630658d1fce802705333f"
+    },
+    {
+      "ts": "2026-11-12T00:52:23Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/model.json",
+      "state": "sha256:63174dec64e8bbfae45d91e1157c66bd7918723bd45e0f0b2a19971daf944f34"
+    },
+    {
+      "ts": "2026-11-12T00:57:37Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/report.md",
+      "state": "sha256:9e27060665c59a9ea2993c06affa48d31fb820417aad88c46d081dddda8de2a4"
+    },
+    {
+      "ts": "2026-11-12T00:57:37Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/candidate-manifest.json",
+      "state": "sha256:2cfa8c1d54339b0edad2c544a12a4461080b99dc223c40942da9eea84775eca0"
+    },
+    {
+      "ts": "2026-11-12T00:57:37Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003 build start",
+      "state": "sha256:69d012895ea4202cbd213e4f6f6e5293ae98cd8eb624798eb715540b546a4427"
+    },
+    {
+      "ts": "2026-11-12T00:58:26Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/forecast_assumptions.json",
+      "state": "sha256:f5e8953c7e731181c6c054757d95de4e97738ccb03195e3716db3cee64be7d59"
+    },
+    {
+      "ts": "2026-11-12T00:58:26Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/model.json",
+      "state": "sha256:4e2d1d59528c6110ed9376bd4052dd5e73bbb3b0d8d337bb23f22a29d03a8b12"
+    },
+    {
+      "ts": "2026-11-12T00:59:36Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/report.md",
+      "state": "sha256:bf992db52930c562b3d943a2b6be60a55ec48d86ec18c7e940a526b04e8ee0d5"
+    },
+    {
+      "ts": "2026-11-12T00:59:36Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/candidate-manifest.json",
+      "state": "sha256:a4dd4f57aeb22a65d2087008f0de926560d59f836a53852fda547109c32401bd"
+    },
+    {
+      "ts": "2026-11-12T00:59:36Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-004 build start",
+      "state": "sha256:deb59bcceebe5d653ebdf7a4a36a29010669a4a5c9a54facdea8d2b5c87b7c10"
+    },
+    {
+      "ts": "2026-11-12T01:00:08Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-004/generator/forecast_assumptions.json",
+      "state": "sha256:135479a609cbd25e87f0a8a08ebc569ab6f99b8acb8c98de440332752dbd127f"
+    },
+    {
+      "ts": "2026-11-12T01:00:08Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-004/generator/model.json",
+      "state": "sha256:202e1d1573d0b23e18d86bd31011213c6774d517e2f0a325881df36bb876dab8"
+    },
+    {
+      "ts": "2026-11-12T01:01:18Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-004/generator/report.md",
+      "state": "sha256:8a27f96f1d3c3c13afbcd43c631cd442b0e48b4b6807fbbac1577081afdea916"
+    },
+    {
+      "ts": "2026-11-12T01:01:18Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-004/generator/candidate-manifest.json",
+      "state": "sha256:2798cb2d8dc27c40d3a347e6b0340a1d59babb52914cfea2cdb7814a511b3851"
+    },
+    {
+      "ts": "2026-11-12T01:01:18Z",
+      "from": "RUNNING",
+      "to": "EXHAUSTED",
+      "verified": "budget breach: rounds",
+      "state": "sha256:598328563b30ca513c90947f8a8de4792aaad725563371ac64622dc49e27561e"
+    }
+  ],
+  "reason": {
+    "code": "rounds",
+    "message": "rounds budget exhausted: 4 of 4 rounds used",
+    "detail": {
+      "rounds": 4,
+      "max": 4
+    }
+  },
+  "updated_at": "2026-11-12T01:01:18Z",
+  "backend": "codex"
+}

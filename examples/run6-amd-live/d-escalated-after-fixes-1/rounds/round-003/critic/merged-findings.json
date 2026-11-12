@@ -1,0 +1,51 @@
+{
+  "round": 3,
+  "candidate_id": "cand-ac968c00874f",
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the provided artifacts do not show that proposal or its paths.",
+      "evidence": "rounds/round-003/generator/report.md describes segment-specific growth paths, tapering growth, and a gradual gross-margin progression. The provided model contains no proposal paths, and the proposal artifact content is not supplied.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths and gross-margin progression, or remove the unsupported claims.",
+      "owner": "writer",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The terminal-growth and exit-multiple assumptions are cited to terminal-value evidence keys rather than keys matching those assumption values.",
+      "evidence": "rounds/round-003/generator/report.md cites [EV:dcf.terminal.gordon.terminal_value] for 2.5% terminal growth and [EV:dcf.terminal.exit_multiple.terminal_value] for 21.5x. The valuation artifact records terminal_growth as 0.025 and exit_multiple_ebitda as 21.5, while the cited keys resolve to terminal values of 162808.84671460345 and 358846.39712298696.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Use evidence keys whose ledger values match the stated terminal-growth and exit-multiple assumptions, and verify the cited values against valuation.json.",
+      "owner": "writer",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "conflict_group": "numbers:rounds/round-003/generator/report.md",
+      "disagreeing_critics": [
+        "critic_c2"
+      ]
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": true,
+  "fresh_context_proofs": [
+    "critic_c1|req-0035|fresh",
+    "critic_c2|req-0036|fresh",
+    "critic_c3|req-0037|fresh",
+    "critic_c4|req-0038|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

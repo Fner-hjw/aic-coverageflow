@@ -1,0 +1,213 @@
+{
+  "case_id": "amd-fy2026q3-20261104",
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "critic_ref": "c1-1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 1,
+      "last_seen_round": 1,
+      "status": "closed",
+      "closed_by": {
+        "round": 2,
+        "critic": "critic_c1",
+        "verified_evidence": {
+          "artifact": "rounds/round-002/generator/report.md",
+          "sha256": "206a254391e73ae9b0e0020166555800fab8b250e1a6dca71548be4256ba9716"
+        }
+      },
+      "severity": "major",
+      "summary": "The note states segment-specific accepted forecast assumptions that are absent from the supplied artifacts.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the segment-specific forecast assumptions in a supplied artifact and cite the corresponding evidence keys, or remove the unsupported statements.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0002",
+      "critic_ref": "c4-1",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c4",
+      "first_seen_round": 1,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The note includes process language about verification and proposal acceptance.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Revise the note to remove process and control language.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0003",
+      "critic_ref": "c1-r2-1",
+      "dedup_key": "critic_c1|c1.1|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The note gives a USD 488.78 closing price without an evidence key supporting that price.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Provide an artifact evidence key for the cutoff closing price and cite it; use a valid [EV:key] marker for the 21.5x multiple.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "critic_ref": "c1-r2-2",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The USD 488.78 figure does not match its cited ledger value.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Cite an artifact value matching the stated price and cite forecast-year gross-margin evidence for the stated glide.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0005",
+      "critic_ref": "c1-r2-3",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The stated cutoff closing price is not supported by the supplied artifacts.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Provide a supplied artifact supporting the cutoff closing price or remove the claim.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0006",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:28:43:52.0|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 3,
+      "last_seen_round": 3,
+      "status": "closed",
+      "closed_by": {
+        "round": 4,
+        "critic": "gate:report_evidence_links",
+        "verified_evidence": {
+          "artifact": "rounds/round-004/numerical/gates.json",
+          "sha256": "f05510a9ba31d322c903139879048127a0be6725afe5ed965fb24c63a6b14dd0"
+        }
+      },
+      "severity": "major",
+      "summary": "numeric token \"52.0\" on line 28 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"52.0\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0007",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:28:52:54.0|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 3,
+      "last_seen_round": 3,
+      "status": "closed",
+      "closed_by": {
+        "round": 4,
+        "critic": "gate:report_evidence_links",
+        "verified_evidence": {
+          "artifact": "rounds/round-004/numerical/gates.json",
+          "sha256": "f05510a9ba31d322c903139879048127a0be6725afe5ed965fb24c63a6b14dd0"
+        }
+      },
+      "severity": "major",
+      "summary": "numeric token \"54.0\" on line 28 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"54.0\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0008",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:20:42:8,546|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"8,546\" on line 20 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"8,546\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0009",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:20:59:4,341|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"4,341\" on line 20 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"4,341\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0010",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:22:42:3,722|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"3,722\" on line 22 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"3,722\"",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0011",
+      "critic_ref": null,
+      "dedup_key": "gate:report_evidence_links|unlinked-number:22:59:4,048|report.md",
+      "source_critic": "gate:report_evidence_links",
+      "first_seen_round": 4,
+      "last_seen_round": 4,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "numeric token \"4,048\" on line 22 lacks an evidence marker in its sentence",
+      "affected_artifacts": [
+        "report.md"
+      ],
+      "required_evidence": "an evidence marker for \"4,048\"",
+      "owner": "writer"
+    }
+  ]
+}

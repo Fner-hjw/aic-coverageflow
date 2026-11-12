@@ -1,0 +1,51 @@
+{
+  "round": 1,
+  "candidate_id": "cand-d1886d971b7b",
+  "findings": [
+    {
+      "finding_id": "c1-5-forecast-claim",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the provided artifacts do not show that proposal or its paths.",
+      "evidence": "report.md, Outlook: “The accepted forecast proposal retains a tapering growth path across Data Center, Client and Gaming, and Embedded.” valuation.json, dcf.cash_flow_build.proposal_paths: operating_margin_path and capex_pct_revenue_path are absent; no forecast proposal contents are included in the payload.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths, or remove the unsupported claim.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "c2-1-gross-margin-outlook-description",
+      "check_id": "C2.1",
+      "severity": "major",
+      "summary": "The note says forecast gross margin rises from the latest-period level, but every forecast glide value is below the latest nine-month margin.",
+      "evidence": "report.md, Outlook: “assumes gross margin rises from its latest-period level toward the accepted glide path.” model.json derived.gross_margin[2026-Q3-YTD] = 0.5354319513; forecast_assumptions.json margin_glide.gross = [0.52, 0.525, 0.53, 0.53, 0.53].",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md",
+        "rounds/round-001/generator/forecast_assumptions.json",
+        "rounds/round-001/generator/model.json"
+      ],
+      "required_evidence": "Revise the outlook description to match the latest-period margin and the full forecast glide path.",
+      "source_critic": "critic_c2",
+      "dedup_key": "critic_c2|c2.1|rounds/round-n/generator/forecast_assumptions.json,rounds/round-n/generator/model.json,rounds/round-n/generator/report.md",
+      "conflict_group": "numbers:rounds/round-001/generator/forecast_assumptions.json,rounds/round-001/generator/model.json,rounds/round-001/generator/report.md",
+      "disagreeing_critics": [
+        "critic_c1"
+      ]
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": true,
+  "fresh_context_proofs": [
+    "critic_c1|req-0015|fresh",
+    "critic_c2|req-0016|fresh",
+    "critic_c3|req-0017|fresh",
+    "critic_c4|req-0018|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

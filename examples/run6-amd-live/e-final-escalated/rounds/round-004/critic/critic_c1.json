@@ -1,0 +1,67 @@
+{
+  "role": "critic_c1",
+  "request_id": "req-0035",
+  "candidate_id": "cand-1ac1e69e237b",
+  "round": 4,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C1.1",
+      "result": "fail",
+      "evidence": "The report header states cutoff date 2026-11-04 without an [EV:key] marker."
+    },
+    {
+      "check_id": "C1.2",
+      "result": "pass",
+      "evidence": "The cited figures checked against facts.json, model.json, forecast_assumptions.json, and valuation.json match within rounding; for example, Gordon value per share is 47.79, terminal reconciliation ratio is 2.40x, and the forecast growth paths match the cited rates."
+    },
+    {
+      "check_id": "C1.3",
+      "result": "pass",
+      "evidence": "The source document IDs in forecast driver citations and underlying facts are amd-10k-fy2025 and amd-10q-2026q3; both are listed in the input manifest."
+    },
+    {
+      "check_id": "C1.4",
+      "result": "pass",
+      "evidence": "The report does not fill in the missing disclosures listed in facts.json with plausible values."
+    },
+    {
+      "check_id": "C1.5",
+      "result": "fail",
+      "evidence": "The report calls the forecast “accepted,” but the provided forecast artifact contains no acceptance status."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c1-1",
+      "check_id": "C1.1",
+      "severity": "minor",
+      "summary": "The cutoff date in the report header lacks an evidence key.",
+      "evidence": "report.md header: “Cutoff: 2026-11-04”; no [EV:key] marker accompanies the date.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Add an evidence key for the cutoff date or remove the unanchored date."
+    },
+    {
+      "finding_id": "c1-2",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The report describes the forecast as accepted without support in the provided artifacts.",
+      "evidence": "report.md: “The accepted forecast”; forecast_assumptions.json contains forecast assumptions but no acceptance status.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Remove “accepted” or provide an artifact that establishes the forecast’s acceptance status."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "evidence_citation"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

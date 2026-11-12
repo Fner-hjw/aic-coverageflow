@@ -1,0 +1,433 @@
+{
+  "artifact": "valuation",
+  "engine": "valuation_engine@2.0",
+  "input_facts_sha256": "bb066c31e510fc439783b16aa550d00d16ccd3d7c8cf01b1162676f7df686578",
+  "candidate_id": "cand-18bae76f0e90",
+  "cutoff": "2026-11-04",
+  "assumptions": {
+    "wacc": 0.1,
+    "terminal_growth": 0.025,
+    "exit_multiple_ebitda": 21.5,
+    "discount_convention": "year_end",
+    "tax_rate": 0.21,
+    "nwc_pct_incremental": 0.0,
+    "terminal_tolerance": 0.35,
+    "valuation_date": "2026-11-04",
+    "peer_block_as_of": "2026-11-04"
+  },
+  "dcf": {
+    "base": {
+      "method": "ltm",
+      "window": {
+        "fy": "FY2025",
+        "ytd_current": "2026-Q3-YTD",
+        "ytd_prior": "2025-Q3-YTD"
+      },
+      "reason": null,
+      "period_end": "2026-09-26",
+      "revenue": 45436.0,
+      "gross_profit": 24406.0,
+      "gross_margin": 0.5371511576723303,
+      "ebit": 8050.0,
+      "ebit_margin": 0.17717228629280746,
+      "da": 860.0,
+      "da_pct_revenue": 0.0189277225107844,
+      "ebitda": 8910.0,
+      "ebitda_margin": 0.19610000880359185,
+      "ocf": 9123.0,
+      "capex": 2067.0,
+      "capex_pct_revenue": 0.04549256096487367,
+      "fcf": 7056.0,
+      "fcf_margin": 0.1552953605070869,
+      "net_income": 7619.0
+    },
+    "cash_flow_build": {
+      "tax_rate": 0.21,
+      "nwc_pct_incremental": 0.0,
+      "ebit_margin_source": "ltm_flat",
+      "capex_source": "ltm_flat",
+      "proposal_paths": {
+        "operating_margin_path": "absent",
+        "capex_pct_revenue_path": "absent"
+      }
+    },
+    "blend": {
+      "segment_slugs": [
+        "data_center",
+        "client_and_gaming",
+        "embedded"
+      ],
+      "segments_without_data": [],
+      "method": "ltm_segments",
+      "period": {
+        "fy": "FY2025",
+        "ytd_current": "2026-Q3-YTD",
+        "ytd_prior": "2025-Q3-YTD"
+      },
+      "weights": {
+        "data_center": 0.581455233735364,
+        "client_and_gaming": 0.3325116647592218,
+        "embedded": 0.08603310150541421
+      }
+    },
+    "blended_growth": [
+      0.17626639668984947,
+      0.13882273967778855,
+      0.10556453032837398,
+      0.08479575666872083,
+      0.06984153534642135
+    ],
+    "years": [
+      {
+        "year": 1,
+        "revenue": 53444.84,
+        "growth": 0.17626639668984947,
+        "gross_margin": 0.52,
+        "ebit_margin": 0.17717228629280746,
+        "ebit": 9468.944493353287,
+        "da": 1011.5891011532703,
+        "ebitda": 10480.533594506556,
+        "ebitda_margin": 0.19610000880359185,
+        "capex": 2431.3426419579187,
+        "capex_pct_revenue": 0.04549256096487367,
+        "nwc_change": 0.0,
+        "nopat": 7480.466149749097,
+        "ufcf": 6060.712608944448,
+        "fcf": 6060.712608944448,
+        "fcf_margin": 0.11340126771722861,
+        "date": "2027-09-26",
+        "exponent": 0.892539356605065,
+        "discount_factor": 0.9184497481882293,
+        "pv": 5566.459969526255
+      },
+      {
+        "year": 2,
+        "revenue": 60864.199110441055,
+        "growth": 0.13882273967778855,
+        "gross_margin": 0.525,
+        "ebit_margin": 0.17717228629280746,
+        "ebit": 10783.4493097775,
+        "da": 1152.0206716035589,
+        "ebitda": 11935.469981381058,
+        "ebitda_margin": 0.19610000880359185,
+        "capex": 2768.8682886099496,
+        "capex_pct_revenue": 0.04549256096487367,
+        "nwc_change": 0.0,
+        "nopat": 8518.924954724225,
+        "ufcf": 6902.077337717835,
+        "fcf": 6902.077337717835,
+        "fcf_margin": 0.11340126771722862,
+        "date": "2028-09-26",
+        "exponent": 1.894592744695414,
+        "discount_factor": 0.8347909246264844,
+        "pv": 5761.7915225969755
+      },
+      {
+        "year": 3,
+        "revenue": 67289.2997033474,
+        "growth": 0.10556453032837398,
+        "gross_margin": 0.53,
+        "ebit_margin": 0.17717228629280746,
+        "ebit": 11921.799071483989,
+        "da": 1273.6331927299664,
+        "ebitda": 13195.432264213956,
+        "ebitda_margin": 0.19610000880359185,
+        "capex": 3061.162569038187,
+        "capex_pct_revenue": 0.04549256096487367,
+        "nwc_change": 0.0,
+        "nopat": 9418.221266472352,
+        "ufcf": 7630.691890164132,
+        "fcf": 7630.691890164132,
+        "fcf_margin": 0.11340126771722865,
+        "date": "2029-09-26",
+        "exponent": 2.8939082819986313,
+        "discount_factor": 0.7589503500390185,
+        "pv": 5791.316281079968
+      },
+      {
+        "year": 4,
+        "revenue": 72995.14678740107,
+        "growth": 0.08479575666872083,
+        "gross_margin": 0.535,
+        "ebit_margin": 0.17717228629280746,
+        "ebit": 12932.717044602927,
+        "da": 1381.6318830259027,
+        "ebitda": 14314.34892762883,
+        "ebitda_margin": 0.19610000880359185,
+        "capex": 3320.7361653657454,
+        "capex_pct_revenue": 0.04549256096487367,
+        "nwc_change": 0.0,
+        "nopat": 10216.846465236313,
+        "ufcf": 8277.742182896469,
+        "fcf": 8277.742182896469,
+        "fcf_margin": 0.11340126771722861,
+        "date": "2030-09-26",
+        "exponent": 3.893223819301848,
+        "discount_factor": 0.6899998752167489,
+        "pv": 5711.641073274982
+      },
+      {
+        "year": 5,
+        "revenue": 78093.23991187055,
+        "growth": 0.06984153534642135,
+        "gross_margin": 0.54,
+        "ebit_margin": 0.17717228629280746,
+        "ebit": 13835.957859198827,
+        "da": 1478.127175019999,
+        "ebitda": 15314.085034218826,
+        "ebitda_margin": 0.19610000880359185,
+        "capex": 3552.6614776352767,
+        "capex_pct_revenue": 0.04549256096487367,
+        "nwc_change": 0.0,
+        "nopat": 10930.406708767074,
+        "ufcf": 8855.872406151797,
+        "fcf": 8855.872406151797,
+        "fcf_margin": 0.11340126771722864,
+        "date": "2031-09-26",
+        "exponent": 4.892539356605065,
+        "discount_factor": 0.6273135360892215,
+        "pv": 5555.408634258046
+      }
+    ],
+    "pv_sum": 28386.617480736226,
+    "discounting": {
+      "convention": "year_end",
+      "valuation_date": "2026-11-04",
+      "ltm_end": "2026-09-26",
+      "discount_timing": "dated",
+      "exponents": [
+        0.892539356605065,
+        1.894592744695414,
+        2.8939082819986313,
+        3.893223819301848,
+        4.892539356605065
+      ],
+      "cash_flow_dates": [
+        "2027-09-26",
+        "2028-09-26",
+        "2029-09-26",
+        "2030-09-26",
+        "2031-09-26"
+      ]
+    },
+    "terminal": {
+      "exit_multiple": {
+        "ebitda_final": 15314.085034218826,
+        "multiple": 21.5,
+        "terminal_value": 329252.82823570474,
+        "pv": 206544.755947917
+      },
+      "gordon": {
+        "wacc": 0.1,
+        "terminal_growth": 0.025,
+        "ufcf_final": 8855.872406151797,
+        "terminal_fcf": 11203.66687648625,
+        "terminal_fcf_basis": "normalised: NOPAT and working capital grow at g, capex = depreciation",
+        "terminal_value": 149382.22501981663,
+        "pv": 93709.49180605695
+      },
+      "implied_exit_multiple_from_gordon": 9.754564160119713,
+      "implied_growth_from_exit": 0.06465596730066263,
+      "reconciliation": {
+        "ratio": 2.2040964257429354,
+        "tolerance": 0.35,
+        "within": false
+      }
+    },
+    "ev": {
+      "exit_multiple": 234931.37342865323,
+      "gordon": 122096.10928679317
+    },
+    "bridge": {
+      "period": "FY2025",
+      "short_term_debt": 874.0,
+      "long_term_debt": 2348.0,
+      "total_debt": 3222.0,
+      "cash_and_equivalents": 5539.0,
+      "short_term_investments": 5013.0,
+      "cash_total": 10552.0,
+      "nci": 0.0,
+      "nci_source": "absent",
+      "nci_period": null,
+      "net_debt": -7330.0,
+      "net_claims": -7330.0
+    },
+    "equity_value": {
+      "exit_multiple": 242261.37342865323,
+      "gordon": 129426.10928679317
+    },
+    "per_diluted_share": {
+      "exit_multiple": 145.85272331646792,
+      "gordon": 77.92059559710606
+    },
+    "target_price": 77.92059559710606,
+    "target_basis": "gordon_only_terminal_values_disagree",
+    "target_flag": "terminal_values_outside_tolerance",
+    "upside": -0.8405814566940013,
+    "rating": "Sell",
+    "rating_bands": {
+      "buy": 0.15,
+      "sell": -0.1,
+      "note": "optional: upside above buy = Buy, below sell = Sell, otherwise Hold (defaults buy +15%, sell -10%); null without a market price"
+    },
+    "net_debt": -7330.0,
+    "net_debt_period": "FY2025",
+    "diluted_shares": 1661.0,
+    "shares_period": "2026-Q3",
+    "discount_convention": "year_end",
+    "wacc": 0.1,
+    "dcf_upside": -0.8405814566940013
+  },
+  "comps": {
+    "as_of": "2026-11-04",
+    "peers": [
+      {
+        "ticker": "INTC",
+        "ev_ebitda": 153.83,
+        "p_e_ttm": null,
+        "p_s": 5.16,
+        "rev_growth_yoy": -0.0047,
+        "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+      },
+      {
+        "ticker": "NVDA",
+        "ev_ebitda": 24.2,
+        "p_e_ttm": 25.2,
+        "p_s": 16.04,
+        "rev_growth_yoy": 0.6547,
+        "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+      },
+      {
+        "ticker": "QCOM",
+        "ev_ebitda": 18.74,
+        "p_e_ttm": 13.64,
+        "p_s": 4.31,
+        "rev_growth_yoy": -0.0263,
+        "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+      },
+      {
+        "ticker": "AVGO",
+        "ev_ebitda": null,
+        "p_e_ttm": 41.57,
+        "p_s": 17.85,
+        "rev_growth_yoy": 0.2387,
+        "notional_note": "computed 2026-11-04 close with SEC companyfacts filed on or before 2026-11-04"
+      }
+    ],
+    "applied": {
+      "ev_ebitda": {
+        "peer_median": 24.2,
+        "own_metric": 8910.0,
+        "implied_ev": 215622.0,
+        "implied_price": 134.22757375075255
+      },
+      "p_e": {
+        "peer_median": 25.2,
+        "own_metric": 7619.0,
+        "implied_price": 115.59229379891632
+      },
+      "p_s": {
+        "peer_median": 10.6,
+        "own_metric": 45436.0,
+        "implied_price": 289.9588199879591
+      }
+    },
+    "comps_price": 134.22757375075255,
+    "comps_upside": -0.7253824343247421,
+    "own_band": {
+      "ev_ebitda": {
+        "band": [
+          18.74,
+          153.83
+        ],
+        "implied_price": [
+          104.93883202889825,
+          829.5937989163154
+        ]
+      },
+      "p_e": {
+        "band": [
+          13.64,
+          41.57
+        ],
+        "implied_price": [
+          62.5666225165563,
+          190.68141481035522
+        ]
+      },
+      "p_s": {
+        "band": [
+          4.31,
+          17.85
+        ],
+        "implied_price": [
+          117.89835039133051,
+          488.2797110174594
+        ]
+      }
+    }
+  },
+  "sensitivity": {
+    "basis": "gordon",
+    "wacc_points": [
+      0.06,
+      0.08,
+      0.1,
+      0.12,
+      0.14
+    ],
+    "terminal_growth_points": [
+      0.005,
+      0.015,
+      0.025,
+      0.035,
+      0.045
+    ],
+    "grid": [
+      [
+        113.87947316594723,
+        135.07222778511132,
+        168.37512790094064,
+        228.32034810943333,
+        368.1925285959162
+      ],
+      [
+        82.9524738643676,
+        92.95682176115122,
+        106.59911434767434,
+        126.30464808376328,
+        157.27048681190303
+      ],
+      [
+        65.1741481317964,
+        70.79758083708008,
+        77.92059559710606,
+        87.23530720637083,
+        99.93718667355004
+      ],
+      [
+        53.672782263593106,
+        57.17865752355495,
+        61.422611785614045,
+        66.6651435210988,
+        73.30568371937949
+      ],
+      [
+        45.65004059520054,
+        47.99167200277124,
+        50.74054365513684,
+        54.01300990795305,
+        57.97441642452002
+      ]
+    ]
+  },
+  "cross_check_delta": -0.11519902236925916,
+  "cross_check_note": "DCF and relative valuation agree within mandate tolerance.",
+  "within_tolerance": true,
+  "provenance": {
+    "cutoff_date": "2026-11-04",
+    "bundle_id": "amd-2026-11",
+    "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98",
+    "input_manifest_sha256": "961b47e8fa6092bb9317dcfbe94396feb46410ad9b47a36dadb6352a99db271d"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "role": "critic_c2",
+  "request_id": "req-0026",
+  "candidate_id": "cand-5c1f9a7c4fdb",
+  "round": 2,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C2.1",
+      "result": "pass",
+      "evidence": "report.md figures match model.json and valuation.json: Q3 revenue 13,377; gross margin 53.9% versus 51.7%; operating margin 21.2% versus 13.7%; nine-month gross margin 53.5%. The proposal glide [54.0%, 54.5%, 55.0%, 55.0%, 55.0%] starts above the 53.5% nine-month margin, then rises and holds as described. Valuation figures and the terminal-method comparison also match the valuation artifact."
+    },
+    {
+      "check_id": "C2.2",
+      "result": "pass",
+      "evidence": "forecast_assumptions.json segment growth paths fall within mandate_bounds.forecast_bounds: Data Center 30% to 12% within -5% to 35%; Client and Gaming 5% to 3% within -10% to 20%; Embedded 3% to 2% within -20% to 5%. Gross-margin glide values of 54% to 55% are within the 18% to 55% bounds."
+    },
+    {
+      "check_id": "C2.3",
+      "result": "pass",
+      "evidence": "forecast_assumptions.json drivers cite model.json segment history and recent comparisons. Data Center growth tapers from 30% against FY2025 growth of 32.2% and strong 2026 Q3/YTD growth; Client and Gaming assumes measured growth amid mixed quarter and YTD results; Embedded assumes restrained growth after FY2023–FY2025 declines and recent improvement."
+    },
+    {
+      "check_id": "C2.4",
+      "result": "pass",
+      "evidence": "valuation.json cross_check_delta is -10.286%, within the 25% mandate tolerance. report.md reports a 10.3% cross-check delta and says the DCF and relative-valuation comparison is within mandate tolerance."
+    },
+    {
+      "check_id": "C2.5",
+      "result": "pass",
+      "evidence": "report.md labels comparisons of 2026 Q3 with 2025 Q3 and 2026 nine-month YTD with 2025 nine-month YTD; the reported revenue, margin, earnings, EPS, cash flow, and segment comparisons match those periods in model.json. It does not present them as sequential-quarter changes and states sequential comparisons are unavailable."
+    },
+    {
+      "check_id": "C2.6",
+      "result": "pass",
+      "evidence": "valuation.json terminal reconciliation ratio is 2.2041 against tolerance 0.35 and is outside tolerance. report.md discloses the wide terminal-method gap, says the artifact flags the methods outside tolerance, and identifies the Gordon-only target basis."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [
+    {
+      "finding_id": "fnd-0002",
+      "verified_evidence": {
+        "artifact": "rounds/round-002/generator/report.md",
+        "sha256": "ff6d8b36e9bc467d6337320254c1a7af7ebaf0f62ac7a1468a06468c5e8e384f"
+      },
+      "check_performed": "Compared the revised outlook wording with the forecast gross-margin glide and model gross margin. The note correctly states the glide starts at 54.0%, above the 53.5% latest nine-month margin, rises to 55.0%, and then holds."
+    }
+  ],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "robustness"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

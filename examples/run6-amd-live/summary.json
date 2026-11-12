@@ -1,0 +1,88 @@
+[
+  {
+    "label": "a-before-mandate-inconsistent",
+    "case_id": "/Users/hjw/Fudan/Module 5/AIC/Project/coverageflow/workspace/deleted/amd-fy2026q3-r3-20261104-20261112T032509Z",
+    "status": "EXHAUSTED",
+    "reason": "rounds",
+    "rounds": 4,
+    "mechanical_rounds": null,
+    "elapsed_minutes": 12.98,
+    "tokens_by_role": {
+      "ingest": 44063,
+      "extractor": 218007,
+      "model": 193316,
+      "engines": 0,
+      "writer": 439410
+    }
+  },
+  {
+    "label": "b-preflight-blocks-before-round-1",
+    "case_id": "/private/tmp/claude-501/-Users-hjw-Fudan-Module-5-AIC-Project/99850045-eef5-4bad-9bad-29b3084c6d82/scratchpad/ws/cases/amd-fy2026q3-20261104",
+    "status": "BLOCKED",
+    "reason": "needs_mandate_change",
+    "rounds": 0,
+    "mechanical_rounds": null,
+    "elapsed_minutes": 0.0,
+    "tokens_by_role": {}
+  },
+  {
+    "label": "c-wacc10-four-rounds-exhausted",
+    "case_id": "/Users/hjw/Fudan/Module 5/AIC/Project/coverageflow/workspace/deleted/amd-fy2026q3-20261104-20261112T032451Z",
+    "status": "EXHAUSTED",
+    "reason": "rounds",
+    "rounds": 4,
+    "mechanical_rounds": null,
+    "elapsed_minutes": 16.46,
+    "tokens_by_role": {
+      "ingest": 73792,
+      "extractor": 177258,
+      "model": 47796,
+      "engines": 0,
+      "writer": 573044,
+      "critic_c1": 113345,
+      "critic_c2": 69216,
+      "critic_c3": 45720,
+      "critic_c4": 41051
+    }
+  },
+  {
+    "label": "d-escalated-after-fixes-1",
+    "case_id": "amd-fy2026q3r2-20261104",
+    "status": "ESCALATED",
+    "reason": "STALLED",
+    "rounds": 3,
+    "mechanical_rounds": null,
+    "elapsed_minutes": 16.765,
+    "tokens_by_role": {
+      "ingest": 44071,
+      "extractor": 222797,
+      "model": 98759,
+      "engines": 0,
+      "writer": 547307,
+      "critic_c1": 205509,
+      "critic_c2": 137947,
+      "critic_c3": 101842,
+      "critic_c4": 92235
+    }
+  },
+  {
+    "label": "e-final-escalated",
+    "case_id": "amd-fy2026q3r3-20261104",
+    "status": "ESCALATED",
+    "reason": "rounds",
+    "rounds": 4,
+    "mechanical_rounds": 0,
+    "elapsed_minutes": 18.482,
+    "tokens_by_role": {
+      "ingest": 0,
+      "extractor": 181459,
+      "model": 48113,
+      "engines": 0,
+      "writer": 596503,
+      "critic_c1": 234939,
+      "critic_c2": 140121,
+      "critic_c3": 92518,
+      "critic_c4": 82753
+    }
+  }
+]

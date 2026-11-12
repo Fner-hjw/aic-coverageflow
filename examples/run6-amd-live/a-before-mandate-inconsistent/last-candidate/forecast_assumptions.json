@@ -1,0 +1,116 @@
+{
+  "role": "model",
+  "request_id": "req-0027",
+  "candidate_id": "cand-f7e3dc908300",
+  "horizon_years": 5,
+  "segments": [
+    {
+      "segment": "Data Center",
+      "growth": [
+        0.24,
+        0.2,
+        0.17,
+        0.14,
+        0.12
+      ],
+      "drivers": [
+        {
+          "text": "Data Center revenue was 21,039 USDmm in 2026-Q3-YTD versus 11,255 USDmm in 2025-Q3-YTD; the forecast starts below that reported growth and moderates over the horizon.",
+          "citation": {
+            "doc_id": "amd-10q-2026q3",
+            "slice_id": "amd-10q-2026q3/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Data Center, nine months ended"
+          }
+        },
+        {
+          "text": "Annual Data Center revenue increased from 6,496 USDmm in FY2023 to 12,579 USDmm in FY2024 and 16,635 USDmm in FY2025, supporting continued growth with deceleration.",
+          "citation": {
+            "doc_id": "amd-10k-fy2025",
+            "slice_id": "amd-10k-fy2025/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Net revenue: Data Center"
+          }
+        }
+      ]
+    },
+    {
+      "segment": "Client and Gaming",
+      "growth": [
+        0.08,
+        0.07,
+        0.06,
+        0.05,
+        0.05
+      ],
+      "drivers": [
+        {
+          "text": "Client and Gaming revenue was 11,168 USDmm in 2026-Q3-YTD versus 10,610 USDmm in 2025-Q3-YTD; the forecast assumes moderate growth that tapers toward the end of the horizon.",
+          "citation": {
+            "doc_id": "amd-10q-2026q3",
+            "slice_id": "amd-10q-2026q3/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Total Client and Gaming, nine months ended"
+          }
+        },
+        {
+          "text": "Annual Client and Gaming revenue was 10,863 USDmm in FY2023, 9,649 USDmm in FY2024, and 14,550 USDmm in FY2025, showing a variable history that supports a measured forecast.",
+          "citation": {
+            "doc_id": "amd-10k-fy2025",
+            "slice_id": "amd-10k-fy2025/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Net revenue: Total Client and Gaming"
+          }
+        }
+      ]
+    },
+    {
+      "segment": "Embedded",
+      "growth": [
+        0.0,
+        0.01,
+        0.02,
+        0.03,
+        0.03
+      ],
+      "drivers": [
+        {
+          "text": "Embedded revenue was 2,959 USDmm in 2026-Q3-YTD versus 2,504 USDmm in 2025-Q3-YTD; the forecast assumes modest growth after the reported increase.",
+          "citation": {
+            "doc_id": "amd-10q-2026q3",
+            "slice_id": "amd-10q-2026q3/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Embedded, nine months ended"
+          }
+        },
+        {
+          "text": "Annual Embedded revenue declined from 5,321 USDmm in FY2023 to 3,557 USDmm in FY2024 and 3,454 USDmm in FY2025, supporting a cautious ramp from flat growth.",
+          "citation": {
+            "doc_id": "amd-10k-fy2025",
+            "slice_id": "amd-10k-fy2025/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Net revenue: Embedded"
+          }
+        }
+      ]
+    }
+  ],
+  "margin_glide": {
+    "gross": [
+      0.53,
+      0.53,
+      0.53,
+      0.53,
+      0.53
+    ]
+  },
+  "terminal_basis": "mandate",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2",
+  "provenance": {
+    "cutoff_date": "2026-11-04",
+    "bundle_id": "amd-2026-11",
+    "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98",
+    "input_manifest_sha256": "961b47e8fa6092bb9317dcfbe94396feb46410ad9b47a36dadb6352a99db271d"
+  }
+}

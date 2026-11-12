@@ -1,0 +1,49 @@
+{
+  "round": 5,
+  "candidate_id": "cand-aa8902380152",
+  "findings": [
+    {
+      "finding_id": "c1-5",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.",
+      "evidence": "In report.md, the historical-base sentence cites cash_flow.capital_expenditure and comps.applied.ev_ebitda.own_metric for FCF of USD 6,697mm; the relative-valuation sentence cites comps.own_band for USD 145.52 per share. valuation.json records dcf.base.fcf as 6697.0 and comps.comps_price as 145.5193257074052.",
+      "affected_artifacts": [
+        "rounds/round-005/generator/report.md"
+      ],
+      "required_evidence": "Cite dcf.base.fcf for the historical FCF amount and comps.comps_price for the relative-valuation indicated price, or otherwise cite ledger entries whose values match those claims.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "conflict_group": "numbers:rounds/round-005/generator/report.md",
+      "disagreeing_critics": [
+        "critic_c2"
+      ]
+    },
+    {
+      "finding_id": "c4-1",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process and control references.",
+      "evidence": "report.md header contains cutoff, bundle, candidate, and request metadata; valuation text mentions a model flag and mandate tolerance.",
+      "affected_artifacts": [
+        "rounds/round-005/generator/report.md"
+      ],
+      "required_evidence": "A note without process or control text, including harness metadata, model flags, or mandate tolerance references.",
+      "source_critic": "critic_c4",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": true,
+  "fresh_context_proofs": [
+    "critic_c1|req-0044|fresh",
+    "critic_c2|req-0045|fresh",
+    "critic_c3|req-0046|fresh",
+    "critic_c4|req-0047|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

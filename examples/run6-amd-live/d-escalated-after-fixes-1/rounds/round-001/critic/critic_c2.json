@@ -1,0 +1,63 @@
+{
+  "role": "critic_c2",
+  "request_id": "req-0016",
+  "candidate_id": "cand-d1886d971b7b",
+  "round": 1,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C2.1",
+      "result": "fail",
+      "evidence": "report.md, Outlook: says gross margin rises from its latest-period level toward the accepted glide path. model.json derived.gross_margin is 0.5354 (53.5%) for 2026-Q3-YTD; forecast_assumptions.json margin_glide.gross is [0.52, 0.525, 0.53, 0.53, 0.53], all below that level."
+    },
+    {
+      "check_id": "C2.2",
+      "result": "pass",
+      "evidence": "forecast_assumptions.json segment growth paths fall within mandate_bounds.forecast_bounds: Data Center 0.25 to 0.10 within [-0.05, 0.35]; Client and Gaming 0.08 to 0.04 within [-0.10, 0.20]; Embedded 0.05 to 0.00 within [-0.20, 0.05]. Gross margin glide 0.52 to 0.53 is within [0.18, 0.55]."
+    },
+    {
+      "check_id": "C2.3",
+      "result": "pass",
+      "evidence": "The proposal tapers growth across all three segments. Its cited drivers describe strong recent Data Center growth, moderating Client and Gaming performance, and a cautious Embedded recovery, consistent with the proposal paths and the historical values in the cited driver text."
+    },
+    {
+      "check_id": "C2.4",
+      "result": "pass",
+      "evidence": "valuation.json cross_check_delta is -0.1139, within the mandate tolerance of 0.25; report.md states the DCF and relative valuation cross-check is within tolerance."
+    },
+    {
+      "check_id": "C2.5",
+      "result": "pass",
+      "evidence": "The note's Q3 comparisons use 2026-Q3 versus 2025-Q3, and its nine-month comparisons use 2026-Q3-YTD versus 2025-Q3-YTD. The stated Q3 revenue growth of 44.7% matches model.json income_statement.revenue yoy for 2026-Q3. No QoQ comparison is presented."
+    },
+    {
+      "check_id": "C2.6",
+      "result": "pass",
+      "evidence": "valuation.json terminal.reconciliation ratio is 2.2041, outside the 0.35 tolerance; terminal.target_flag is terminal_values_outside_tolerance. report.md discloses the material difference between Gordon-growth and exit-multiple terminal values."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c2-1-gross-margin-outlook-description",
+      "check_id": "C2.1",
+      "severity": "major",
+      "summary": "The note says forecast gross margin rises from the latest-period level, but every forecast glide value is below the latest nine-month margin.",
+      "evidence": "report.md, Outlook: “assumes gross margin rises from its latest-period level toward the accepted glide path.” model.json derived.gross_margin[2026-Q3-YTD] = 0.5354319513; forecast_assumptions.json margin_glide.gross = [0.52, 0.525, 0.53, 0.53, 0.53].",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md",
+        "rounds/round-001/generator/forecast_assumptions.json",
+        "rounds/round-001/generator/model.json"
+      ],
+      "required_evidence": "Revise the outlook description to match the latest-period margin and the full forecast glide path."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "robustness"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

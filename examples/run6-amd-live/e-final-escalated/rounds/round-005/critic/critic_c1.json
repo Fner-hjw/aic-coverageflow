@@ -1,0 +1,65 @@
+{
+  "role": "critic_c1",
+  "request_id": "req-0044",
+  "candidate_id": "cand-aa8902380152",
+  "round": 5,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C1.1",
+      "result": "pass",
+      "evidence": "Every numerical claim in report.md has an [EV:key] marker whose key appears in the evidence index."
+    },
+    {
+      "check_id": "C1.2",
+      "result": "fail",
+      "evidence": "report.md attributes the USD 6,697mm FCF base to cash_flow.capital_expenditure (USD 1,012mm), without citing dcf.base.fcf; it attributes USD 145.52 per share to comps.own_band, which contains the band prices but not the comps_price output."
+    },
+    {
+      "check_id": "C1.3",
+      "result": "pass",
+      "evidence": "The note’s cited source documents are in the input manifest; model and valuation figures cite artifacts included in the candidate."
+    },
+    {
+      "check_id": "C1.4",
+      "result": "pass",
+      "evidence": "The note does not fill a disclosure identified as missing in facts.json with a plausible value."
+    },
+    {
+      "check_id": "C1.5",
+      "result": "pass",
+      "evidence": "The note’s factual claims and interpretations are supported by facts.json, model.json, valuation.json, or the forecast assumptions artifact."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c1-5",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The note cites values that do not equal the cited ledger entries: USD 6,697mm FCF is not supported by the cited capex value, and USD 145.52 per share is not supported by the cited own_band object.",
+      "evidence": "In report.md, the historical-base sentence cites cash_flow.capital_expenditure and comps.applied.ev_ebitda.own_metric for FCF of USD 6,697mm; the relative-valuation sentence cites comps.own_band for USD 145.52 per share. valuation.json records dcf.base.fcf as 6697.0 and comps.comps_price as 145.5193257074052.",
+      "affected_artifacts": [
+        "rounds/round-005/generator/report.md"
+      ],
+      "required_evidence": "Cite dcf.base.fcf for the historical FCF amount and comps.comps_price for the relative-valuation indicated price, or otherwise cite ledger entries whose values match those claims."
+    }
+  ],
+  "verified_resolutions": [
+    {
+      "finding_id": "fnd-0006",
+      "verified_evidence": {
+        "artifact": "rounds/round-005/generator/report.md",
+        "sha256": "f96990735c2f763e640daf9ce2b2a3473cf2eea509ebdb7378cc3bf68fa50f04"
+      },
+      "check_performed": "Re-read the current report; it describes the forecast path and assumptions without calling the forecast accepted."
+    }
+  ],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "evidence_citation"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

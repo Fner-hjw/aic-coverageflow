@@ -1,0 +1,29 @@
+{
+  "role": "critic_c3",
+  "request_id": "req-0024",
+  "candidate_id": "cand-e0e6f3aa1b65",
+  "round": 2,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C3.1",
+      "result": "pass",
+      "evidence": "The note references Q3 2026 results and identifies the closing price as used at the 2026-11-04 cutoff. No post-cutoff fact or event is referenced."
+    },
+    {
+      "check_id": "C3.2",
+      "result": "pass",
+      "evidence": "The note dates the closing price to the cutoff (2026-11-04). Its peer valuation block gives no later date."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "timing_cutoff"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

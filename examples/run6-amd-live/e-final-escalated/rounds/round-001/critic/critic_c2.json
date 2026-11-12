@@ -1,0 +1,49 @@
+{
+  "role": "critic_c2",
+  "request_id": "req-0015",
+  "candidate_id": "cand-04e82b367611",
+  "round": 1,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C2.1",
+      "result": "pass",
+      "evidence": "report.md growth, margin, ratio, and valuation figures checked against model.json, forecast_assumptions.json, and valuation.json; reported figures agree with the artifacts."
+    },
+    {
+      "check_id": "C2.2",
+      "result": "pass",
+      "evidence": "All forecast segment growth rates are within mandate_bounds.forecast_bounds.segments; gross margin glide of 53.0% to 54.0% is within the 18.0%–55.0% bounds."
+    },
+    {
+      "check_id": "C2.3",
+      "result": "pass",
+      "evidence": "Forecast paths are consistent with the cited segment history and drivers: Data Center growth tapers, Client and Gaming assumes modest growth after its FY2025 rebound despite Q3 weakness, and Embedded assumes gradual recovery."
+    },
+    {
+      "check_id": "C2.4",
+      "result": "pass",
+      "evidence": "valuation.json cross_check_delta is -19.994%, within the mandate tolerance of 25.0%; report.md describes the delta as -20.0% and within tolerance."
+    },
+    {
+      "check_id": "C2.5",
+      "result": "pass",
+      "evidence": "Quarterly comparisons use prior-year quarters, nine-month comparisons use prior-year nine-month periods, and the note explicitly says the supplied comparisons do not provide a quarter-on-quarter series."
+    },
+    {
+      "check_id": "C2.6",
+      "result": "pass",
+      "evidence": "valuation.json terminal reconciliation is outside its 0.35 tolerance; report.md discloses the material divergence and gives both terminal values."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "robustness"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

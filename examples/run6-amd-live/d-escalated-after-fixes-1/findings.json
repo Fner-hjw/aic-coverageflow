@@ -1,0 +1,107 @@
+{
+  "case_id": "amd-fy2026q3r2-20261104",
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "critic_ref": "c1-5-forecast-claim",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 1,
+      "last_seen_round": 3,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the provided artifacts do not show that proposal or its paths.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths, or remove the unsupported claim.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0002",
+      "critic_ref": "c2-1-gross-margin-outlook-description",
+      "dedup_key": "critic_c2|c2.1|rounds/round-n/generator/forecast_assumptions.json,rounds/round-n/generator/model.json,rounds/round-n/generator/report.md",
+      "source_critic": "critic_c2",
+      "first_seen_round": 1,
+      "last_seen_round": 1,
+      "status": "closed",
+      "closed_by": {
+        "round": 2,
+        "critic": "critic_c2",
+        "verified_evidence": {
+          "artifact": "rounds/round-002/generator/report.md",
+          "sha256": "ff6d8b36e9bc467d6337320254c1a7af7ebaf0f62ac7a1468a06468c5e8e384f"
+        }
+      },
+      "severity": "major",
+      "summary": "The note says forecast gross margin rises from the latest-period level, but every forecast glide value is below the latest nine-month margin.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md",
+        "rounds/round-001/generator/forecast_assumptions.json",
+        "rounds/round-001/generator/model.json"
+      ],
+      "required_evidence": "Revise the outlook description to match the latest-period margin and the full forecast glide path.",
+      "owner": "model"
+    },
+    {
+      "finding_id": "fnd-0003",
+      "critic_ref": "fnd-0002",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "closed",
+      "closed_by": {
+        "round": 3,
+        "critic": "critic_c1",
+        "verified_evidence": {
+          "artifact": "rounds/round-003/generator/report.md",
+          "sha256": "fdd7cfb0bea78cb58a4baa36b3ea6d43f3e5ab6bc77aa1ecdba181a721a12247"
+        }
+      },
+      "severity": "major",
+      "summary": "The gross-margin glide values are cited to the LTM base margin, whose value does not match the stated 54.0% and 55.0%.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Cite evidence keys for the forecast gross-margin values, and show that their values match the note.",
+      "owner": "writer"
+    },
+    {
+      "finding_id": "fnd-0004",
+      "critic_ref": "c3-2-peer-price-dates",
+      "dedup_key": "critic_c3|c3.2|rounds/round-n/generator/report.md,rounds/round-n/generator/valuation.json",
+      "source_critic": "critic_c3",
+      "first_seen_round": 2,
+      "last_seen_round": 2,
+      "status": "open",
+      "closed_by": null,
+      "severity": "minor",
+      "summary": "The peer and market-price references have no visible as-of dates, so their timing relative to the cutoff cannot be verified.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md",
+        "rounds/round-002/generator/valuation.json"
+      ],
+      "required_evidence": "Show the as-of dates for the market-price and peer data and establish that each is on or before 2026-11-04.",
+      "owner": "system"
+    },
+    {
+      "finding_id": "fnd-0005",
+      "critic_ref": "fnd-0004",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "source_critic": "critic_c1",
+      "first_seen_round": 3,
+      "last_seen_round": 3,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "The terminal-growth and exit-multiple assumptions are cited to terminal-value evidence keys rather than keys matching those assumption values.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Use evidence keys whose ledger values match the stated terminal-growth and exit-multiple assumptions, and verify the cited values against valuation.json.",
+      "owner": "writer"
+    }
+  ]
+}

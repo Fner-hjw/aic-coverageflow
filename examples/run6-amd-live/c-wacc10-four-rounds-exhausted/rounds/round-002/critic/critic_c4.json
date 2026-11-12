@@ -1,0 +1,41 @@
+{
+  "role": "critic_c4",
+  "request_id": "req-0025",
+  "candidate_id": "cand-e0e6f3aa1b65",
+  "round": 2,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C4.1",
+      "result": "fail",
+      "evidence": "rounds/round-002/generator/report.md: the note refers to an “accepted forecast proposal” and “the mandate’s stated tolerance,” which are process/control references."
+    },
+    {
+      "check_id": "C4.2",
+      "result": "pass",
+      "evidence": "rounds/round-002/generator/report.md has a Risks section discussing AMD’s Data Center revenue concentration, Client and Gaming profitability, receivables and inventory, capital expenditure, cash conversion, and non-operating expense."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c4-1-round2",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process/control references to an accepted forecast proposal and mandate tolerance.",
+      "evidence": "rounds/round-002/generator/report.md: “The accepted forecast proposal” and “the mandate’s stated tolerance.”",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Revise the note to remove process/control references."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "risk_controls"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

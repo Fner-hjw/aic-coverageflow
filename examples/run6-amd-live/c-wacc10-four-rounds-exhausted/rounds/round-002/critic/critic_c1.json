@@ -1,0 +1,87 @@
+{
+  "role": "critic_c1",
+  "request_id": "req-0022",
+  "candidate_id": "cand-e0e6f3aa1b65",
+  "round": 2,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C1.1",
+      "result": "fail",
+      "evidence": "The note’s USD 488.78 closing-price claim has no matching evidence key in the artifacts; its [EV:dcf.per_diluted_share.gordon] marker supports the USD 77.92 DCF value. The 21.5x claim uses [dcf.terminal.exit_multiple.multiple], which lacks the required EV: marker."
+    },
+    {
+      "check_id": "C1.2",
+      "result": "fail",
+      "evidence": "USD 488.78 does not equal the cited DCF value of USD 77.9206. Also, the 52.0%–54.0% gross-margin glide is cited to dcf.base.gross_margin (53.7%); forecast-year gross_margin values support the glide."
+    },
+    {
+      "check_id": "C1.3",
+      "result": "pass",
+      "evidence": "The note’s source evidence keys resolve to facts or valuation artifacts tied to the supplied manifest; no cited document ID outside the manifest was identified."
+    },
+    {
+      "check_id": "C1.4",
+      "result": "pass",
+      "evidence": "The note does not fill a listed missing disclosure with a plausible value."
+    },
+    {
+      "check_id": "C1.5",
+      "result": "fail",
+      "evidence": "The claim that USD 488.78 was the closing price used at the cutoff is absent from the supplied facts, model, and valuation artifacts."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "c1-r2-1",
+      "check_id": "C1.1",
+      "severity": "major",
+      "summary": "The note gives a USD 488.78 closing price without an evidence key supporting that price.",
+      "evidence": "In the Summary, “USD 488.78 closing price used at the cutoff” is marked with [EV:dcf.per_diluted_share.gordon], whose artifact value is USD 77.9205956 per diluted share. The 21.5x claim also uses a marker without the required EV: prefix.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Provide an artifact evidence key for the cutoff closing price and cite it; use a valid [EV:key] marker for the 21.5x multiple."
+    },
+    {
+      "finding_id": "c1-r2-2",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The USD 488.78 figure does not match its cited ledger value.",
+      "evidence": "The note cites dcf.per_diluted_share.gordon for USD 488.78, while the valuation artifact records USD 77.9205956 for that key. The 52.0%–54.0% forecast gross-margin glide is also cited to dcf.base.gross_margin (53.7151%); the forecast-year gross_margin values are the supporting entries.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Cite an artifact value matching the stated price and cite forecast-year gross-margin evidence for the stated glide."
+    },
+    {
+      "finding_id": "c1-r2-3",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The stated cutoff closing price is not supported by the supplied artifacts.",
+      "evidence": "The note states a USD 488.78 closing price, but no such price appears in the supplied facts, model, or valuation artifacts.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Provide a supplied artifact supporting the cutoff closing price or remove the claim."
+    }
+  ],
+  "verified_resolutions": [
+    {
+      "finding_id": "fnd-0001",
+      "verified_evidence": {
+        "artifact": "rounds/round-002/generator/report.md",
+        "sha256": "206a254391e73ae9b0e0020166555800fab8b250e1a6dca71548be4256ba9716"
+      },
+      "check_performed": "Rechecked the revised Outlook against the supplied artifacts. It no longer states unsupported segment-specific accepted forecast rates and explicitly says the supplied evidence does not establish segment-specific forecast rates."
+    }
+  ],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "evidence_citation"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

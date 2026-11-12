@@ -1,0 +1,68 @@
+{
+  "round": 2,
+  "candidate_id": "cand-770704440d75",
+  "passed": false,
+  "results": [
+    {
+      "gate": "input_cutoff",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "facts_schema",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "citation_presence",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "period_coverage",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "forecast_bounds",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "candidate_manifest_integrity",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "recompute",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "terminal_reconciliation",
+      "ok": false,
+      "findings": [
+        {
+          "gate": "terminal_reconciliation",
+          "dedup_key": "terminal:outside-tolerance",
+          "severity": "major",
+          "summary": "exit-multiple terminal value 366,708 (multiple 21.5x) and Gordon terminal value 113,027 (growth 2.50%) differ: ratio 3.24 outside the gate limit 3.0x; the Gordon value implies an exit multiple of 6.6x and the exit multiple implies terminal growth of 9.89%",
+          "affected_artifacts": [
+            "valuation.json"
+          ],
+          "required_evidence": "terminal assumptions (exit multiple, terminal growth, WACC) that reconcile within the mandate tolerance"
+        }
+      ]
+    },
+    {
+      "gate": "report_evidence_links",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "controls_conformance",
+      "ok": true,
+      "findings": []
+    }
+  ]
+}

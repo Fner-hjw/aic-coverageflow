@@ -1,0 +1,22 @@
+{
+  "case_id": "amd-fy2026q3-20261104",
+  "findings": [
+    {
+      "finding_id": "fnd-0001",
+      "critic_ref": null,
+      "dedup_key": "gate:terminal_reconciliation|terminal:mandate-infeasible|mandate.json",
+      "source_critic": "gate:terminal_reconciliation",
+      "first_seen_round": 0,
+      "last_seen_round": 0,
+      "status": "open",
+      "closed_by": null,
+      "severity": "major",
+      "summary": "the mandate cannot pass the terminal gate: exit multiple 21.5x with WACC 13.54% and terminal growth 2.50% gives a terminal-value ratio of at least 3.09 even at EBIT/EBITDA 95%, above the gate limit 3.0x. Under this WACC and growth the exit multiple can be at most 20.9x",
+      "affected_artifacts": [
+        "mandate.json"
+      ],
+      "required_evidence": "a mandate whose exit multiple, WACC and terminal growth can reconcile within the gate limit",
+      "owner": "mandate"
+    }
+  ]
+}

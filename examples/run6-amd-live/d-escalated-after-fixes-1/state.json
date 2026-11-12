@@ -1,0 +1,382 @@
+{
+  "case_id": "amd-fy2026q3r2-20261104",
+  "status": "ESCALATED",
+  "pending": {
+    "role": "escalation",
+    "request_id": null,
+    "round": 3,
+    "retry_count": 0,
+    "case_clock_started": null,
+    "deadline": null,
+    "stage": null,
+    "rebuild_from": "writer"
+  },
+  "candidate": {
+    "candidate_id": "cand-ac968c00874f",
+    "clean_review_rounds": 0,
+    "built_round": 3,
+    "gates_passed": true,
+    "last_review_candidate": null,
+    "stall": {
+      "history": [
+        [
+          "critic_c1|c1.5|rounds/round-n/generator/report.md",
+          "critic_c2|c2.1|rounds/round-n/generator/forecast_assumptions.json,rounds/round-n/generator/model.json,rounds/round-n/generator/report.md"
+        ],
+        [
+          "critic_c1|c1.2|rounds/round-n/generator/report.md",
+          "critic_c1|c1.5|rounds/round-n/generator/report.md"
+        ],
+        [
+          "critic_c1|c1.2|rounds/round-n/generator/report.md",
+          "critic_c1|c1.5|rounds/round-n/generator/report.md"
+        ]
+      ],
+      "streak": 2
+    }
+  },
+  "budget": {
+    "rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 120.0,
+    "role_tokens_max": 1200000,
+    "approval_hours": 48.0,
+    "stall_rounds": 2,
+    "role_timeouts": {
+      "default": 240.0,
+      "ingest": 420.0,
+      "extractor": 1200.0,
+      "model": 300.0,
+      "writer": 600.0,
+      "critic": 480.0
+    },
+    "role_efforts": {
+      "extractor": "medium"
+    },
+    "call_cost_usd_max": null,
+    "case_cost_usd_max": null,
+    "used": {
+      "rounds": 3,
+      "elapsed_minutes": 16.765,
+      "tokens_by_role": {
+        "ingest": 44071,
+        "extractor": 222797,
+        "model": 98759,
+        "engines": 0,
+        "writer": 547307,
+        "critic_c1": 205509,
+        "critic_c2": 137947,
+        "critic_c3": 101842,
+        "critic_c4": 92235
+      },
+      "retries_by_role": {
+        "extractor:amd-10k-fy2025/balance_sheet": 1,
+        "extractor:amd-10k-fy2025/cash_flow": 1,
+        "writer:report_evidence_links:r1": 1,
+        "writer:report_evidence_links:r2": 2,
+        "writer": 1,
+        "writer:report_evidence_links:r3": 1
+      },
+      "grants": [],
+      "reused_roles": {
+        "ingest": 2,
+        "extractor": 2,
+        "model": 1
+      },
+      "cost_usd": 0.0
+    }
+  },
+  "inputs_manifest_ref": "inputs/manifest.json",
+  "inputs_manifest_sha256": "0860b3d289d89d6a1341ec5bea11bb83f701660308e90139c2fe58b605f6c26e",
+  "config_versions": {
+    "prompt_cards": {
+      "ingest": "1.0",
+      "extractor": "1.0",
+      "model": "1.0",
+      "writer": "1.0",
+      "critics": [
+        "1.0"
+      ]
+    },
+    "mapping_tables": "1.0",
+    "engines": "1.0",
+    "schema": "1.0"
+  },
+  "checkpoints": [
+    {
+      "ts": "2026-11-12T03:15:09Z",
+      "from": "CREATED",
+      "to": "RUNNING",
+      "verified": "case start; case clock started",
+      "state": "sha256:f4033dc01202ccede80f12dc459601f2c123c92e8b935104b4ce9aef02e62d35"
+    },
+    {
+      "ts": "2026-11-12T03:15:09Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001 build start",
+      "state": "sha256:774444094ac7a5d18a6a2047f43d7162b588ec81f97e689feaa9d019c0375908"
+    },
+    {
+      "ts": "2026-11-12T03:16:03Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/ingest-report.json",
+      "state": "sha256:596ecc084ac81e4785f35e8e49808301fc3a630d41dc5119b17811106f1b06e8"
+    },
+    {
+      "ts": "2026-11-12T03:17:47Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/facts.json",
+      "state": "sha256:c434bf402a77e645d1a625fa1f818b420f0a4d3b1919eef9d1bbb95b11ad56de"
+    },
+    {
+      "ts": "2026-11-12T03:18:35Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/forecast_assumptions.json",
+      "state": "sha256:16b595ed058d22092174d277139305132a7475bd02630b7292a0539d6bb7311f"
+    },
+    {
+      "ts": "2026-11-12T03:18:35Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/model.json",
+      "state": "sha256:c1aa8b1a077338e339aaf819be38cd21a245ad0ed622be2c7526722d0ec560ff"
+    },
+    {
+      "ts": "2026-11-12T03:21:05Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/report.md",
+      "state": "sha256:03b894c7341af5d8f64dc45556037b87f0371c04e9454bff6b88b1c73a6ec5f7"
+    },
+    {
+      "ts": "2026-11-12T03:21:05Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/generator/candidate-manifest.json",
+      "state": "sha256:7827cf34a6fc836244a969795d0dc92a85e38e1d85e442a55d42c8f3186c7c7d"
+    },
+    {
+      "ts": "2026-11-12T03:21:06Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/numerical/gates.json",
+      "state": "sha256:1c9f815ee3d91916cf36343ce3d8b4be6b913fc3bf60f8f275d7e91df59f2d02"
+    },
+    {
+      "ts": "2026-11-12T03:21:58Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c1.json",
+      "state": "sha256:9f23eeedda33b31fded46b1f1a02c3d79b3ad6530a4ccb3ed9d7b268e658f845"
+    },
+    {
+      "ts": "2026-11-12T03:21:58Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c2.json",
+      "state": "sha256:01928575e9d55d0663cad7bd51abf3c3d9fe17b78b836ea47d0c26d160f3f965"
+    },
+    {
+      "ts": "2026-11-12T03:21:58Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c3.json",
+      "state": "sha256:d01c0896abb23da4447a9167448304d764d03ee92709a507829e17f2a75cdab4"
+    },
+    {
+      "ts": "2026-11-12T03:21:58Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/critic_c4.json",
+      "state": "sha256:f66236bdf750d5408d9ea7552931884b7d39874312823efcf8649513270e68f0"
+    },
+    {
+      "ts": "2026-11-12T03:21:58Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-001/critic/merged-findings.json",
+      "state": "sha256:5aba3c2ab02467b1d9c1d527c781d9cb72b017c3a5b46a38b7565f4677efccc3"
+    },
+    {
+      "ts": "2026-11-12T03:21:58Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002 build start",
+      "state": "sha256:814e97d869bc792f88bd9078566eb0a89844a795663ed9d3094f994e768e91c2"
+    },
+    {
+      "ts": "2026-11-12T03:22:40Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/forecast_assumptions.json",
+      "state": "sha256:6e12ec7fa23b02443e5cd56a84fb3db8599eff42e2d6d33f18565e128646903b"
+    },
+    {
+      "ts": "2026-11-12T03:22:40Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/model.json",
+      "state": "sha256:48c3ae56562703b03642fa6231733b1761379513bd4c9f20133dc96822d9fc9b"
+    },
+    {
+      "ts": "2026-11-12T03:26:26Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/report.md",
+      "state": "sha256:711aa1dda705b39d77a18197d6fc15305c34ccc4008bed2898f87973d3158419"
+    },
+    {
+      "ts": "2026-11-12T03:26:26Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/generator/candidate-manifest.json",
+      "state": "sha256:16605ca596cc67df64033f46935d9cffa9fa9d08d1f7be16ff421c9329b6dece"
+    },
+    {
+      "ts": "2026-11-12T03:26:26Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/numerical/gates.json",
+      "state": "sha256:0326494bc4c10bb595bc0d7faaf9793ccf1c57b6bfb8964233d4aaa5830fba84"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c1.json",
+      "state": "sha256:10ac56ce04d2f8d52c794cccc7dbb6dd8d0992b9bd3b7b332d51e909372f287c"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c2.json",
+      "state": "sha256:b3f61d3bf7a915a573e36f8f02e95e72184f1d895526167ae394931f08d83217"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c3.json",
+      "state": "sha256:1a2b04aa76c7d128c8b155fc4e0f19dfecafcf9cccbfbf7504579a43e547d426"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/critic_c4.json",
+      "state": "sha256:e6dec85adde90688ba1f5446d48b336ea898ac10ff05a7247c74808d02a0b033"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-002/critic/merged-findings.json",
+      "state": "sha256:44445686ef8e1aeff5a66afee4c0dae64bd05b87211c738f07e3f7684c59bb5d"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003 build start",
+      "state": "sha256:e42ccbbabdecaa95225eaf3e5a691cb5bab2fd361115135a31c239c32588975f"
+    },
+    {
+      "ts": "2026-11-12T03:27:07Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/model.json",
+      "state": "sha256:31559d18a88cecf3f487e53076f56ba275944ed72a41376d9d72463ce9302cb7"
+    },
+    {
+      "ts": "2026-11-12T03:30:47Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/report.md",
+      "state": "sha256:b883e4eb20324dd39639b434f2467bf87a27e7036799146f56bc805aa2fb45ed"
+    },
+    {
+      "ts": "2026-11-12T03:30:47Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/generator/candidate-manifest.json",
+      "state": "sha256:c7c4c3ed3149bfcd9d85a8c88e868ff467c02e85db253941bd47b30a6017b8de"
+    },
+    {
+      "ts": "2026-11-12T03:30:47Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/numerical/gates.json",
+      "state": "sha256:2a7955cf4f4218e1eac3d3d1e757c089e9bdc9f043c531acdfe141241ba2e866"
+    },
+    {
+      "ts": "2026-11-12T03:31:54Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/critic/critic_c1.json",
+      "state": "sha256:dec4a06246d259ae9b692a523a70c5878d57eb7c3b67f0c58f864ec8cd9a15c9"
+    },
+    {
+      "ts": "2026-11-12T03:31:54Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/critic/critic_c2.json",
+      "state": "sha256:67311db979c9ea2a45c1f307936ec5b2e3ded301191be0c99ae7cf6c3c8093b9"
+    },
+    {
+      "ts": "2026-11-12T03:31:54Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/critic/critic_c3.json",
+      "state": "sha256:2c9096c7a9fdb88a9425728e7122a3e305a6059a5114746faa391bd53fad7dd5"
+    },
+    {
+      "ts": "2026-11-12T03:31:54Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/critic/critic_c4.json",
+      "state": "sha256:88b65caaec6d05e6ac6d822fba5cd08665c6b4a5a7926e377fa23abb0ab8bc33"
+    },
+    {
+      "ts": "2026-11-12T03:31:54Z",
+      "from": "RUNNING",
+      "to": "RUNNING",
+      "verified": "rounds/round-003/critic/merged-findings.json",
+      "state": "sha256:3222197a1a0e672126c0bfd0cafc0d9902d969004d842dbc8bc15ebf189a957c"
+    },
+    {
+      "ts": "2026-11-12T03:31:54Z",
+      "from": "RUNNING",
+      "to": "ESCALATED",
+      "verified": "escalated: STALLED",
+      "state": "sha256:cbacccd8f8d3aa26eaa6df70234dd54c6c32da31e643c57f223badf2e49ae33d"
+    }
+  ],
+  "reason": {
+    "code": "STALLED",
+    "message": "stalled: the set of open blocking findings (2) did not shrink for 2 consecutive reviewed rounds; the candidate passed every gate and was fully reviewed, so it is escalated for human resolution with 2 unresolved blocking finding(s)",
+    "detail": {
+      "cause": {
+        "code": "STALLED",
+        "message": "stalled: the set of open blocking findings (2) did not shrink for 2 consecutive reviewed rounds",
+        "detail": {
+          "stall_rounds": 2,
+          "open_blocking_keys": [
+            "critic_c1|c1.2|rounds/round-n/generator/report.md",
+            "critic_c1|c1.5|rounds/round-n/generator/report.md"
+          ]
+        }
+      },
+      "blocking_finding_ids": [
+        "fnd-0001",
+        "fnd-0005"
+      ]
+    }
+  },
+  "updated_at": "2026-11-12T03:31:54Z",
+  "backend": "codex"
+}

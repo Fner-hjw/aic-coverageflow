@@ -1,0 +1,29 @@
+{
+  "role": "critic_c3",
+  "request_id": "req-0037",
+  "candidate_id": "cand-ac968c00874f",
+  "round": 3,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C3.1",
+      "result": "pass",
+      "evidence": "The note references Q3 2026 and FY2025 results and identifies the cutoff as 2026-11-04. No post-cutoff fact or event is referenced."
+    },
+    {
+      "check_id": "C3.2",
+      "result": "pass",
+      "evidence": "The note contains a peer valuation band but no dated price or peer block after the 2026-11-04 cutoff; its report header identifies that cutoff."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "timing_cutoff"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

@@ -1,0 +1,45 @@
+{
+  "round": 1,
+  "candidate_id": "cand-b509cb461bbe",
+  "findings": [
+    {
+      "finding_id": "c1-1",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note states segment-specific accepted forecast assumptions that are absent from the supplied artifacts.",
+      "evidence": "report.md, Outlook: “It assumes more restrained growth for Client and Gaming” and “modest growth for Embedded”; cited keys segments.client_and_gaming.operating_income and segments.embedded.revenue show historical series, not proposal assumptions. valuation.json does not provide segment-specific forecast growth paths.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the segment-specific forecast assumptions in a supplied artifact and cite the corresponding evidence keys, or remove the unsupported statements.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "c4-1",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process language about verification and proposal acceptance.",
+      "evidence": "report.md: “verified quarterly series supplied for this note”; “accepted forecast proposal”; “The supplied verified evidence does not include…”",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Revise the note to remove process and control language.",
+      "source_critic": "critic_c4",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": false,
+  "fresh_context_proofs": [
+    "critic_c1|req-0013|fresh",
+    "critic_c2|req-0014|fresh",
+    "critic_c3|req-0015|fresh",
+    "critic_c4|req-0016|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

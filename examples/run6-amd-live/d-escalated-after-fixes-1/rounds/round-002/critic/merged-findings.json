@@ -1,0 +1,63 @@
+{
+  "round": 2,
+  "candidate_id": "cand-5c1f9a7c4fdb",
+  "findings": [
+    {
+      "finding_id": "fnd-0002",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The gross-margin glide values are cited to the LTM base margin, whose value does not match the stated 54.0% and 55.0%.",
+      "evidence": "report.md: “begins at 54.0%, rises to 55.0%” cites [EV:dcf.base.gross_margin]; valuation.json dcf.base.gross_margin is 0.537151, while the forecast values appear under dcf.years[].gross_margin.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Cite evidence keys for the forecast gross-margin values, and show that their values match the note.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "conflict_group": "numbers:rounds/round-002/generator/report.md",
+      "disagreeing_critics": [
+        "critic_c2"
+      ]
+    },
+    {
+      "finding_id": "fnd-0001",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the supplied artifacts do not show that proposal or its individual segment paths.",
+      "evidence": "round-002 report.md: “Data Center growth begins strongest and moderates over time; Client and Gaming assumes measured growth ... Embedded assumes restrained growth.” The supplied valuation.json shows blended_growth and segment weights but no individual proposal growth paths; forecast_assumptions.json is listed only by hash.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths, or remove the unsupported claim.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "c3-2-peer-price-dates",
+      "check_id": "C3.2",
+      "severity": "minor",
+      "summary": "The peer and market-price references have no visible as-of dates, so their timing relative to the cutoff cannot be verified.",
+      "evidence": "report.md Valuation section reports peer implied prices and refers to the market price used in valuation without dates; valuation.json header provides cutoff 2026-11-04 but no underlying data dates.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md",
+        "rounds/round-002/generator/valuation.json"
+      ],
+      "required_evidence": "Show the as-of dates for the market-price and peer data and establish that each is on or before 2026-11-04.",
+      "source_critic": "critic_c3",
+      "dedup_key": "critic_c3|c3.2|rounds/round-n/generator/report.md,rounds/round-n/generator/valuation.json"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": true,
+  "fresh_context_proofs": [
+    "critic_c1|req-0025|fresh",
+    "critic_c2|req-0026|fresh",
+    "critic_c3|req-0027|fresh",
+    "critic_c4|req-0028|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

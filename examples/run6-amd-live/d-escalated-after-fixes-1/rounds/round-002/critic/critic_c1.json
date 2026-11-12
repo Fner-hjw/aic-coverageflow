@@ -1,0 +1,67 @@
+{
+  "role": "critic_c1",
+  "request_id": "req-0025",
+  "candidate_id": "cand-5c1f9a7c4fdb",
+  "round": 2,
+  "verdict": "findings",
+  "checks": [
+    {
+      "check_id": "C1.1",
+      "result": "pass",
+      "evidence": "The note's numeric claims have [EV:key] markers, and each cited key exists in the evidence index."
+    },
+    {
+      "check_id": "C1.2",
+      "result": "fail",
+      "evidence": "The note says the gross-margin glide begins at 54.0% and rises to 55.0%, but cites [EV:dcf.base.gross_margin], which is 53.7% in valuation.json. The forecast year values are in dcf.years[].gross_margin."
+    },
+    {
+      "check_id": "C1.3",
+      "result": "pass",
+      "evidence": "The note cites artifact evidence keys and does not cite any document IDs outside the input manifest."
+    },
+    {
+      "check_id": "C1.4",
+      "result": "pass",
+      "evidence": "The note does not fill a missing disclosure with a plausible value."
+    },
+    {
+      "check_id": "C1.5",
+      "result": "fail",
+      "evidence": "The note says the accepted proposal's segment paths show different growth profiles, but the supplied valuation artifact contains blended growth and segment weights, not the proposal's individual segment growth paths. The forecast proposal artifact itself is not supplied."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "fnd-0002",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The gross-margin glide values are cited to the LTM base margin, whose value does not match the stated 54.0% and 55.0%.",
+      "evidence": "report.md: “begins at 54.0%, rises to 55.0%” cites [EV:dcf.base.gross_margin]; valuation.json dcf.base.gross_margin is 0.537151, while the forecast values appear under dcf.years[].gross_margin.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Cite evidence keys for the forecast gross-margin values, and show that their values match the note."
+    },
+    {
+      "finding_id": "fnd-0001",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The note asserts a tapering segment growth path in the accepted forecast proposal, but the supplied artifacts do not show that proposal or its individual segment paths.",
+      "evidence": "round-002 report.md: “Data Center growth begins strongest and moderates over time; Client and Gaming assumes measured growth ... Embedded assumes restrained growth.” The supplied valuation.json shows blended_growth and segment weights but no individual proposal growth paths; forecast_assumptions.json is listed only by hash.",
+      "affected_artifacts": [
+        "rounds/round-001/generator/report.md"
+      ],
+      "required_evidence": "Provide the forecast proposal artifact showing the segment growth paths, or remove the unsupported claim."
+    }
+  ],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "evidence_citation"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

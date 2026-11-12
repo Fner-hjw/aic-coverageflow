@@ -1,0 +1,58 @@
+{
+  "case_id": "amd-fy2026q3-20261104",
+  "terminal": "BLOCKED",
+  "candidate_id": null,
+  "report_version": null,
+  "reason": {
+    "code": "needs_mandate_change",
+    "message": "1 open blocking finding(s) cannot be repaired by a role and need a mandate change: fnd-0001 (mandate): the mandate cannot pass the terminal gate: exit multiple 21.5x with WACC 13.54% and terminal growth 2.50% gives a terminal-value ratio of at least 3.09 even at EBIT/EBITDA 95%, above the gate limit 3.0x. Under this WACC and growth the exit multiple can be at most 20.9x. Written to evolution-input.json.",
+    "detail": {
+      "findings": [
+        {
+          "finding_id": "fnd-0001",
+          "owner": "mandate",
+          "severity": "major",
+          "summary": "the mandate cannot pass the terminal gate: exit multiple 21.5x with WACC 13.54% and terminal growth 2.50% gives a terminal-value ratio of at least 3.09 even at EBIT/EBITDA 95%, above the gate limit 3.0x. Under this WACC and growth the exit multiple can be at most 20.9x",
+          "source_critic": "gate:terminal_reconciliation",
+          "affected_artifacts": [
+            "mandate.json"
+          ],
+          "required_evidence": "a mandate whose exit multiple, WACC and terminal growth can reconcile within the gate limit",
+          "dedup_key": "gate:terminal_reconciliation|terminal:mandate-infeasible|mandate.json",
+          "first_seen_round": 0,
+          "last_seen_round": 0
+        }
+      ],
+      "candidate_id": null,
+      "evolution_input": "evolution-input.json",
+      "other_open_blocking_finding_ids": []
+    }
+  },
+  "budget_final": {
+    "rounds_max": 4,
+    "retries_max": 3,
+    "case_minutes": 120.0,
+    "role_tokens_max": 1200000,
+    "approval_hours": 48.0,
+    "stall_rounds": 2,
+    "role_timeouts": {
+      "default": 240.0,
+      "ingest": 420.0,
+      "extractor": 1200.0,
+      "model": 300.0,
+      "writer": 600.0,
+      "critic": 480.0
+    },
+    "role_efforts": {
+      "extractor": "medium"
+    },
+    "call_cost_usd_max": null,
+    "case_cost_usd_max": null,
+    "used": {
+      "rounds": 0,
+      "elapsed_minutes": 0.0,
+      "tokens_by_role": {}
+    }
+  },
+  "closed_ts": "2026-11-12T02:53:05Z"
+}

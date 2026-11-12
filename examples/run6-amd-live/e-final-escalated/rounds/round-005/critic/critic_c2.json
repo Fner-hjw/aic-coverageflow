@@ -1,0 +1,49 @@
+{
+  "role": "critic_c2",
+  "request_id": "req-0045",
+  "candidate_id": "cand-aa8902380152",
+  "round": 5,
+  "verdict": "clean",
+  "checks": [
+    {
+      "check_id": "C2.1",
+      "result": "pass",
+      "evidence": "report.md growth, margin, ratio, and valuation figures match model.json and valuation.json, including Q3 gross margin 53.9% vs 51.7%, operating margin 21.2% vs 13.7%, and the 18.74x–153.83x EV/EBITDA band."
+    },
+    {
+      "check_id": "C2.2",
+      "result": "pass",
+      "evidence": "forecast_assumptions.json segment growth paths stay within mandate_bounds.forecast_bounds: Data Center -5% to 35%, Client and Gaming -10% to 20%, Embedded -20% to 5%. Gross margin path 53% to 54% is within the 18%–55% limits."
+    },
+    {
+      "check_id": "C2.3",
+      "result": "pass",
+      "evidence": "forecast_assumptions.json growth paths are consistent with the cited revenue history and drivers: Data Center growth moderates after strong recent growth; Client and Gaming assumes modest growth after the Q3 decline; Embedded assumes gradual recovery after recent increases."
+    },
+    {
+      "check_id": "C2.4",
+      "result": "pass",
+      "evidence": "valuation.json cross_check_delta is -19.994 percentage points and within_tolerance is true against the mandate's 25% tolerance. report.md discloses this delta and the terminal-method divergence."
+    },
+    {
+      "check_id": "C2.5",
+      "result": "pass",
+      "evidence": "report.md compares Q3 2026 with Q3 2025 and nine-month 2026 with nine-month 2025. Reported Q3 revenue growth of 44.7% and operating income growth of 123.0% match model.json YoY values."
+    },
+    {
+      "check_id": "C2.6",
+      "result": "pass",
+      "evidence": "valuation.json terminal reconciliation is outside tolerance (ratio 2.396 vs tolerance 0.35) and sets target_flag to terminal_values_outside_tolerance. report.md discloses the terminal values and says the gap is outside tolerance."
+    }
+  ],
+  "findings": [],
+  "verified_resolutions": [],
+  "coverage": {
+    "rubric_version": "1.1",
+    "areas_checked": [
+      "robustness"
+    ]
+  },
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2"
+}

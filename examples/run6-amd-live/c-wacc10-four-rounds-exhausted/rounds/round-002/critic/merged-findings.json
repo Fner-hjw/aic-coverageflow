@@ -1,0 +1,75 @@
+{
+  "round": 2,
+  "candidate_id": "cand-e0e6f3aa1b65",
+  "findings": [
+    {
+      "finding_id": "c1-r2-1",
+      "check_id": "C1.1",
+      "severity": "major",
+      "summary": "The note gives a USD 488.78 closing price without an evidence key supporting that price.",
+      "evidence": "In the Summary, “USD 488.78 closing price used at the cutoff” is marked with [EV:dcf.per_diluted_share.gordon], whose artifact value is USD 77.9205956 per diluted share. The 21.5x claim also uses a marker without the required EV: prefix.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Provide an artifact evidence key for the cutoff closing price and cite it; use a valid [EV:key] marker for the 21.5x multiple.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.1|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "c1-r2-2",
+      "check_id": "C1.2",
+      "severity": "major",
+      "summary": "The USD 488.78 figure does not match its cited ledger value.",
+      "evidence": "The note cites dcf.per_diluted_share.gordon for USD 488.78, while the valuation artifact records USD 77.9205956 for that key. The 52.0%–54.0% forecast gross-margin glide is also cited to dcf.base.gross_margin (53.7151%); the forecast-year gross_margin values are the supporting entries.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Cite an artifact value matching the stated price and cite forecast-year gross-margin evidence for the stated glide.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.2|rounds/round-n/generator/report.md",
+      "conflict_group": "numbers:rounds/round-002/generator/report.md",
+      "disagreeing_critics": [
+        "critic_c2"
+      ]
+    },
+    {
+      "finding_id": "c1-r2-3",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The stated cutoff closing price is not supported by the supplied artifacts.",
+      "evidence": "The note states a USD 488.78 closing price, but no such price appears in the supplied facts, model, or valuation artifacts.",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Provide a supplied artifact supporting the cutoff closing price or remove the claim.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "c4-1-round2",
+      "check_id": "C4.1",
+      "severity": "minor",
+      "summary": "The note includes process/control references to an accepted forecast proposal and mandate tolerance.",
+      "evidence": "rounds/round-002/generator/report.md: “The accepted forecast proposal” and “the mandate’s stated tolerance.”",
+      "affected_artifacts": [
+        "rounds/round-002/generator/report.md"
+      ],
+      "required_evidence": "Revise the note to remove process/control references.",
+      "source_critic": "critic_c4",
+      "dedup_key": "critic_c4|c4.1|rounds/round-n/generator/report.md"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": true,
+  "fresh_context_proofs": [
+    "critic_c1|req-0022|fresh",
+    "critic_c2|req-0023|fresh",
+    "critic_c3|req-0024|fresh",
+    "critic_c4|req-0025|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

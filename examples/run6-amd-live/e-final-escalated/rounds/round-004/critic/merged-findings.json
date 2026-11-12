@@ -1,0 +1,45 @@
+{
+  "round": 4,
+  "candidate_id": "cand-1ac1e69e237b",
+  "findings": [
+    {
+      "finding_id": "c1-1",
+      "check_id": "C1.1",
+      "severity": "minor",
+      "summary": "The cutoff date in the report header lacks an evidence key.",
+      "evidence": "report.md header: “Cutoff: 2026-11-04”; no [EV:key] marker accompanies the date.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Add an evidence key for the cutoff date or remove the unanchored date.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.1|rounds/round-n/generator/report.md"
+    },
+    {
+      "finding_id": "c1-2",
+      "check_id": "C1.5",
+      "severity": "major",
+      "summary": "The report describes the forecast as accepted without support in the provided artifacts.",
+      "evidence": "report.md: “The accepted forecast”; forecast_assumptions.json contains forecast assumptions but no acceptance status.",
+      "affected_artifacts": [
+        "rounds/round-003/generator/report.md"
+      ],
+      "required_evidence": "Remove “accepted” or provide an artifact that establishes the forecast’s acceptance status.",
+      "source_critic": "critic_c1",
+      "dedup_key": "critic_c1|c1.5|rounds/round-n/generator/report.md"
+    }
+  ],
+  "clean": false,
+  "coverage_ok": true,
+  "reviewer_count": 4,
+  "conflicts_kept": false,
+  "fresh_context_proofs": [
+    "critic_c1|req-0035|fresh",
+    "critic_c2|req-0036|fresh",
+    "critic_c3|req-0037|fresh",
+    "critic_c4|req-0038|fresh"
+  ],
+  "merged_by": "controller",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.0"
+}

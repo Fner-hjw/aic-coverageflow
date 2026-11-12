@@ -1,0 +1,57 @@
+{
+  "round": 3,
+  "candidate_id": "cand-ac968c00874f",
+  "passed": true,
+  "results": [
+    {
+      "gate": "input_cutoff",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "facts_schema",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "citation_presence",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "period_coverage",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "forecast_bounds",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "candidate_manifest_integrity",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "recompute",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "terminal_reconciliation",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "report_evidence_links",
+      "ok": true,
+      "findings": []
+    },
+    {
+      "gate": "controls_conformance",
+      "ok": true,
+      "findings": []
+    }
+  ]
+}

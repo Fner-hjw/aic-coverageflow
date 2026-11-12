@@ -1,0 +1,116 @@
+{
+  "role": "model",
+  "request_id": "req-0033",
+  "candidate_id": "cand-18bae76f0e90",
+  "horizon_years": 5,
+  "segments": [
+    {
+      "segment": "Data Center",
+      "growth": [
+        0.25,
+        0.2,
+        0.15,
+        0.12,
+        0.1
+      ],
+      "drivers": [
+        {
+          "text": "FY2023–FY2025 revenue rose from 6496 to 12579 to 16635 USDmm; 2026 Q3 revenue was 8546 USDmm versus 4341 USDmm a year earlier, and nine-month revenue was 21039 USDmm versus 11255 USDmm. The forecast starts below the latest reported growth and moderates over the horizon.",
+          "citation": {
+            "doc_id": "amd-10k-fy2025",
+            "slice_id": "amd-10k-fy2025/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Data Center revenue"
+          }
+        },
+        {
+          "text": "2026 nine-month operating income was 6584 USDmm versus 1851 USDmm in the prior-year period, supporting continued growth while the revenue growth assumption tapers.",
+          "citation": {
+            "doc_id": "amd-10q-2026q3",
+            "slice_id": "amd-10q-2026q3/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Data Center operating income"
+          }
+        }
+      ]
+    },
+    {
+      "segment": "Client and Gaming",
+      "growth": [
+        0.08,
+        0.06,
+        0.05,
+        0.04,
+        0.03
+      ],
+      "drivers": [
+        {
+          "text": "FY2023–FY2025 revenue was 10863, 9649, and 14550 USDmm; 2026 Q3 revenue was 3722 USDmm versus 4048 USDmm a year earlier, while nine-month revenue was 11168 USDmm versus 10610 USDmm. The moderate forecast reflects the mixed annual and current-period record.",
+          "citation": {
+            "doc_id": "amd-10k-fy2025",
+            "slice_id": "amd-10k-fy2025/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Total Client and Gaming revenue"
+          }
+        },
+        {
+          "text": "Nine-month operating income was 1730 USDmm versus 2130 USDmm in the prior-year period, a reason to keep forecast growth below the mandate ceiling.",
+          "citation": {
+            "doc_id": "amd-10q-2026q3",
+            "slice_id": "amd-10q-2026q3/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Client and Gaming operating income"
+          }
+        }
+      ]
+    },
+    {
+      "segment": "Embedded",
+      "growth": [
+        0.05,
+        0.03,
+        0.02,
+        0.02,
+        0.02
+      ],
+      "drivers": [
+        {
+          "text": "FY2023–FY2025 revenue was 5321, 3557, and 3454 USDmm; 2026 Q3 revenue was 1109 USDmm versus 857 USDmm a year earlier, and nine-month revenue was 2959 USDmm versus 2504 USDmm. The forecast assumes modest growth and gradual moderation given the longer-term decline and recent recovery.",
+          "citation": {
+            "doc_id": "amd-10k-fy2025",
+            "slice_id": "amd-10k-fy2025/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Embedded revenue"
+          }
+        },
+        {
+          "text": "Nine-month operating income was 1177 USDmm versus 886 USDmm in the prior-year period, supporting a modest recovery assumption.",
+          "citation": {
+            "doc_id": "amd-10q-2026q3",
+            "slice_id": "amd-10q-2026q3/SEG",
+            "anchor": "NOTE 4 – Segment Reporting",
+            "locator": "Embedded operating income"
+          }
+        }
+      ]
+    }
+  ],
+  "margin_glide": {
+    "gross": [
+      0.52,
+      0.525,
+      0.53,
+      0.535,
+      0.54
+    ]
+  },
+  "terminal_basis": "mandate",
+  "conformance": "schema 1.0",
+  "prompt_version": "1.2",
+  "provenance": {
+    "cutoff_date": "2026-11-04",
+    "bundle_id": "amd-2026-11",
+    "bundle_sha256": "a529f4f58c8903af822fcb5b11d579aa534fd9f0672a4e8d2eb543b331d45f98",
+    "input_manifest_sha256": "961b47e8fa6092bb9317dcfbe94396feb46410ad9b47a36dadb6352a99db271d"
+  }
+}
