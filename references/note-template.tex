@@ -1,4 +1,4 @@
-%% CoverageFlow equity research note, page-1 (cover) template.
+%% CoverageFlow equity research note template (cover, body, controls page).
 %% Filled by coverageflow/render_note_tex.py from a report_doc dict.
 %% Prose: XCharter 10pt, ragged-right, hyphenation on.  Data: Source Sans Pro.
 \documentclass[10pt,a4paper]{article}
@@ -17,11 +17,13 @@
 \usepackage{tikz}
 \usepackage{etoolbox}
 \usepackage{colortbl,booktabs}
+\usepackage{multicol,tabularx,needspace,graphicx}
+\setlength{\multicolsep}{3pt plus 1pt}\setlength{\columnsep}{7mm}\setlength{\columnseprule}{0.4pt}\def\columnseprulecolor{\color{hair}}
 
-\definecolor{navy}{HTML}{1F3A5F}
-\definecolor{ink}{HTML}{1B1B1B}
-\definecolor{mute}{HTML}{5E6670}
-\definecolor{hair}{HTML}{B9BEC4}
+\definecolor{accent}{HTML}{1A8A4D}
+\definecolor{ink}{HTML}{1C2733}
+\definecolor{mute}{HTML}{51606F}
+\definecolor{hair}{HTML}{CFD8DF}
 \color{ink}
 
 \newif\ifdraft
@@ -29,38 +31,41 @@
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0pt}
-\setlength{\emergencystretch}{1.5em}
+\setlength{\emergencystretch}{1.5em}\hfuzz=0.5pt
 \pretolerance=-1 \tolerance=1200
 \hyphenpenalty=50 \exhyphenpenalty=50
 \renewcommand{\arraystretch}{1.0}
 
-%% ---- running header / footer
+%% running header / footer
 \pagestyle{fancy}\fancyhf{}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0pt}
 \let\origheadrule\headrule
 \renewcommand{\headrule}{\color{hair}\origheadrule}
 \fancyhead[L]{\sffamily\fontsize{7.5}{9}\selectfont\color{mute}{{HEADER_LEFT}}}
-\fancyhead[R]{\sffamily\fontsize{8}{9}\selectfont\bfseries\color{navy}{{TICKER}}}
+\fancyhead[R]{\sffamily\fontsize{8}{9}\selectfont\bfseries\color{accent}{{TICKER}}}
 \fancyfoot[L]{\sffamily\fontsize{7}{8.5}\selectfont\color{mute}{{FOOTER_STATUS}}}
-\fancyfoot[R]{\sffamily\fontsize{7}{8.5}\selectfont\color{mute}\thepage}
+\fancyfoot[R]{\sffamily\fontsize{7}{8.5}\selectfont\color{mute}\thepage\,/\,\pageref{LastPage}}
 \fancyfoot[C]{}
 
-%% ---- draft watermark (light, diagonal)
+%% draft watermark (light, diagonal, foreground: sits above the figure)
 \ifdraft
-\AddToShipoutPictureBG*{%
-  \AtPageCenter{\makebox(0,0){\rotatebox{54}{%
-    \fontsize{150}{150}\selectfont\sffamily\bfseries\color{black!7}DRAFT}}}}
+\AddToShipoutPictureFG{%
+  \AtPageCenter{\begin{tikzpicture}[overlay]
+    \node[opacity=0.07,text=black,rotate=54,inner sep=0pt] at (0,0)
+      {\fontsize{150}{150}\selectfont\sffamily\bfseries DRAFT};
+  \end{tikzpicture}}}
 \fi
 
-%% ---- small helpers
+%% small helpers
 \newcommand{\hrl}[3]{\par\nointerlineskip\vspace{#1}\noindent{\color{#2}\rule{\linewidth}{#3}}\par\nointerlineskip}
-\newcommand{\sech}[1]{\par\vspace{10pt}\noindent{\sffamily\fontsize{7.5}{9}\selectfont\bfseries\color{navy}\textls[90]{\MakeUppercase{#1}}}\hrl{2pt}{navy}{0.6pt}\vspace{4pt}}
-\renewcommand{\cite}[1]{\textsuperscript{\sffamily\color{navy}\fontsize{6.2}{6}\selectfont #1}}
+\newcommand{\sech}[1]{\par\vspace{10pt}\noindent{\sffamily\fontsize{7.5}{9}\selectfont\bfseries\color{accent}\textls[90]{\MakeUppercase{#1}}}\hrl{2pt}{accent}{0.6pt}\vspace{4pt}}
+\renewcommand{\cite}[1]{\textsuperscript{\sffamily\color{accent}\fontsize{6.2}{6}\selectfont #1}}
 \newcommand{\kv}[3]{{\sffamily\noindent{\fontsize{8}{10}\selectfont\color{mute}#1}\hfill{\fontsize{8.5}{10}\selectfont\bfseries#2}\par
   \ifblank{#3}{}{\noindent{\fontsize{6.5}{8}\selectfont\color{mute}\hfill#3}\par}}%
   \hrl{3pt}{hair}{0.3pt}\vspace{3pt}}
-\newcommand{\figtitle}[1]{\noindent{\sffamily\fontsize{7.5}{9}\selectfont\bfseries\color{navy}#1\par}\vspace{2pt}}
+\newcommand{\sectitle}[1]{\par\Needspace{40mm}\vspace{9pt}\noindent{\sffamily\fontsize{12}{14}\selectfont\bfseries\color{ink}#1}\hrl{3pt}{accent}{0.6pt}\vspace{2pt}\fontsize{10}{13}\selectfont\setlength{\parskip}{4pt}\RaggedRight}
+\newcommand{\figtitle}[1]{\noindent{\sffamily\fontsize{7.5}{9}\selectfont\bfseries\color{accent}#1\par}\vspace{2pt}}
 
 \begin{document}
 \thispagestyle{fancy}
@@ -72,35 +77,35 @@
 \noindent
 \begin{minipage}[t][\colh][t]{\mainw}
 \RaggedRight
-%% -- kicker, headline, byline
-{\sffamily\fontsize{8}{10}\selectfont\bfseries\color{navy}\textls[100]{\MakeUppercase{{{KICKER}}}}}\par
+%% kicker, headline, byline
+{\sffamily\fontsize{8}{10}\selectfont\bfseries\color{accent}\textls[100]{\MakeUppercase{{{KICKER}}}}}\par
 \vspace{3pt}
 {\sffamily\fontsize{18.5}{21.5}\selectfont\bfseries\color{ink}{{HEADLINE}}\par}
 \vspace{5pt}
 {\sffamily\fontsize{7.5}{9.5}\selectfont\color{mute}{{BYLINE}}\par}
 \hrl{3pt}{hair}{0.4pt}
 
-%% -- key points
+%% key points
 \vspace{7pt}
 \begin{itemize}[leftmargin=10pt,labelwidth=6pt,labelsep=4pt,itemsep=3pt,parsep=0pt,topsep=0pt,
   label={\raisebox{0.25ex}{\rule{3.2pt}{3.2pt}}}]
 {{KEY_POINTS}}
 \end{itemize}
 
-%% -- summary
+%% summary
 \sech{Summary}
 \fontsize{10}{13}\selectfont
 {{SUMMARY}}
 
-%% -- figure
+%% figure
 {{FIGURE}}
 
-%% -- sources (grouped)
+%% sources (grouped)
 \vspace{2pt}
 {{SOURCES}}
 
 \vfill
-%% -- status line (hairline box, unfilled)
+%% status line (hairline box, unfilled)
 {{STATUS_BOX}}
 \end{minipage}%
 \hspace{\gapw}%
@@ -114,4 +119,7 @@
 \vspace{\fill}
 {\RaggedRight\sffamily\fontsize{6.3}{7.8}\selectfont\color{mute}{{DISCLAIMER}}\par}
 
+{{BODY}}
+
+\label{LastPage}
 \end{document}

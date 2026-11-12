@@ -1,9 +1,10 @@
 """Smoke tests for export_dossier (owner: stream A5).
 
-Renders the GS/MS-style dossier from a minimal, contract-shaped case tree
-(same artifact shapes the orchestrator produces), asserts every template
-token is filled and the key numbers land verbatim from the evidence
-artifacts, and - when pdflatex is installed - compiles the PDF.
+Renders the research note from a minimal, contract-shaped case tree (same
+artifact shapes the orchestrator produces), asserts every template token is
+filled and the key numbers land verbatim from the evidence artifacts, and
+when pdflatex is installed compiles the PDF.  Layout and content of the note
+itself are covered by tests/test_report_doc.py.
 """
 
 from __future__ import annotations
@@ -16,8 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from coverageflow.export_dossier import (_format_evidence_reference, build_dossier, collect_case,
-                                          render_dossier_tex)
+from coverageflow.export_dossier import build_dossier, collect_case, render_dossier_tex
 
 CUT = "intc-fy2026q3-20261030"
 
@@ -117,27 +117,6 @@ def make_mini_case(root: Path) -> Path:
 
 
 class TestRenderDossier:
-    def test_references_distinguish_filings_calculations_and_missing_sources(self):
-        evidence = {
-            "manifest": {"documents": [{"doc_id": "filing", "form": "10-Q",
-                "filed": "2026-10-30", "source_url": "https://www.sec.gov/example.htm"}]},
-            "facts": {"facts": [{"field": "income.revenue", "period": "2026-Q3",
-                "citation": {"doc_id": "filing", "anchor": "Income statement", "locator": "line 3"}},
-                {"field": "income.revenue", "period": "2025-Q3",
-                 "citation": {"doc_id": "filing", "anchor": "Income statement", "locator": "line 3"}}]},
-            "model": {"derivations": {"derived.margin": "income.profit / income.revenue"}},
-            "valuation": {"dcf": {"price": 12}},
-        }
-        filing = _format_evidence_reference("income.revenue", 1, evidence)
-        assert "Income statement" in filing and "line 3" in filing
-        assert r"\href{https://www.sec.gov/example.htm}" in filing
-        assert filing.count("Income statement") == 1
-        calculation = _format_evidence_reference("derived.margin", 2, evidence)
-        assert "Model calculation" in calculation and "income / profit / income / revenue" in calculation
-        assert "Source not resolved in candidate facts" in calculation
-        assert "Valuation calculation" in _format_evidence_reference("dcf.price", 3, evidence)
-        assert "Unresolved" in _format_evidence_reference("missing.field", 4, evidence)
-
     def test_collect_and_fill_all_tokens(self, tmp_path: Path):
         case = make_mini_case(tmp_path)
         ev = collect_case(case)
@@ -147,14 +126,12 @@ class TestRenderDossier:
         assert not re.findall(r"\{\{[A-Z_0-9]+\}\}", tex)
         # key numbers verbatim from the evidence artifacts
         assert "13,500" in tex          # revenue 2026-Q3 (mm)
-        assert "14.40" in tex           # DCF per share exit multiple
-        assert "Intel Corporation" in tex
+        assert "14.40" in tex           # DCF per share, exit multiple (bridge exhibit)
         assert "intc-10q-2026q3" in tex          # input table row
-        assert "aaaaaaaaaaaaaaaa" in tex         # manifest sha (16 chars)
-        assert "Gaetano Marco Chiantia" in tex   # analyst from approval
-        assert r"\evref{1}" in tex
-        assert "Underlying source not resolved for this field" in tex
-        assert "2026-10-30" in tex
+        assert "aaaaaaaaaaaa" in tex             # manifest sha (first 12 characters)
+        assert "Gaetano Marco Chiantia" in tex   # approver from the decision record
+        assert "2026-10-30" in tex or "30 Oct 2026" in tex
+        assert "\\drafttrue" not in tex          # approved case: no watermark
 
     def test_build_writes_tex_without_pdf_when_no_latex(self, tmp_path,
                                                         monkeypatch):
@@ -172,7 +149,6 @@ class TestRenderDossier:
             "## Summary\nOnly one section.\n", encoding="utf-8")
         tex = render_dossier_tex(collect_case(case))
         assert "Only one section." in tex
-        assert "No evidence references in this report" in tex
 
 
 class TestPdfCompile:
@@ -194,4 +170,7 @@ class TestPdfCompile:
              "--case", str(case)],
             capture_output=True, text=True, cwd=str(Path(__file__).parent.parent))
         assert proc.returncode == 0, proc.stderr
-        assert (case / "export" / "dossier.tex").exists()
+        # exports carry the case id, the version and the document kind
+        texs = list((case / "export").glob("*-dossier*.tex"))
+        assert len(texs) == 1, texs
+        assert texs[0].name.startswith(case.name + "-")

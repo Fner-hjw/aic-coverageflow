@@ -2015,8 +2015,8 @@ async function renderCaseApproval(body, c) {
       rep.ok ? labeledPanel(`Rendered note for sign-off (${rep.data.version})`,
         renderNote(rep.data),
         h("div", { class: "actions mt2" },
-          h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "Export dossier.pdf"),
-          h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "Export dossier.html"),
+          h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "pdf") }, "Export PDF dossier"),
+          h("button", { class: "btn small", onclick: () => downloadExport(c.case_id, "html") }, "Export HTML dossier"),
           h("a", { class: "btn small", href: `#/case/${c.case_id}/report` }, "Report tab →"))) : null,
       ["PENDING_APPROVAL", "ESCALATED"].includes(st.status) ? act : decisionBox)));
 

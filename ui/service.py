@@ -110,6 +110,7 @@ try:  # pragma: no cover - exercised via the wiring toggle tests
     from coverageflow import gates as _real_gates
     from coverageflow import bundle as _real_bundle
     from coverageflow import export_dossier as _real_export_dossier
+    from coverageflow import note_build as _real_note_build
     from coverageflow.backends import (detect_available_backends
                                        as _real_detect_backends)
     from coverageflow.backends import make_backend as _real_make_backend
@@ -119,6 +120,7 @@ except Exception:  # package not present: pure demo service
     _real_cli = None  # type: ignore[assignment]
     _real_export_xlsx = None  # type: ignore[assignment]
     _real_export_dossier = None  # type: ignore[assignment]
+    _real_note_build = None  # type: ignore[assignment]
     _real_ledger = None  # type: ignore[assignment]
     _real_orchestrator = None  # type: ignore[assignment]
     _real_statestore = None  # type: ignore[assignment]
@@ -3124,10 +3126,12 @@ def export_case(case_id: str, fmt: str) -> dict:
     if _using_real():
         cd = _rcase_dir(case_id)
         state = _rstate(cd)
-        # A case the machine could not finish (ESCALATED, EXHAUSTED, BLOCKED,
-        # STOPPED) still has a built candidate a human may want to check by
-        # hand. It exports as an unapproved draft, marked as such.
-        draft = state["status"] not in ("CLOSED", "APPROVED", "PENDING_APPROVAL")
+        # A case that is not final (PENDING_APPROVAL, ESCALATED, EXHAUSTED,
+        # BLOCKED, STOPPED) still has a built candidate a human may want to
+        # check by hand. It exports as an unapproved draft with a DRAFT
+        # watermark. CLOSED / APPROVED / PUBLISHED_WITH_EXCEPTIONS cases are
+        # final: the note states how they were published.
+        draft = state["status"] not in ("CLOSED", "APPROVED", "PUBLISHED_WITH_EXCEPTIONS")
         if draft and _rlatest_engine_artifact(cd, "valuation.json") is None:
             raise ConflictError(
                 f"case {case_id} ({state['status']}) has not built a "
@@ -3149,29 +3153,19 @@ def export_case(case_id: str, fmt: str) -> dict:
                 raise ConflictError(
                     f"case {case_id} has no verified engine artifacts "
                     "(model.json/valuation.json) to export yet")
-            out_path = export_dir / ("model-DRAFT.xlsx" if draft else "model.xlsx")
+            out_path = export_dir / _real_export_dossier.export_filename(
+                case_id, latest, "model", "xlsx", draft)
             _real_export_xlsx.export_model_xlsx(model, valuation, out_path)
         elif fmt == "html":
-            banner = (f"<p style='font-family:monospace;color:#b00'><strong>"
-                      f"UNAPPROVED DRAFT</strong> - case status "
-                      f"{state['status']}; open findings were not resolved."
-                      f"</p>" if draft else "")
-            paras = banner + "".join(
-                f"<p style='white-space:pre-wrap'>{ln}</p>" for ln in md_lines)
-            out_path = export_dir / (
-                f"{case_id}-{latest}.html" if not draft or latest == "draft"
-                else f"{case_id}-{latest}-DRAFT.html")
-            out_path.write_bytes(
-                (f"<!doctype html><html><head><meta charset='utf-8'>"
-                 f"<title>{title}</title></head><body style='font-family:"
-                 f"Georgia,serif;max-width:42rem;margin:3rem auto;"
-                 f"padding:0 1rem;line-height:1.5'>{paras}"
-                 f"<hr/><p style='font-family:monospace'>generated from "
-                 f"verified evidence | {case_id} | {latest} | real "
-                 f"workspace</p></body></html>").encode("utf-8"))
+            out_path = export_dir / _real_export_dossier.export_filename(
+                case_id, latest, "dossier", "html", draft)
+            _real_note_build.build_html(_real_export_dossier.collect_case(cd), out_path,
+                                        status=state["status"])
         else:
             built = _real_export_dossier.build_dossier(cd,
-                                                       out_dir=export_dir)
+                                                       out_dir=export_dir,
+                                                       version=latest,
+                                                       draft=draft)
             dossier_pdf = Path(built["pdf"]) if built["pdf"] else None
             if dossier_pdf is not None and dossier_pdf.is_file():
                 out_path = dossier_pdf
@@ -3204,8 +3198,23 @@ def export_case(case_id: str, fmt: str) -> dict:
     title = f"CoverageFlow dossier - {c.mandate['ticker']} - {latest}"
     md_lines = [ln for ln in rep["markdown"].splitlines() if ln.strip()]
     _EXPORT_DIR.mkdir(exist_ok=True)
-    out_path = _EXPORT_DIR / f"{case_id}-{latest}.{fmt}"
+    kind = "model" if fmt == "xlsx" else "dossier"
+    out_path = _EXPORT_DIR / f"{case_id}-{latest}-{kind}.{fmt}"
     if fmt == "html":
+        data = None
+        if _real_note_build is not None:
+            try:  # the same renderer as the real export, fed by the demo store
+                _real_note_build.build_html(
+                    {"case_id": case_id, "mandate": c.mandate, "model": MODEL,
+                     "valuation": VALUATION, "state": c.state, "result": c.result,
+                     "manifest": c.manifest, "facts": {}, "report_md": rep["markdown"],
+                     "approvals": c.approvals,
+                     "approval": c.approvals[-1] if c.approvals else None},
+                    out_path, status=c.state["status"])
+                data = out_path.read_bytes()
+            except Exception:  # demo data is thin: fall back to the plain page
+                data = None
+    if fmt == "html" and data is None:
         paras = "".join(
             f"<p style='white-space:pre-wrap'>{ln}</p>" for ln in md_lines)
         data = (f"<!doctype html><html><head><meta charset='utf-8'>"
@@ -3217,7 +3226,7 @@ def export_case(case_id: str, fmt: str) -> dict:
                 f"renderer</p></body></html>").encode("utf-8")
     elif fmt == "pdf":
         data = _stub_pdf(title, md_lines)
-    else:
+    elif fmt == "xlsx":
         rows = [["CoverageFlow model export", case_id, latest], [], ]
         rows.append(["Series", "Period", "Value"])
         for k, v in MODEL["series"].items():
@@ -3234,8 +3243,8 @@ def export_case(case_id: str, fmt: str) -> dict:
     return {"case_id": case_id, "ok": True, "format": fmt, "version": latest,
             "path": str(out_path), "bytes": len(data),
             "sha256": _sha(data.hex())[:40],
-            "download_url": f"/api/cases/{case_id}/export-file/{case_id}-"
-                            f"{latest}.{fmt}",
+            "download_url": f"/api/cases/{case_id}/export-file/"
+                            f"{out_path.name}",
             "note": "stub renderer; identical evidence sources (facts/model/"
                     "valuation/report of the verified candidate) as the "
                     "real export"}
@@ -3246,8 +3255,8 @@ def export_download(case_id: str, filename: str) -> dict:
     filename = _v(_san.filename, "filename", filename)
     if _using_real():
         if not filename.startswith(case_id + "-") \
-                and filename not in ("model.xlsx", "model-DRAFT.xlsx",
-                                     "dossier.pdf", "dossier.tex"):
+                and filename not in ("model.xlsx", "model-DRAFT.xlsx",   # legacy
+                                     "dossier.pdf", "dossier.tex"):     # names
             raise ValidationError(
                 f"export file name must start with '{case_id}-': {filename}")
         found = _rcase_dir(case_id) / "export" / filename

@@ -460,17 +460,25 @@ class TestExportOfAnUnfinishedCase:
         st = statestore.load_state(case_dir)
         st["status"] = "ESCALATED"
         statestore.atomic_write_json(case_dir / "state.json", st)
-        for fmt, name in (("xlsx", "model-DRAFT.xlsx"), ("html", None)):
+        for fmt, name in (("xlsx", "model"), ("html", None)):
             r = controller.post(f"/api/cases/{cid}/export", json={"format": fmt})
             assert r.status_code == 200, r.text
             body = r.json()
             assert body["draft"] is True
             got = controller.get(body["download_url"])
             assert got.status_code == 200 and got.content
+            fname = body["download_url"].rsplit("/", 1)[-1]
+            assert fname.startswith(cid + "-"), fname
+            # an unapproved export says so in its name: "-draft-" when no
+            # version was ever published, else a "-DRAFT" suffix
+            assert "-draft-" in fname or "-DRAFT." in fname, fname
             if name:
-                assert body["download_url"].endswith(name)
+                assert f"-{name}" in fname
             else:
-                assert b"UNAPPROVED DRAFT" in got.content
+                # the full note, as an unapproved draft: DRAFT watermark class
+                # on the page and the draft status in the running footer
+                assert b'class="draft"' in got.content
+                assert b"Draft for review, not approved" in got.content
 
 
 class TestReportAndApprovalAtTheHumanGate:
