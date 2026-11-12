@@ -661,8 +661,9 @@ Views.dashboard = async function (view) {
 function deletedCasesSection() {
   const box = h("section", { class: "deleted-cases", hidden: "" });
   const paint = async () => {
-    const r = await guard(() => Api.get("/api/deleted-cases"));
-    const rows = r.ok ? (r.data.deleted || []) : [];
+    // a server that predates this endpoint answers 404: show nothing, no toast
+    let rows = [];
+    try { rows = (await Api.get("/api/deleted-cases")).deleted || []; } catch (e) { rows = []; }
     box.hidden = !rows.length;
     if (!rows.length) { box.replaceChildren(); return; }
     const row = d => {
