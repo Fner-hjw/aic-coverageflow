@@ -2627,7 +2627,7 @@ Views.newCase = async function newCase(view, fromId) {
       h("p", { class: "mb0" },
         "Every field below comes from that caseʼs frozen plan, including sections, valuation assumptions, segment bounds, peers, bundle, and trigger. ",
         "Review, adjust what the plan discussed, and create.")) : null,
-    h("fieldset", { class: "coverage-identity" }, h("legend", null, "Filing bundle and case details"),
+    h("section", { class: "block coverage-identity" }, h("h2", { class: "label" }, "Filing bundle and case details"),
       label("frozen bundle", W.bundle),
       h("p", { class: "hint bundle-help" },
         "Choose a bundle to identify the company and suggest a cutoff and trigger. ",
@@ -2644,12 +2644,12 @@ Views.newCase = async function newCase(view, fromId) {
       h("details", { class: "bundle-documents" },
         h("summary", null, "Review bundle documents"), W.docsBox)),
     !src ? deskBox : null,
-    h("fieldset", null, h("legend", null, "Report policy"),
+    h("section", { class: "block" }, h("h2", { class: "label" }, "Report policy"),
       h("div", { class: "form-grid" },
         label("note type", W.noteType),
         label("min words", W.wordsMin), label("max words", W.wordsMax)),
       h("label", { class: "label mt2" }, "Sections. Click to toggle."), secChips),
-    h("fieldset", null, h("legend", null, "Valuation assumptions"),
+    h("section", { class: "block" }, h("h2", { class: "label" }, "Valuation assumptions"),
       h("div", { class: "row wrap pf-bar" },
         pfBtn,
         W.pfPeers,
@@ -3164,7 +3164,7 @@ Views.demo = async function demo(view) {
   const demoCard = (title, body, btnLabel, action, payloadFn, extraAction) => {
     const btn = action ? h("button", { class: "btn", onclick: () => run(action, payloadFn && payloadFn()) }, btnLabel) : btnLabel;
     if (action && !hasTarget()) { btn.disabled = true; btn.title = "No eligible target case"; }
-    const el = h("fieldset", { class: "rehearsal-card" }, h("legend", null, title), body,
+    const el = h("section", { class: "block rehearsal-card" }, h("h3", { class: "label" }, title), body,
       h("div", { class: "actions" }, btn, extraAction));
     return el;
   };
@@ -3173,7 +3173,7 @@ Views.demo = async function demo(view) {
     routeHead("Evidence runs", "Rehearsal",
       "These actions reproduce the evidence runs without standing in for analyst review.",
       h("span", { class: "chip minor" }, "Scripted only")),
-    h("fieldset", { class: "target-strip" }, h("legend", null, "Target case"),
+    h("section", { class: "block target-strip" }, h("h2", { class: "label" }, "Target case"),
       h("label", { class: "f" }, h("span", null, "Case"), caseSel)),
     labeledPanel("Scripted rehearsal actions",
       h("div", { class: "rehearsal-grid" },
