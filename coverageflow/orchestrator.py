@@ -317,6 +317,28 @@ def initial_state(case_id: str, config_versions: dict | None = None) -> dict:
     }
 
 
+
+_FLAGGED_LINE = re.compile(r"\bline (\d+)\b")
+
+
+def flagged_line_numbers(feedback: str) -> set[int]:
+    """1-based note lines named by evidence-link gate messages."""
+    return {int(n) for n in _FLAGGED_LINE.findall(feedback)}
+
+
+def patch_flagged_lines(previous: str, new: str, flagged: set[int]) -> str:
+    """``previous`` with only the ``flagged`` lines taken from ``new``.
+
+    Falls back to ``new`` unchanged when the two drafts differ in line count:
+    the writer restructured the note, so there is no line to line mapping.
+    """
+    a, b = previous.splitlines(), new.splitlines()
+    if not flagged or len(a) != len(b):
+        return new
+    out = [b[i] if (i + 1) in flagged else a[i] for i in range(len(a))]
+    tail = "\n" if new.endswith("\n") else ""
+    return "\n".join(out) + tail
+
 class StopLoop(RuntimeError):
     """Internal control-flow signal: a terminal state was written mid-loop."""
 
@@ -1157,12 +1179,30 @@ class Orchestrator:
 
         candidate_id = None
         payload = self._generator_payload(state, arts, stage)
+        # Patch-only writer retries: the draft the last attempt produced and
+        # the lines the evidence-link gate flagged in it.
+        prev_draft: str | None = None
+        flagged_lines: set[int] = set()
         while True:
             result = self._dispatch_role(state, budget, role, payload,
                                          candidate_id, [rel])
             self._block_if_unrunnable(state, role, result)
             err = self._validate_submission(role, state["pending"]["request_id"],
                                             result)
+            if err is None and role == "writer" and prev_draft is not None:
+                # A retry is a fresh sample of the whole note, so it fixes the
+                # flagged lines and disturbs others. Lines the gate did not
+                # flag are taken back from the previous draft.
+                merged = patch_flagged_lines(
+                    prev_draft, result.parsed["report_md"], flagged_lines)
+                if merged != result.parsed["report_md"]:
+                    self._trace(event="STATE_TRANSITION",
+                                detail={"writer_patch_only": True,
+                                        "flagged_lines": sorted(flagged_lines)},
+                                role="writer", round=state["pending"]["round"],
+                                request_id=state["pending"]["request_id"],
+                                candidate_id=state["candidate"]["candidate_id"])
+                    result.parsed["report_md"] = merged
             if err is None and stage == "ingest":
                 # the declared slices must exist on disk before the extractor
                 # is handed their paths
@@ -1177,11 +1217,19 @@ class Orchestrator:
             if err is None:
                 state["pending"]["retry_count"] = 0
                 break
+            payload = dict(payload)
             if role == "writer" and err.startswith(_EVIDENCE_FEEDBACK_PREFIX):
                 self._note_writer_evidence_retry(state, budget, err)
+                prev_draft = result.parsed["report_md"]
+                flagged_lines = flagged_line_numbers(err)
+                payload["previous_draft"] = prev_draft
+                err = (err + "\nPATCH ONLY: `previous_draft` is your last note. "
+                       "Return it with only the flagged line(s) "
+                       f"{sorted(flagged_lines)} corrected (add the [EV:<key>] "
+                       "marker in the same sentence; do not add or reword "
+                       "numbers). Every other line must stay identical.")
             else:
                 self._handle_invalid(state, budget, role, err)
-            payload = dict(payload)
             payload["submission_feedback"] = err    # same-role repair packet
         parsed = result.parsed
         content = parsed["report_md"] if role == "writer" else parsed
@@ -1379,7 +1427,7 @@ class Orchestrator:
         if used >= budget.limits.retries_max:
             return None
         return (_EVIDENCE_FEEDBACK_PREFIX + "\n".join(
-            f["summary"] for f in findings[:40]))
+            f["summary"] for f in findings[:200]))
 
     def _note_writer_evidence_retry(self, state: dict,
                                     budget: budget_mod.BudgetTracker,
