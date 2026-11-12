@@ -1,4 +1,4 @@
---version: 1.6
+--version: 1.7
 --role: extractor
 --produces: facts.json
 --read: one statement slice (with its citation anchor) of one scoped filing
@@ -19,7 +19,7 @@ the model engine maps onto canonical ids.
 ## OUTPUT SCHEMA
 Strict JSON only, no prose, no fences:
 `role("extractor"), request_id, candidate_id, unit, rows[], missing[], notes[],
-conformance("schema 1.0"), prompt_version("1.6")`. Echo `request_id`,
+conformance("schema 1.0"), prompt_version("1.7")`. Echo `request_id`,
 `candidate_id`, `unit` from the request. Each `rows` entry is ONE string:
 
 `field|period|value|unit|locator`
@@ -53,6 +53,10 @@ cash-flow row is `2026-Q3-YTD`. Never label a year-to-date column as a fiscal ye
 - "Interest and other, net" goes under `income_statement.interest_and_other_net`;
   it must NOT be filed under `income_statement.interest_expense`. With no separate interest expense
   line, leave `interest_expense` in `missing`.
+- Cost of revenue: use the line that gross profit is computed from. When the
+  statement prints component cost lines and a total (for example "Cost of
+  sales", "Amortization of acquisition-related intangibles", "Total cost of
+  sales"), `income_statement.cost_of_revenue` is the total line.
 - Depreciation and amortization: one combined cash-flow line is
   `cash_flow.depreciation_amortization`; separate lines are
   `cash_flow.depreciation` and `cash_flow.amortization_of_intangibles`, never
@@ -82,4 +86,4 @@ errors naming the row. Budgets enforced.
  "missing":[{"field":"income_statement.other_operating_income_expenses",
    "reason":"not disclosed in the IS slice"}],
  "notes":["comparatives are in adjacent columns"],
- "conformance":"schema 1.0","prompt_version":"1.6"}
+ "conformance":"schema 1.0","prompt_version":"1.7"}

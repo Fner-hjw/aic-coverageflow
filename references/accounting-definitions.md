@@ -7,7 +7,7 @@ One canonical name per line. Extraction, model, and forecast artifacts use these
 ## income_statement.* (Income Statement)
 
 - `income_statement.revenue` — Revenue (USDmm)
-- `income_statement.cost_of_revenue` — Cost of Revenue (USDmm)
+- `income_statement.cost_of_revenue` — Cost of Revenue (USDmm). Total cost of revenue above gross profit. When the filing prints component lines and a total (AMD: Cost of sales, Amortization of acquisition-related intangibles, Total cost of sales), use the total, so revenue minus this field equals gross profit.
 - `income_statement.gross_profit` — Gross Profit (USDmm); derived: revenue - cost_of_revenue
 - `income_statement.research_and_development` — Research And Development Expenses (USDmm)
 - `income_statement.selling_general_and_administrative` — Selling General And Administrative Expenses (USDmm)

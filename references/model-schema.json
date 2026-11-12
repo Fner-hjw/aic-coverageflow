@@ -15,7 +15,7 @@
       "display": "Income Statement",
       "fields": [
         {"id": "income_statement.revenue", "label": "Revenue", "kind": "absolute"},
-        {"id": "income_statement.cost_of_revenue", "label": "Cost of Revenue", "kind": "absolute"},
+        {"id": "income_statement.cost_of_revenue", "label": "Cost of Revenue", "kind": "absolute", "note": "Total cost of revenue above gross profit. When the filing prints component lines and a total (AMD: Cost of sales, Amortization of acquisition-related intangibles, Total cost of sales), use the total, so revenue minus this field equals gross profit."},
         {"id": "income_statement.gross_profit", "label": "Gross Profit", "kind": "absolute", "derives": "revenue - cost_of_revenue"},
         {"id": "income_statement.research_and_development", "label": "Research And Development Expenses", "kind": "absolute"},
         {"id": "income_statement.selling_general_and_administrative", "label": "Selling General And Administrative Expenses", "kind": "absolute"},
